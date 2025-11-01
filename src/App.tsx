@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, FileText, TrendingUp, UserX, AlertCircle, CheckCircle, Clock, Filter, Download, Plus, LogOut, Settings, Shield, Mail, Lock, Eye, EyeOff, UserPlus, Edit2, Trash2 } from 'lucide-react';
+import { Users, TrendingUp, UserX, AlertCircle, CheckCircle, Clock, LogOut, Mail, Lock, Eye, EyeOff, UserPlus } from 'lucide-react';
 
 type UserRole = 'pending' | 'team_member' | 'admin';
 type MovementType = 'demissao' | 'transferencia' | 'alteracao' | 'promocao';
@@ -69,7 +69,6 @@ export default function HRMovementsApp() {
   const [view, setView] = useState('login');
   const [movements, setMovements] = useState<Movement[]>([]);
   const [selectedMovement, setSelectedMovement] = useState<Movement | null>(null);
-  const [pendingUsers, setPendingUsers] = useState<User[]>([]);
 
   useEffect(() => {
     const mockMovements: Movement[] = [
@@ -116,12 +115,6 @@ export default function HRMovementsApp() {
       }
     ];
     setMovements(mockMovements);
-
-    const mockPendingUsers: User[] = [
-      { id: '1', name: 'Carlos Oliveira', email: 'carlos@empresa.com', role: 'pending', can_manage_demissoes: false, can_manage_transferencias: false },
-      { id: '2', name: 'Ana Paula', email: 'ana@empresa.com', role: 'pending', can_manage_demissoes: false, can_manage_transferencias: false }
-    ];
-    setPendingUsers(mockPendingUsers);
   }, []);
 
   const getTeamProgress = (movement: Movement) => {
@@ -278,7 +271,7 @@ export default function HRMovementsApp() {
 
   const Register = () => {
     const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
-    const [showPassword, setShowPassword] = useState(false);
+    const [showPassword] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
 
