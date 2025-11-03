@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, CheckCircle, Clock, LogOut, Mail, Lock, Eye, EyeOff, UserPlus } from 'lucide-react';
+import { Users, TrendingUp, UserX, AlertCircle, CheckCircle, Clock, LogOut, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
 type UserRole = 'pending' | 'team_member' | 'admin';
 type MovementType = 'demissao' | 'transferencia' | 'alteracao' | 'promocao';
@@ -62,6 +62,86 @@ const DISMISSAL_TYPES = [
   'Pedido de Demissão',
   'Acordo',
   'Término de Contrato'
+];
+
+const AUTHORIZED_USERS = [
+  {
+    id: '1',
+    email: 'admin@empresa.com',
+    password: 'admin123',
+    name: 'Admin Principal',
+    role: 'admin' as const,
+    can_manage_demissoes: true,
+    can_manage_transferencias: true,
+    team_id: 'ponto',
+    team_name: 'Ponto'
+  },
+  {
+    id: '2',
+    email: 'rh@empresa.com',
+    password: 'rh123',
+    name: 'RH Demissões',
+    role: 'admin' as const,
+    can_manage_demissoes: true,
+    can_manage_transferencias: false,
+    team_id: 'financeiro',
+    team_name: 'Financeiro'
+  },
+  {
+    id: '3',
+    email: 'rh.transferencias@empresa.com',
+    password: 'rh123',
+    name: 'RH Transferências',
+    role: 'admin' as const,
+    can_manage_demissoes: false,
+    can_manage_transferencias: true,
+    team_id: 'desenvolvimento',
+    team_name: 'Desenvolvimento'
+  },
+  {
+    id: '4',
+    email: 'ponto@empresa.com',
+    password: 'ponto123',
+    name: 'Equipe Ponto',
+    role: 'team_member' as const,
+    can_manage_demissoes: false,
+    can_manage_transferencias: false,
+    team_id: 'ponto',
+    team_name: 'Ponto'
+  },
+  {
+    id: '5',
+    email: 'ti@empresa.com',
+    password: 'ti123',
+    name: 'Equipe TI',
+    role: 'team_member' as const,
+    can_manage_demissoes: false,
+    can_manage_transferencias: false,
+    team_id: 'ti',
+    team_name: 'T.I'
+  },
+  {
+    id: '6',
+    email: 'desenvolvimento@empresa.com',
+    password: 'dev123',
+    name: 'Equipe Desenvolvimento',
+    role: 'team_member' as const,
+    can_manage_demissoes: false,
+    can_manage_transferencias: false,
+    team_id: 'desenvolvimento',
+    team_name: 'Desenvolvimento'
+  },
+  {
+    id: '7',
+    email: 'financeiro@empresa.com',
+    password: 'fin123',
+    name: 'Equipe Financeiro',
+    role: 'team_member' as const,
+    can_manage_demissoes: false,
+    can_manage_transferencias: false,
+    team_id: 'financeiro',
+    team_name: 'Financeiro'
+  }
 ];
 
 export default function HRMovementsApp() {
@@ -132,42 +212,16 @@ export default function HRMovementsApp() {
     const handleLogin = (e?: React.FormEvent) => {
       if (e) e.preventDefault();
       
-      if (email === 'admin.completo@empresa.com') {
-        setCurrentUser({
-          id: '1', name: 'Admin Completo', email, role: 'admin',
-          can_manage_demissoes: true, can_manage_transferencias: true,
-          team_id: 'ponto', team_name: 'Ponto'
-        });
+      const user = AUTHORIZED_USERS.find(
+        u => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+      );
+
+      if (user) {
+        const { password: _, ...userWithoutPassword } = user;
+        setCurrentUser(userWithoutPassword as User);
         setView('dashboard');
-      } else if (email === 'admin.demissoes@empresa.com') {
-        setCurrentUser({
-          id: '2', name: 'Admin Demissões', email, role: 'admin',
-          can_manage_demissoes: true, can_manage_transferencias: false,
-          team_id: 'financeiro', team_name: 'Financeiro'
-        });
-        setView('dashboard');
-      } else if (email === 'admin.transferencias@empresa.com') {
-        setCurrentUser({
-          id: '3', name: 'Admin Transferências', email, role: 'admin',
-          can_manage_demissoes: false, can_manage_transferencias: true,
-          team_id: 'desenvolvimento', team_name: 'Desenvolvimento'
-        });
-        setView('dashboard');
-      } else if (email === 'ponto@empresa.com') {
-        setCurrentUser({
-          id: '4', name: 'Usuário Ponto', email, role: 'team_member',
-          can_manage_demissoes: false, can_manage_transferencias: false,
-          team_id: 'ponto', team_name: 'Ponto'
-        });
-        setView('dashboard');
-      } else if (email === 'pendente@empresa.com') {
-        setCurrentUser({
-          id: '5', name: 'Usuário Pendente', email, role: 'pending',
-          can_manage_demissoes: false, can_manage_transferencias: false
-        });
-        setView('pending');
       } else {
-        setError('Credenciais inválidas');
+        setError('Email ou senha incorretos');
       }
     };
 
@@ -233,157 +287,49 @@ export default function HRMovementsApp() {
             >
               Entrar
             </button>
-
-            <div className="text-center pt-4">
-              <button
-                type="button"
-                onClick={() => setView('register')}
-                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-              >
-                Não tem conta? Cadastre-se
-              </button>
-            </div>
           </form>
 
           <div className="mt-6 pt-6 border-t">
-            <p className="text-xs font-semibold text-gray-700 mb-3">🚀 Acesso Rápido:</p>
+            <p className="text-xs font-semibold text-gray-700 mb-3">🚀 Acesso Rápido (clique para testar):</p>
             <div className="space-y-2">
-              <button
-                onClick={() => { setEmail('admin.completo@empresa.com'); setPassword('123456'); setTimeout(() => handleLogin(), 100); }}
-                className="w-full text-left px-3 py-2 bg-purple-50 hover:bg-purple-100 rounded text-xs border border-purple-200"
-              >
-                <strong>Admin Completo + Equipe Ponto</strong><br/>
-                <span className="text-gray-600">Cria tudo + Responde pela equipe Ponto</span>
-              </button>
-              <button
-                onClick={() => { setEmail('ponto@empresa.com'); setPassword('123456'); setTimeout(() => handleLogin(), 100); }}
-                className="w-full text-left px-3 py-2 bg-green-50 hover:bg-green-100 rounded text-xs border border-green-200"
-              >
-                <strong>Membro Equipe Ponto</strong><br/>
-                <span className="text-gray-600">Vê tudo, responde apenas pela equipe Ponto</span>
-              </button>
+              {AUTHORIZED_USERS.filter(u => u.role === 'admin').map(user => (
+                <button
+                  key={user.id}
+                  onClick={() => { 
+                    setEmail(user.email); 
+                    setPassword(user.password); 
+                    setTimeout(() => handleLogin(), 100); 
+                  }}
+                  className="w-full text-left px-3 py-2 bg-purple-50 hover:bg-purple-100 rounded text-xs border border-purple-200"
+                >
+                  <strong>{user.name}</strong><br/>
+                  <span className="text-gray-600">{user.email} / senha: {user.password}</span>
+                </button>
+              ))}
+              <div className="border-t pt-2 mt-2"></div>
+              {AUTHORIZED_USERS.filter(u => u.role === 'team_member').slice(0, 3).map(user => (
+                <button
+                  key={user.id}
+                  onClick={() => { 
+                    setEmail(user.email); 
+                    setPassword(user.password); 
+                    setTimeout(() => handleLogin(), 100); 
+                  }}
+                  className="w-full text-left px-3 py-2 bg-green-50 hover:bg-green-100 rounded text-xs border border-green-200"
+                >
+                  <strong>{user.name}</strong><br/>
+                  <span className="text-gray-600">{user.email} / senha: {user.password}</span>
+                </button>
+              ))}
             </div>
           </div>
-        </div>
-      </div>
-    );
-  };
-
-  const Register = () => {
-    const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
-    const [showPassword] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState(false);
-
-    const handleRegister = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (formData.password !== formData.confirmPassword) {
-        setError('As senhas não coincidem');
-        return;
-      }
-      if (formData.password.length < 6) {
-        setError('A senha deve ter no mínimo 6 caracteres');
-        return;
-      }
-      setSuccess(true);
-      setTimeout(() => setView('login'), 2000);
-    };
-
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
-          <div className="text-center mb-8">
-            <UserPlus className="w-16 h-16 text-blue-600 mx-auto mb-4" />
-            <h1 className="text-2xl font-bold">Criar Conta</h1>
-            <p className="text-gray-600 mt-2">Cadastre-se no sistema</p>
-          </div>
-
-          {success ? (
-            <div className="bg-green-50 text-green-600 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
-              <CheckCircle className="w-4 h-4" />
-              Cadastro realizado! Aguarde aprovação de um administrador.
-            </div>
-          ) : (
-            <form onSubmit={handleRegister} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Nome Completo</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">E-mail</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Senha</label>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Confirmar Senha</label>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={formData.confirmPassword}
-                  onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-              {error && (
-                <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">
-                  {error}
-                </div>
-              )}
-              <button type="submit" className="w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700">
-                Cadastrar
-              </button>
-              <button type="button" onClick={() => setView('login')} className="w-full text-blue-600 text-sm">
-                Já tem conta? Faça login
-              </button>
-            </form>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const PendingApproval = () => {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-yellow-50 to-orange-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-8 text-center">
-          <Clock className="w-20 h-20 text-yellow-600 mx-auto mb-6" />
-          <h1 className="text-2xl font-bold mb-4">Aguardando Aprovação</h1>
-          <p className="text-gray-600 mb-6">Seu cadastro será revisado por um administrador em breve.</p>
-          <button onClick={() => { setCurrentUser(null); setView('login'); }} className="text-blue-600 font-medium">
-            Voltar ao Login
-          </button>
         </div>
       </div>
     );
   };
 
   if (!currentUser) {
-    return view === 'register' ? <Register /> : <Login />;
-  }
-
-  if (currentUser.role === 'pending') {
-    return <PendingApproval />;
+    return <Login />;
   }
 
   const DashboardView = () => {
@@ -708,12 +654,12 @@ export default function HRMovementsApp() {
                         return m;
                       });
                       setMovements(updated);
-                      alert('Parecer enviado!');
+                      alert('Parecer enviado com sucesso!');
                       setView('dashboard');
                       setSelectedMovement(null);
                     }
                   }}
-                  className="mt-3 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
+                  className="mt-3 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   Enviar Parecer
                 </button>
