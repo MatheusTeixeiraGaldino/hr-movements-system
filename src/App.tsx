@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2 } from 'lucide-react';
+import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
 type UserRole = 'admin' | 'team_member';
@@ -30,6 +30,7 @@ interface Movement {
 }
 
 const TEAMS = [
+  { id: 'rh', name: 'Recursos Humanos' },
   { id: 'ponto', name: 'Ponto' },
   { id: 'transporte', name: 'Transporte' },
   { id: 'ti', name: 'T.I' },
@@ -186,18 +187,6 @@ export default function App() {
               )}
             </button>
           </form>
-
-          <div className="mt-6 pt-6 border-t">
-            <p className="text-xs font-semibold text-gray-700 mb-3">🚀 Usuários de teste:</p>
-            <div className="space-y-2 text-xs">
-              <div className="bg-purple-50 p-2 rounded border border-purple-200">
-                <strong>Admin:</strong> admin@empresa.com / admin123
-              </div>
-              <div className="bg-green-50 p-2 rounded border border-green-200">
-                <strong>Equipe:</strong> ponto@empresa.com / ponto123
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     );
@@ -334,129 +323,129 @@ export default function App() {
     );
   };
 
-  const DashboardView = () => {
-    const [showNewMovement, setShowNewMovement] = useState(false);
-    const [showChangePassword, setShowChangePassword] = useState(false);
-    const [movementType, setMovementType] = useState<MovementType | null>(null);
-    const [formData, setFormData] = useState<any>({});
-    const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+  const RegisterUserModal = ({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) => {
+    const [formData, setFormData] = useState({
+      name: '',
+      email: '',
+      password: '',
+      role: 'team_member' as UserRole,
+      can_manage_demissoes: false,
+      can_manage_transferencias: false,
+      team_id: '',
+      team_name: ''
+    });
+    const [error, setError] = useState('');
+    const [loadingRegister, setLoadingRegister] = useState(false);
 
-    const canCreateDemissao = currentUser?.role === 'admin' && currentUser?.can_manage_demissoes;
-    const canCreateTransferencia = currentUser?.role === 'admin' && currentUser?.can_manage_transferencias;
+    const handleRegister = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setError('');
 
-    const getTeamProgress = (movement: Movement) => {
-      const teams = movement.selected_teams || [];
-      const completed = teams.filter(t => movement.responses[t]?.status === 'completed').length;
-      return { completed, total: teams.length, percentage: teams.length > 0 ? (completed / teams.length) * 100 : 0 };
-    };
-
-    const handleCreateMovement = async () => {
-      if (!formData.employeeName?.trim()) {
-        alert('Preencha o nome do colaborador');
-        return;
-      }
-      if (selectedTeams.length === 0) {
-        alert('Selecione pelo menos uma equipe');
+      if (!formData.name || !formData.email || !formData.password || !formData.team_id) {
+        setError('Preencha todos os campos obrigatórios');
         return;
       }
 
-      setLoading(true);
-      
+      if (formData.password.length < 6) {
+        setError('A senha deve ter pelo menos 6 caracteres');
+        return;
+      }
+
+      setLoadingRegister(true);
+
       try {
-        const newMovement = {
-          type: movementType!,
-          employee_name: formData.employeeName,
-          selected_teams: selectedTeams,
-          status: 'pending',
-          responses: selectedTeams.reduce((acc, teamId) => {
-            acc[teamId] = { status: 'pending' };
-            return acc;
-          }, {} as any),
-          created_by: currentUser?.name || '',
-          details: formData
-        };
-
+        const selectedTeam = TEAMS.find(t => t.id === formData.team_id);
+        
         const { error } = await supabase
-          .from('movements')
-          .insert([newMovement]);
+          .from('users')
+          .insert([{
+            ...formData,
+            team_name: selectedTeam?.name || '',
+            email: formData.email.toLowerCase()
+          }]);
 
-        if (error) throw error;
+        if (error) {
+          if (error.code === '23505') {
+            setError('Este email já está cadastrado');
+          } else {
+            throw error;
+          }
+          return;
+        }
 
-        alert('Movimentação criada com sucesso!');
-        await loadMovements();
-        setShowNewMovement(false);
-        setMovementType(null);
-        setFormData({});
-        setSelectedTeams([]);
+        alert('Usuário cadastrado com sucesso!');
+        onSuccess();
+        onClose();
       } catch (err) {
-        alert('Erro ao criar movimentação');
+        setError('Erro ao cadastrar usuário');
         console.error(err);
       } finally {
-        setLoading(false);
+        setLoadingRegister(false);
       }
     };
 
-    const myMovements = movements.filter(m => 
-      m.selected_teams.includes(currentUser?.team_id || '')
-    );
-
     return (
-      <div>
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">Dashboard</h2>
-            <button
-              onClick={() => setShowChangePassword(true)}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
-            >
-              <Settings className="w-5 h-5" />
-              <span className="text-sm">Alterar Senha</span>
-            </button>
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold">Cadastrar Novo Usuário</h2>
+            <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
           </div>
-          
-          {(canCreateDemissao || canCreateTransferencia) && (
-            <div className="mb-6 pb-6 border-b">
-              <h3 className="font-semibold mb-3">Nova Movimentação</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {canCreateDemissao && (
-                  <button
-                    onClick={() => { setShowNewMovement(true); setMovementType('demissao'); }}
-                    className="p-4 border-2 border-red-200 rounded-lg hover:bg-red-50 transition"
-                  >
-                    <UserX className="w-8 h-8 text-red-600 mx-auto mb-2" />
-                    <p className="text-sm font-medium">Demissão</p>
-                  </button>
-                )}
-                {canCreateTransferencia && (
-                  <>
-                    <button
-                      onClick={() => { setShowNewMovement(true); setMovementType('transferencia'); }}
-                      className="p-4 border-2 border-blue-200 rounded-lg hover:bg-blue-50 transition"
-                    >
-                      <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-                      <p className="text-sm font-medium">Transferência</p>
-                    </button>
-                    <button
-                      onClick={() => { setShowNewMovement(true); setMovementType('alteracao'); }}
-                      className="p-4 border-2 border-green-200 rounded-lg hover:bg-green-50 transition"
-                    >
-                      <TrendingUp className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                      <p className="text-sm font-medium">Alteração</p>
-                    </button>
-                    <button
-                      onClick={() => { setShowNewMovement(true); setMovementType('promocao'); }}
-                      className="p-4 border-2 border-purple-200 rounded-lg hover:bg-purple-50 transition"
-                    >
-                      <TrendingUp className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-                      <p className="text-sm font-medium">Promoção</p>
-                    </button>
-                  </>
-                )}
-              </div>
+
+          <form onSubmit={handleRegister} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Nome Completo *</label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+                required
+              />
             </div>
-          )}
-          
-          <div className="space-y-3">
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">E-mail *</label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({...formData, email: e.target.value})}
+                className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Senha *</label>
+              <input
+                type="password"
+                value={formData.password}
+                onChange={(e) => setFormData({...formData, password: e.target.value})}
+                className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+                required
+                minLength={6}
+                placeholder="Mínimo 6 caracteres"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Equipe *</label>
+              <select
+                value={formData.team_id}
+                onChange={(e) => setFormData({...formData, team_id: e.target.value})}
+                className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+                required
+              >
+                <option value="">Selecione uma equipe</option>
+                {TEAMS.map(team => (
+                  <option key={team.id} value={team.id}>{team.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="border-t pt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-3">Tipo de Usuário *</label>
+              <div className="space-y-3">
             <h3 className="font-semibold">
               {currentUser?.role === 'admin' ? 'Todas as Movimentações' : 'Minhas Movimentações'}
             </h3>
@@ -515,6 +504,13 @@ export default function App() {
 
         {showChangePassword && (
           <ChangePasswordModal onClose={() => setShowChangePassword(false)} />
+        )}
+
+        {showRegisterUser && (
+          <RegisterUserModal 
+            onClose={() => setShowRegisterUser(false)} 
+            onSuccess={() => loadMovements()} 
+          />
         )}
 
         {showNewMovement && movementType && (
@@ -860,4 +856,231 @@ export default function App() {
       </main>
     </div>
   );
-}
+}-y-2">
+                <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name="role"
+                    value="team_member"
+                    checked={formData.role === 'team_member'}
+                    onChange={(e) => setFormData({
+                      ...formData, 
+                      role: e.target.value as UserRole,
+                      can_manage_demissoes: false,
+                      can_manage_transferencias: false
+                    })}
+                    className="w-4 h-4"
+                  />
+                  <div>
+                    <p className="font-medium">Membro da Equipe</p>
+                    <p className="text-xs text-gray-600">Pode responder movimentações da sua equipe</p>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name="role"
+                    value="admin"
+                    checked={formData.role === 'admin'}
+                    onChange={(e) => setFormData({...formData, role: e.target.value as UserRole})}
+                    className="w-4 h-4"
+                  />
+                  <div>
+                    <p className="font-medium">Administrador</p>
+                    <p className="text-xs text-gray-600">Pode criar e gerenciar movimentações</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {formData.role === 'admin' && (
+              <div className="border-t pt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-3">Permissões do Administrador</label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={formData.can_manage_demissoes}
+                      onChange={(e) => setFormData({...formData, can_manage_demissoes: e.target.checked})}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm">Pode gerenciar Demissões</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={formData.can_manage_transferencias}
+                      onChange={(e) => setFormData({...formData, can_manage_transferencias: e.target.checked})}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm">Pode gerenciar Transferências, Alterações e Promoções</span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loadingRegister}
+              className="w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 disabled:bg-blue-400 flex items-center justify-center gap-2"
+            >
+              {loadingRegister ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Cadastrando...
+                </>
+              ) : (
+                'Cadastrar Usuário'
+              )}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
+  const DashboardView = () => {
+    const [showNewMovement, setShowNewMovement] = useState(false);
+    const [showChangePassword, setShowChangePassword] = useState(false);
+    const [showRegisterUser, setShowRegisterUser] = useState(false);
+    const [movementType, setMovementType] = useState<MovementType | null>(null);
+    const [formData, setFormData] = useState<any>({});
+    const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+
+    const canCreateDemissao = currentUser?.role === 'admin' && currentUser?.can_manage_demissoes;
+    const canCreateTransferencia = currentUser?.role === 'admin' && currentUser?.can_manage_transferencias;
+    const isAdmin = currentUser?.role === 'admin';
+
+    const getTeamProgress = (movement: Movement) => {
+      const teams = movement.selected_teams || [];
+      const completed = teams.filter(t => movement.responses[t]?.status === 'completed').length;
+      return { completed, total: teams.length, percentage: teams.length > 0 ? (completed / teams.length) * 100 : 0 };
+    };
+
+    const handleCreateMovement = async () => {
+      if (!formData.employeeName?.trim()) {
+        alert('Preencha o nome do colaborador');
+        return;
+      }
+      if (selectedTeams.length === 0) {
+        alert('Selecione pelo menos uma equipe');
+        return;
+      }
+
+      setLoading(true);
+      
+      try {
+        const newMovement = {
+          type: movementType!,
+          employee_name: formData.employeeName,
+          selected_teams: selectedTeams,
+          status: 'pending',
+          responses: selectedTeams.reduce((acc, teamId) => {
+            acc[teamId] = { status: 'pending' };
+            return acc;
+          }, {} as any),
+          created_by: currentUser?.name || '',
+          details: formData
+        };
+
+        const { error } = await supabase
+          .from('movements')
+          .insert([newMovement]);
+
+        if (error) throw error;
+
+        alert('Movimentação criada com sucesso!');
+        await loadMovements();
+        setShowNewMovement(false);
+        setMovementType(null);
+        setFormData({});
+        setSelectedTeams([]);
+      } catch (err) {
+        alert('Erro ao criar movimentação');
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const myMovements = movements.filter(m => 
+      m.selected_teams.includes(currentUser?.team_id || '')
+    );
+
+    return (
+      <div>
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold">Dashboard</h2>
+            <div className="flex items-center gap-2">
+              {isAdmin && (
+                <button
+                  onClick={() => setShowRegisterUser(true)}
+                  className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  Cadastrar Usuário
+                </button>
+              )}
+              <button
+                onClick={() => setShowChangePassword(true)}
+                className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+              >
+                <Settings className="w-5 h-5" />
+                <span className="text-sm">Alterar Senha</span>
+              </button>
+            </div>
+          </div>
+          
+          {(canCreateDemissao || canCreateTransferencia) && (
+            <div className="mb-6 pb-6 border-b">
+              <h3 className="font-semibold mb-3">Nova Movimentação</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {canCreateDemissao && (
+                  <button
+                    onClick={() => { setShowNewMovement(true); setMovementType('demissao'); }}
+                    className="p-4 border-2 border-red-200 rounded-lg hover:bg-red-50 transition"
+                  >
+                    <UserX className="w-8 h-8 text-red-600 mx-auto mb-2" />
+                    <p className="text-sm font-medium">Demissão</p>
+                  </button>
+                )}
+                {canCreateTransferencia && (
+                  <>
+                    <button
+                      onClick={() => { setShowNewMovement(true); setMovementType('transferencia'); }}
+                      className="p-4 border-2 border-blue-200 rounded-lg hover:bg-blue-50 transition"
+                    >
+                      <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+                      <p className="text-sm font-medium">Transferência</p>
+                    </button>
+                    <button
+                      onClick={() => { setShowNewMovement(true); setMovementType('alteracao'); }}
+                      className="p-4 border-2 border-green-200 rounded-lg hover:bg-green-50 transition"
+                    >
+                      <TrendingUp className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                      <p className="text-sm font-medium">Alteração</p>
+                    </button>
+                    <button
+                      onClick={() => { setShowNewMovement(true); setMovementType('promocao'); }}
+                      className="p-4 border-2 border-purple-200 rounded-lg hover:bg-purple-50 transition"
+                    >
+                      <TrendingUp className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+                      <p className="text-sm font-medium">Promoção</p>
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+          
+          <div className="space
