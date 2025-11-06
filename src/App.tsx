@@ -1,81 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus } from 'lucide-react';
+import React, { useState } from 'react';
+import { Users, LogOut, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
 import { supabase } from './lib/supabase';
-
-type UserRole = 'admin' | 'team_member';
-type MovementType = 'demissao' | 'transferencia' | 'alteracao' | 'promocao';
 
 interface User {
   id: string;
   name: string;
   email: string;
   password: string;
-  role: UserRole;
+  role: string;
   can_manage_demissoes: boolean;
   can_manage_transferencias: boolean;
   team_id: string;
   team_name: string;
 }
 
-interface Movement {
-  id: string;
-  type: MovementType;
-  employee_name: string;
-  selected_teams: string[];
-  status: 'pending' | 'in_progress' | 'completed';
-  responses: Record<string, { status: string; comment?: string; date?: string }>;
-  created_at: string;
-  created_by: string;
-  details: Record<string, any>;
-}
-
-const TEAMS = [
-  { id: 'rh', name: 'Recursos Humanos' },
-  { id: 'ponto', name: 'Ponto' },
-  { id: 'transporte', name: 'Transporte' },
-  { id: 'ti', name: 'T.I' },
-  { id: 'desenvolvimento', name: 'Desenvolvimento' },
-  { id: 'seguranca', name: 'Segurança do Trabalho' },
-  { id: 'ambulatorio', name: 'Ambulatório' },
-  { id: 'financeiro', name: 'Financeiro' }
-];
-
-const MOVEMENT_TYPES = {
-  demissao: { label: 'Demissão', icon: UserX, color: 'red' },
-  transferencia: { label: 'Transferência', icon: Users, color: 'blue' },
-  alteracao: { label: 'Alteração Salarial', icon: TrendingUp, color: 'green' },
-  promocao: { label: 'Promoção', icon: TrendingUp, color: 'purple' }
-};
-
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [movements, setMovements] = useState<Movement[]>([]);
-  const [view, setView] = useState('login');
-  const [selectedMovement, setSelectedMovement] = useState<Movement | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (currentUser) {
-      loadMovements();
-    }
-  }, [currentUser]);
-
-  const loadMovements = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('movements')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setMovements(data || []);
-    } catch (error) {
-      console.error('Erro ao carregar movimentações:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const Login = () => {
     const [email, setEmail] = useState('');
@@ -103,7 +43,6 @@ export default function App() {
         }
 
         setCurrentUser(data);
-        setView('dashboard');
       } catch (err) {
         setError('Erro ao fazer login');
       } finally {
@@ -211,8 +150,9 @@ export default function App() {
                 <p className="text-xs text-gray-500">{currentUser.team_name}</p>
               </div>
               <button 
-                onClick={() => { setCurrentUser(null); setView('login'); }} 
+                onClick={() => setCurrentUser(null)} 
                 className="text-gray-600 hover:text-gray-900"
+                title="Sair"
               >
                 <LogOut className="w-5 h-5" />
               </button>
@@ -224,10 +164,34 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-4 py-6">
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-xl font-bold mb-4">Dashboard</h2>
-          <p className="text-gray-600">Sistema funcionando! Login realizado com sucesso.</p>
-          <p className="text-sm text-gray-500 mt-2">
-            Usuário: {currentUser.email} | Tipo: {currentUser.role === 'admin' ? 'Administrador' : 'Membro'}
-          </p>
+          <div className="space-y-3">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <p className="text-green-800 font-medium">✅ Sistema funcionando!</p>
+              <p className="text-green-700 text-sm mt-1">Login realizado com sucesso</p>
+            </div>
+            
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-900"><strong>Usuário:</strong> {currentUser.email}</p>
+              <p className="text-sm text-blue-900"><strong>Nome:</strong> {currentUser.name}</p>
+              <p className="text-sm text-blue-900"><strong>Equipe:</strong> {currentUser.team_name}</p>
+              <p className="text-sm text-blue-900"><strong>Tipo:</strong> {currentUser.role === 'admin' ? 'Administrador' : 'Membro da Equipe'}</p>
+            </div>
+
+            {currentUser.role === 'admin' && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <p className="text-purple-800 font-medium">🔐 Permissões de Administrador</p>
+                <ul className="text-sm text-purple-700 mt-2 space-y-1">
+                  <li>• Gerenciar Demissões: {currentUser.can_manage_demissoes ? '✅ Sim' : '❌ Não'}</li>
+                  <li>• Gerenciar Transferências: {currentUser.can_manage_transferencias ? '✅ Sim' : '❌ Não'}</li>
+                </ul>
+              </div>
+            )}
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-yellow-800 font-medium">⚠️ Sistema em desenvolvimento</p>
+              <p className="text-yellow-700 text-sm mt-1">As funcionalidades completas serão adicionadas em breve.</p>
+            </div>
+          </div>
         </div>
       </main>
     </div>
