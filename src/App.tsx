@@ -620,7 +620,7 @@ export default function App() {
             },
             body: JSON.stringify({
               ...data,
-              movimento_tipo: MOVEMENT_TYPES[data.type].label,
+              movimento_tipo: MOVEMENT_TYPES[data.type as MovementType].label,
               criado_por: data.created_by,
               equipes_envolvidas: data.selected_teams.map((teamId: string) => 
                 TEAMS.find(t => t.id === teamId)?.name || teamId
