@@ -30,11 +30,11 @@ interface Movement {
 }
 
 const TEAMS = [
-  { id: 'rh', name: 'Recursos Humanos' },
   { id: 'ponto', name: 'Ponto' },
   { id: 'transporte', name: 'Transporte' },
   { id: 'ti', name: 'T.I' },
-  { id: 'desenvolvimento', name: 'Desenvolvimento' },
+  { id: 'dp', name: 'Departamento Pessoal' },
+  { id: 'desenvolvimento', name: 'Desenvolvimento Humano' },
   { id: 'seguranca', name: 'Segurança do Trabalho' },
   { id: 'ambulatorio', name: 'Ambulatório' },
   { id: 'financeiro', name: 'Financeiro' }
