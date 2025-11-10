@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus } from 'lucide-react';
+import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus, Clock } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
 type UserRole = 'admin' | 'team_member';
@@ -27,14 +27,16 @@ interface Movement {
   created_at: string;
   created_by: string;
   details: Record<string, any>;
+  observation?: string;
+  deadline?: string;
 }
 
 const TEAMS = [
+  { id: 'rh', name: 'Recursos Humanos' },
   { id: 'ponto', name: 'Ponto' },
   { id: 'transporte', name: 'Transporte' },
   { id: 'ti', name: 'T.I' },
-  { id: 'dp', name: 'Departamento Pessoal' },
-  { id: 'desenvolvimento', name: 'Desenvolvimento Humano' },
+  { id: 'desenvolvimento', name: 'Desenvolvimento' },
   { id: 'seguranca', name: 'Segurança do Trabalho' },
   { id: 'ambulatorio', name: 'Ambulatório' },
   { id: 'financeiro', name: 'Financeiro' }
@@ -355,9 +357,14 @@ export default function App() {
         const { error } = await supabase
           .from('users')
           .insert([{
-            ...formData,
-            team_name: selectedTeam?.name || '',
-            email: formData.email.toLowerCase()
+            name: formData.name,
+            email: formData.email.toLowerCase(),
+            password: formData.password,
+            role: formData.role,
+            can_manage_demissoes: formData.can_manage_demissoes,
+            can_manage_transferencias: formData.can_manage_transferencias,
+            team_id: formData.team_id,
+            team_name: selectedTeam?.name || ''
           }]);
 
         if (error) {
@@ -550,6 +557,11 @@ export default function App() {
       return { completed, total: teams.length, percentage: teams.length > 0 ? (completed / teams.length) * 100 : 0 };
     };
 
+    const isOverdue = (deadline?: string) => {
+      if (!deadline) return false;
+      return new Date(deadline) < new Date();
+    };
+
     const handleCreateMovement = async () => {
       if (!formData.employeeName?.trim()) {
         alert('Preencha o nome do colaborador');
@@ -563,24 +575,39 @@ export default function App() {
       setLoading(true);
       
       try {
+        const responsesObj = selectedTeams.reduce((acc, teamId) => {
+          acc[teamId] = { status: 'pending' };
+          return acc;
+        }, {} as Record<string, any>);
+
         const newMovement = {
           type: movementType!,
           employee_name: formData.employeeName,
           selected_teams: selectedTeams,
-          status: 'pending',
-          responses: selectedTeams.reduce((acc, teamId) => {
-            acc[teamId] = { status: 'pending' };
-            return acc;
-          }, {} as any),
+          status: 'pending' as const,
+          responses: responsesObj,
           created_by: currentUser?.name || '',
-          details: formData
+          details: {
+            ...(formData.dismissalDate && { dismissalDate: formData.dismissalDate }),
+            ...(formData.company && { company: formData.company }),
+            ...(formData.oldSector && { oldSector: formData.oldSector }),
+            ...(formData.newSector && { newSector: formData.newSector }),
+            ...(formData.oldPosition && { oldPosition: formData.oldPosition }),
+            ...(formData.newPosition && { newPosition: formData.newPosition }),
+            ...(formData.changeDate && { changeDate: formData.changeDate })
+          },
+          observation: formData.observation || '',
+          deadline: formData.deadline || null
         };
 
         const { error } = await supabase
           .from('movements')
           .insert([newMovement]);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Erro Supabase:', error);
+          throw error;
+        }
 
         alert('Movimentação criada com sucesso!');
         await loadMovements();
@@ -588,8 +615,9 @@ export default function App() {
         setMovementType(null);
         setFormData({});
         setSelectedTeams([]);
-      } catch (err) {
-        alert('Erro ao criar movimentação');
+      } catch (err: any) {
+        console.error('Erro completo:', err);
+        alert(`Erro ao criar movimentação: ${err.message || 'Erro desconhecido'}`);
       } finally {
         setLoading(false);
       }
@@ -599,8 +627,23 @@ export default function App() {
       m.selected_teams.includes(currentUser?.team_id || '')
     );
 
+    const pendingMovements = myMovements.filter(m => 
+      m.responses[currentUser?.team_id || '']?.status === 'pending'
+    );
+
     return (
       <div>
+        {pendingMovements.length > 0 && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded">
+            <div className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-yellow-600" />
+              <p className="font-medium text-yellow-800">
+                Você tem {pendingMovements.length} movimentação(ões) pendente(s) de resposta
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold">Dashboard</h2>
@@ -681,11 +724,12 @@ export default function App() {
                   const progress = getTeamProgress(movement);
                   const myTeamResponse = movement.responses[currentUser?.team_id || ''];
                   const isMyTeamInvolved = movement.selected_teams.includes(currentUser?.team_id || '');
+                  const overdue = isOverdue(movement.deadline);
                   
                   return (
                     <div 
                       key={movement.id} 
-                      className="border rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition" 
+                      className={`border rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition ${overdue ? 'border-red-300 bg-red-50' : ''}`}
                       onClick={() => { setSelectedMovement(movement); setView('detail'); }}
                     >
                       <div className="flex items-start justify-between mb-2">
@@ -696,11 +740,19 @@ export default function App() {
                             <p className="text-sm text-gray-600">{MOVEMENT_TYPES[movement.type].label}</p>
                           </div>
                         </div>
-                        {isMyTeamInvolved && (
-                          <span className={`text-xs px-2 py-1 rounded ${myTeamResponse?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                            {myTeamResponse?.status === 'completed' ? '✓ Respondido' : '⏳ Pendente'}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {movement.deadline && (
+                            <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${overdue ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
+                              <Clock className="w-3 h-3" />
+                              {new Date(movement.deadline).toLocaleDateString('pt-BR')}
+                            </span>
+                          )}
+                          {isMyTeamInvolved && (
+                            <span className={`text-xs px-2 py-1 rounded ${myTeamResponse?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                              {myTeamResponse?.status === 'completed' ? '✓ Respondido' : '⏳ Pendente'}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="text-sm text-gray-600 mb-2">
                         Progresso: {progress.completed}/{progress.total} equipes • 
@@ -752,7 +804,7 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
                 <div>
                   <label className="block text-sm font-medium mb-2">Nome do Colaborador *</label>
                   <input
@@ -780,19 +832,29 @@ export default function App() {
                         onChange={(e) => setFormData({...formData, company: e.target.value})} 
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Setor</label>
-                      <input 
-                        type="text" 
-                        className="w-full border rounded-lg px-3 py-2" 
-                        onChange={(e) => setFormData({...formData, sector: e.target.value})} 
-                      />
-                    </div>
                   </>
                 )}
 
                 {movementType !== 'demissao' && (
                   <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Setor Atual</label>
+                        <input 
+                          type="text" 
+                          className="w-full border rounded-lg px-3 py-2" 
+                          onChange={(e) => setFormData({...formData, oldSector: e.target.value})} 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Novo Setor</label>
+                        <input 
+                          type="text" 
+                          className="w-full border rounded-lg px-3 py-2" 
+                          onChange={(e) => setFormData({...formData, newSector: e.target.value})} 
+                        />
+                      </div>
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium mb-2">Função Atual</label>
@@ -821,6 +883,24 @@ export default function App() {
                     </div>
                   </>
                 )}
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Data Limite para Respostas</label>
+                  <input 
+                    type="date" 
+                    className="w-full border rounded-lg px-3 py-2" 
+                    onChange={(e) => setFormData({...formData, deadline: e.target.value})} 
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Observações</label>
+                  <textarea
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 h-24"
+                    placeholder="Digite observações adicionais..."
+                    onChange={(e) => setFormData({...formData, observation: e.target.value})}
+                  />
+                </div>
 
                 <div className="border-t pt-4">
                   <label className="block text-sm font-medium mb-3">
@@ -877,9 +957,12 @@ export default function App() {
 
     const [comment, setComment] = useState('');
     const [loadingSubmit, setLoadingSubmit] = useState(false);
+    const [editingSector, setEditingSector] = useState(false);
+    const [newSector, setNewSector] = useState(selectedMovement.details?.newSector || '');
     const isMyTeam = selectedMovement.selected_teams.includes(currentUser?.team_id || '');
     const myTeamResponse = currentUser?.team_id ? selectedMovement.responses[currentUser.team_id] : null;
     const hasResponded = myTeamResponse?.status === 'completed';
+    const overdue = isOverdue(selectedMovement.deadline);
 
     const handleSubmitComment = async () => {
       if (!comment.trim() || !currentUser?.team_id) return;
@@ -921,12 +1004,46 @@ export default function App() {
       }
     };
 
+    const handleUpdateSector = async () => {
+      if (!newSector.trim()) return;
+
+      setLoadingSubmit(true);
+
+      try {
+        const updatedDetails = {
+          ...selectedMovement.details,
+          newSector: newSector.trim()
+        };
+
+        const { error } = await supabase
+          .from('movements')
+          .update({ details: updatedDetails })
+          .eq('id', selectedMovement.id);
+
+        if (error) throw error;
+
+        alert('Setor atualizado com sucesso!');
+        await loadMovements();
+        setEditingSector(false);
+      } catch (err) {
+        alert('Erro ao atualizar setor');
+      } finally {
+        setLoadingSubmit(false);
+      }
+    };
+
     return (
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex justify-between items-start mb-6">
           <div>
             <h2 className="text-2xl font-bold">{selectedMovement.employee_name}</h2>
             <p className="text-gray-600">{MOVEMENT_TYPES[selectedMovement.type].label}</p>
+            {overdue && (
+              <div className="mt-2 flex items-center gap-2 text-red-600">
+                <Clock className="w-4 h-4" />
+                <span className="text-sm font-medium">Prazo vencido!</span>
+              </div>
+            )}
           </div>
           <button 
             onClick={() => { setView('dashboard'); setSelectedMovement(null); }} 
@@ -947,15 +1064,70 @@ export default function App() {
               <span className="text-gray-600">Data de criação:</span>
               <p className="font-medium">{new Date(selectedMovement.created_at).toLocaleDateString('pt-BR')}</p>
             </div>
+            {selectedMovement.deadline && (
+              <div>
+                <span className="text-gray-600">Prazo limite:</span>
+                <p className={`font-medium ${overdue ? 'text-red-600' : ''}`}>
+                  {new Date(selectedMovement.deadline).toLocaleDateString('pt-BR')}
+                </p>
+              </div>
+            )}
             {Object.entries(selectedMovement.details).map(([key, value]) => (
               <div key={key}>
                 <span className="text-gray-600 capitalize">{key}:</span>
-                <p className="font-medium">{typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/) 
-                  ? new Date(value).toLocaleDateString('pt-BR') 
-                  : value}</p>
+                {key === 'newSector' && currentUser?.role === 'admin' ? (
+                  <div className="flex items-center gap-2">
+                    {editingSector ? (
+                      <>
+                        <input
+                          type="text"
+                          value={newSector}
+                          onChange={(e) => setNewSector(e.target.value)}
+                          className="border rounded px-2 py-1 text-sm"
+                        />
+                        <button
+                          onClick={handleUpdateSector}
+                          className="text-xs bg-blue-600 text-white px-2 py-1 rounded"
+                          disabled={loadingSubmit}
+                        >
+                          Salvar
+                        </button>
+                        <button
+                          onClick={() => setEditingSector(false)}
+                          className="text-xs bg-gray-300 px-2 py-1 rounded"
+                        >
+                          Cancelar
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-medium">{value}</p>
+                        <button
+                          onClick={() => setEditingSector(true)}
+                          className="text-xs text-blue-600 underline"
+                        >
+                          Editar
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <p className="font-medium">
+                    {typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/) 
+                      ? new Date(value).toLocaleDateString('pt-BR') 
+                      : value}
+                  </p>
+                )}
               </div>
             ))}
           </div>
+          
+          {selectedMovement.observation && (
+            <div className="mt-4 pt-4 border-t">
+              <span className="text-gray-600 font-medium">Observações:</span>
+              <p className="text-sm text-gray-700 mt-2 bg-white p-3 rounded border">{selectedMovement.observation}</p>
+            </div>
+          )}
         </div>
         
         <div className="space-y-4 mb-6">
