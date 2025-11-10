@@ -551,18 +551,16 @@ export default function App() {
     const canCreateTransferencia = currentUser?.role === 'admin' && currentUser?.can_manage_transferencias;
     const isAdmin = currentUser?.role === 'admin';
 
-    const getTeamProgress = (movement: Movement) => {
-      const teams = movement.selected_teams || [];
-      const completed = teams.filter(t => movement.responses[t]?.status === 'completed').length;
-      return { completed, total: teams.length, percentage: teams.length > 0 ? (completed / teams.length) * 100 : 0 };
-    };
-
     const isOverdue = (deadline?: string) => {
       if (!deadline) return false;
       return new Date(deadline) < new Date();
     };
 
-    const handleCreateMovement = async () => {
+    const getTeamProgress = (movement: Movement) => {
+      const teams = movement.selected_teams || [];
+      const completed = teams.filter(t => movement.responses[t]?.status === 'completed').length;
+      return { completed, total: teams.length, percentage: teams.length > 0 ? (completed / teams.length) * 100 : 0 };
+    }; = async () => {
       if (!formData.employeeName?.trim()) {
         alert('Preencha o nome do colaborador');
         return;
