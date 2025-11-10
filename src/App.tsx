@@ -600,36 +600,13 @@ export default function App() {
           deadline: formData.deadline || null
         };
 
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('movements')
-          .insert([newMovement])
-          .select()
-          .single();
+          .insert([newMovement]);
 
         if (error) {
           console.error('Erro Supabase:', error);
           throw error;
-        }
-
-        // Enviar webhook para o Make
-        try {
-          await fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              ...data,
-              movimento_tipo: MOVEMENT_TYPES[data.type].label,
-              criado_por: data.created_by,
-              equipes_envolvidas: data.selected_teams.map((teamId: string) => 
-                TEAMS.find(t => t.id === teamId)?.name || teamId
-              ).join(', ')
-            })
-          });
-        } catch (webhookError) {
-          console.error('Erro ao enviar webhook:', webhookError);
-          // Não interrompe o fluxo se o webhook falhar
         }
 
         alert('Movimentação criada com sucesso!');
