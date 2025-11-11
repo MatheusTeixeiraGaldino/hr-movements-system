@@ -266,6 +266,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
   const [movementType, setMovementType] = useState<MovementType | null>(null);
   const [formData, setFormData] = useState<any>({});
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+  const [loadingCreate, setLoadingCreate] = useState(false);
 
   const canCreateDemissao = currentUser?.role === 'admin' && currentUser?.can_manage_demissoes;
   const canCreateTransferencia = currentUser?.role === 'admin' && currentUser?.can_manage_transferencias;
@@ -291,6 +292,8 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
       alert('Selecione pelo menos uma equipe');
       return;
     }
+
+    setLoadingCreate(true);
 
     try {
       const responsesObj = selectedTeams.reduce((acc, teamId) => {
@@ -328,12 +331,13 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
 
       // Webhook Make
       try {
+        const movementTypeKey = data.type as MovementType;
         await fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...data,
-            movimento_tipo: MOVEMENT_TYPES[data.type as MovementType].label,
+            movimento_tipo: MOVEMENT_TYPES[movementTypeKey].label,
             criado_por: data.created_by,
             equipes_envolvidas: data.selected_teams.map((teamId: string) => 
               TEAMS.find(t => t.id === teamId)?.name || teamId
@@ -352,6 +356,8 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
       setSelectedTeams([]);
     } catch (err: any) {
       alert(`Erro: ${err.message || 'Erro desconhecido'}`);
+    } finally {
+      setLoadingCreate(false);
     }
   };
 
