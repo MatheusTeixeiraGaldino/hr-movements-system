@@ -80,12 +80,12 @@ export default function App() {
   };
 
   if (!currentUser) {
-    return <Login setCurrentUser={setCurrentUser} setView={setView} />;
+    return <LoginComponent setCurrentUser={setCurrentUser} setView={setView} />;
   }
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <Header currentUser={currentUser} setCurrentUser={setCurrentUser} setView={setView} />
+      <HeaderComponent currentUser={currentUser} setCurrentUser={setCurrentUser} setView={setView} />
       <main className="max-w-7xl mx-auto px-4 py-6">
         {view === 'dashboard' && (
           <DashboardView 
@@ -111,7 +111,7 @@ export default function App() {
   );
 }
 
-function Login({ setCurrentUser, setView }: any) {
+function LoginComponent({ setCurrentUser, setView }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -223,7 +223,7 @@ function Login({ setCurrentUser, setView }: any) {
   );
 }
 
-function Header({ currentUser, setCurrentUser, setView }: any) {
+function HeaderComponent({ currentUser, setCurrentUser, setView }: any) {
   return (
     <header className="bg-white shadow">
       <div className="max-w-7xl mx-auto px-4 py-4">
@@ -475,7 +475,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
                         <Icon className="w-6 h-6" />
                         <div>
                           <h3 className="font-semibold">{movement.employee_name}</h3>
-                          <p className="text-sm text-gray-600">{MOVEMENT_TYPES[movement.type].label}</p>
+                          <p className="text-sm text-gray-600">{MOVEMENT_TYPES[movement.type as MovementType].label}</p>
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -510,8 +510,8 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
         </div>
       </div>
 
-      {showChangePassword && <ChangePasswordModal currentUser={currentUser} setCurrentUser={setCurrentUser} onClose={() => setShowChangePassword(false)} />}
-      {showRegisterUser && <RegisterUserModal onClose={() => setShowRegisterUser(false)} onSuccess={loadMovements} />}
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
+      {showRegisterUser && <RegisterUserModal onClose={() => setShowRegisterUser(false)} />}
       {showNewMovement && movementType && (
         <NewMovementModal
           movementType={movementType}
@@ -519,6 +519,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
           setFormData={setFormData}
           selectedTeams={selectedTeams}
           setSelectedTeams={setSelectedTeams}
+          loading={loadingCreate}
           onClose={() => { setShowNewMovement(false); setMovementType(null); setFormData({}); setSelectedTeams([]); }}
           onSubmit={handleCreateMovement}
         />
@@ -667,20 +668,36 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   );
 }
 
-function ChangePasswordModal({ currentUser, setCurrentUser, onClose }: any) {
-  return <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"><div className="bg-white rounded-xl p-6 max-w-md w-full"><p>Modal de alteração de senha (implementar)</p><button onClick={onClose} className="mt-4 bg-gray-300 px-4 py-2 rounded">Fechar</button></div></div>;
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl p-6 max-w-md w-full">
+        <h3 className="text-lg font-bold mb-4">Alterar Senha</h3>
+        <p className="text-sm text-gray-600 mb-4">Funcionalidade em desenvolvimento</p>
+        <button onClick={onClose} className="w-full bg-blue-600 text-white px-4 py-2 rounded">Fechar</button>
+      </div>
+    </div>
+  );
 }
 
-function RegisterUserModal({ onClose, onSuccess }: any) {
-  return <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"><div className="bg-white rounded-xl p-6 max-w-md w-full"><p>Modal de cadastro (implementar)</p><button onClick={onClose} className="mt-4 bg-gray-300 px-4 py-2 rounded">Fechar</button></div></div>;
+function RegisterUserModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl p-6 max-w-md w-full">
+        <h3 className="text-lg font-bold mb-4">Cadastrar Usuário</h3>
+        <p className="text-sm text-gray-600 mb-4">Funcionalidade em desenvolvimento</p>
+        <button onClick={onClose} className="w-full bg-blue-600 text-white px-4 py-2 rounded">Fechar</button>
+      </div>
+    </div>
+  );
 }
 
-function NewMovementModal({ movementType, formData, setFormData, selectedTeams, setSelectedTeams, onClose, onSubmit }: any) {
+function NewMovementModal({ movementType, formData, setFormData, selectedTeams, setSelectedTeams, loading, onClose, onSubmit }: any) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full my-8 p-6">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold">Nova {MOVEMENT_TYPES[movementType].label}</h2>
+          <h2 className="text-xl font-bold">Nova {MOVEMENT_TYPES[movementType as MovementType].label}</h2>
           <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
         </div>
 
@@ -812,10 +829,17 @@ function NewMovementModal({ movementType, formData, setFormData, selectedTeams, 
 
           <button
             onClick={onSubmit}
-            disabled={selectedTeams.length === 0 || !formData.employeeName}
-            className="w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
+            disabled={selectedTeams.length === 0 || !formData.employeeName || loading}
+            className="w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 flex items-center justify-center gap-2"
           >
-            Criar Movimentação
+            {loading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Criando...
+              </>
+            ) : (
+              'Criar Movimentação'
+            )}
           </button>
         </div>
       </div>
