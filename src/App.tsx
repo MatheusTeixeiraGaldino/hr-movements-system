@@ -366,10 +366,13 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
 function DetailView({ currentUser, selectedMovement, setView, setSelectedMovement, loadMovements }: any) {
   const [comment, setComment] = useState('');
   const [loadingSub, setLoadingSub] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState(selectedMovement.details);
 
   const isMyTeam = selectedMovement.selected_teams.includes(currentUser?.team_id || '');
   const myResp = currentUser?.team_id ? selectedMovement.responses[currentUser.team_id] : null;
   const hasResponded = myResp?.status === 'completed';
+  const isAdmin = currentUser?.role === 'admin';
 
   const handleSubmit = async () => {
     if (!comment.trim()) return;
@@ -390,6 +393,41 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
     }
   };
 
+  const handleUpdate = async () => {
+    setLoadingSub(true);
+    try {
+      const { error } = await supabase.from('movements').update({ 
+        details: editData,
+        employee_name: editData.employeeName || selectedMovement.employee_name
+      }).eq('id', selectedMovement.id);
+      if (error) throw error;
+      alert('Movimentação atualizada!');
+      await loadMovements();
+      setIsEditing(false);
+    } catch (err) {
+      alert('Erro ao atualizar');
+    } finally {
+      setLoadingSub(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('Tem certeza que deseja excluir esta movimentação?')) return;
+    setLoadingSub(true);
+    try {
+      const { error } = await supabase.from('movements').delete().eq('id', selectedMovement.id);
+      if (error) throw error;
+      alert('Movimentação excluída!');
+      await loadMovements();
+      setView('dashboard');
+      setSelectedMovement(null);
+    } catch (err) {
+      alert('Erro ao excluir');
+    } finally {
+      setLoadingSub(false);
+    }
+  };
+
   return (
     <div className="bg-white rounded-lg shadow p-6">
       <div className="flex justify-between mb-6">
@@ -397,19 +435,125 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           <h2 className="text-2xl font-bold">{selectedMovement.employee_name}</h2>
           <p className="text-gray-600">{MOVEMENT_TYPES[selectedMovement.type as MovementType].label}</p>
         </div>
-        <button onClick={() => { setView('dashboard'); setSelectedMovement(null); }} className="text-gray-600 hover:text-gray-900">← Voltar</button>
-      </div>
-
-      <div className="bg-gray-50 rounded-lg p-4 mb-6">
-        <h3 className="font-semibold mb-3">Informações</h3>
-        <div className="text-sm space-y-2">
-          <p><strong>Criado por:</strong> {selectedMovement.created_by}</p>
-          <p><strong>Data:</strong> {new Date(selectedMovement.created_at).toLocaleDateString('pt-BR')}</p>
+        <div className="flex gap-2">
+          {isAdmin && !isEditing && (
+            <>
+              <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Editar</button>
+              <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Excluir</button>
+            </>
+          )}
+          <button onClick={() => { setView('dashboard'); setSelectedMovement(null); }} className="text-gray-600 hover:text-gray-900">← Voltar</button>
         </div>
-        {selectedMovement.observation && <p className="mt-4 pt-4 border-t text-sm bg-white p-3 rounded">{selectedMovement.observation}</p>}
       </div>
 
-      <h3 className="font-semibold mb-3">Pareceres</h3>
+      {isEditing ? (
+        <div className="bg-gray-50 rounded-lg p-4 mb-6 space-y-4">
+          <h3 className="font-semibold mb-3">Editar Informações</h3>
+          <div>
+            <label className="block text-sm font-medium mb-2">Nome do Colaborador</label>
+            <input type="text" value={editData.employeeName || selectedMovement.employee_name} onChange={(e) => setEditData({...editData, employeeName: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
+          </div>
+          
+          {selectedMovement.type === 'demissao' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium mb-2">Data do Desligamento</label>
+                <input type="date" value={editData.dismissalDate || ''} onChange={(e) => setEditData({...editData, dismissalDate: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Empresa</label>
+                <input type="text" value={editData.company || ''} onChange={(e) => setEditData({...editData, company: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Setor</label>
+                <input type="text" value={editData.sector || ''} onChange={(e) => setEditData({...editData, sector: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
+              </div>
+            </>
+          )}
+
+          {selectedMovement.type !== 'demissao' && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Setor Atual</label>
+                  <input type="text" value={editData.oldSector || ''} onChange={(e) => setEditData({...editData, oldSector: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Setor Destino</label>
+                  <input type="text" value={editData.newSector || ''} onChange={(e) => setEditData({...editData, newSector: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Função Atual</label>
+                  <input type="text" value={editData.oldPosition || ''} onChange={(e) => setEditData({...editData, oldPosition: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Função Destino</label>
+                  <input type="text" value={editData.newPosition || ''} onChange={(e) => setEditData({...editData, newPosition: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Data da Mudança</label>
+                <input type="date" value={editData.changeDate || ''} onChange={(e) => setEditData({...editData, changeDate: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
+              </div>
+            </>
+          )}
+
+          <div className="flex gap-2 pt-4">
+            <button onClick={handleUpdate} disabled={loadingSub} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300">
+              {loadingSub ? 'Salvando...' : 'Salvar'}
+            </button>
+            <button onClick={() => setIsEditing(false)} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-gray-50 rounded-lg p-4 mb-6">
+          <h3 className="font-semibold mb-3">Informações da Movimentação</h3>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <span className="text-gray-600 font-medium">Criado por:</span>
+              <p className="text-gray-900">{selectedMovement.created_by}</p>
+            </div>
+            <div>
+              <span className="text-gray-600 font-medium">Data de criação:</span>
+              <p className="text-gray-900">{new Date(selectedMovement.created_at).toLocaleDateString('pt-BR')}</p>
+            </div>
+            {selectedMovement.deadline && (
+              <div>
+                <span className="text-gray-600 font-medium">Prazo limite:</span>
+                <p className="text-gray-900">{new Date(selectedMovement.deadline).toLocaleDateString('pt-BR')}</p>
+              </div>
+            )}
+            {Object.entries(selectedMovement.details).map(([key, value]) => {
+              const labels: any = {
+                dismissalDate: 'Data do Desligamento',
+                company: 'Empresa',
+                sector: 'Setor',
+                oldSector: 'Setor Atual',
+                newSector: 'Setor Destino',
+                oldPosition: 'Função Atual',
+                newPosition: 'Função Destino',
+                changeDate: 'Data da Mudança'
+              };
+              return (
+                <div key={key}>
+                  <span className="text-gray-600 font-medium">{labels[key] || key}:</span>
+                  <p className="text-gray-900">{typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/) ? new Date(value).toLocaleDateString('pt-BR') : value}</p>
+                </div>
+              );
+            })}
+          </div>
+          {selectedMovement.observation && (
+            <div className="mt-4 pt-4 border-t">
+              <span className="text-gray-600 font-medium">Observações:</span>
+              <p className="text-sm text-gray-700 mt-2 bg-white p-3 rounded border">{selectedMovement.observation}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      <h3 className="font-semibold mb-3">Pareceres das Equipes</h3>
       <div className="space-y-3 mb-6">
         {selectedMovement.selected_teams.map((id: string) => {
           const team = TEAMS.find(t => t.id === id);
@@ -423,7 +567,12 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                   {resp?.status === 'completed' ? '✓ Respondido' : '⏳ Pendente'}
                 </span>
               </div>
-              {resp?.comment && <p className="text-sm bg-white p-3 rounded">{resp.comment}</p>}
+              {resp?.comment && (
+                <div className="mt-2">
+                  <p className="text-sm bg-white p-3 rounded border">{resp.comment}</p>
+                  <p className="text-xs text-gray-500 mt-1">Respondido em {new Date(resp.date!).toLocaleDateString('pt-BR')}</p>
+                </div>
+              )}
             </div>
           );
         })}
@@ -432,14 +581,14 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
       {isMyTeam && !hasResponded && (
         <div className="border-t pt-6">
           <h3 className="font-semibold mb-3">Adicionar Parecer</h3>
-          <textarea value={comment} onChange={(e) => setComment(e.target.value)} className="w-full border rounded-lg p-3 h-32" disabled={loadingSub} />
+          <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Digite seu parecer sobre esta movimentação..." className="w-full border rounded-lg p-3 h-32" disabled={loadingSub} />
           <button onClick={handleSubmit} disabled={!comment.trim() || loadingSub} className="mt-3 bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2">
-            {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Enviando...</> : 'Enviar'}
+            {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Enviando...</> : 'Enviar Parecer'}
           </button>
         </div>
       )}
 
-      {isMyTeam && hasResponded && <div className="border-t pt-6 bg-green-50 p-4 rounded"><span className="text-green-800">✓ Você já respondeu</span></div>}
+      {isMyTeam && hasResponded && <div className="border-t pt-6 bg-green-50 p-4 rounded"><span className="text-green-800 font-medium">✓ Você já respondeu esta movimentação</span></div>}
     </div>
   );
 }
@@ -461,19 +610,76 @@ function NewMovementModal({ movementType, formData, setFormData, selectedTeams, 
           <button onClick={onClose}>✕</button>
         </div>
         <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-          <input type="text" placeholder="Nome do Colaborador *" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, employeeName: e.target.value})} />
-          {movementType === 'demissao' && <><input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, dismissalDate: e.target.value})} /><input type="text" placeholder="Empresa" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, company: e.target.value})} /></>}
-          {movementType !== 'demissao' && <><div className="grid grid-cols-2 gap-4"><input type="text" placeholder="Setor Atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldSector: e.target.value})} /><input type="text" placeholder="Novo Setor" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newSector: e.target.value})} /></div><input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, changeDate: e.target.value})} /></>}
-          <input type="date" placeholder="Data Limite" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, deadline: e.target.value})} />
-          <textarea placeholder="Observações" className="w-full border rounded-lg px-3 py-2 h-24" onChange={(e) => setFormData({...formData, observation: e.target.value})} />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Colaborador *</label>
+            <input type="text" placeholder="Digite o nome completo" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, employeeName: e.target.value})} />
+          </div>
+
+          {movementType === 'demissao' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Data do Desligamento</label>
+                <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, dismissalDate: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Empresa/Coligada</label>
+                <input type="text" placeholder="Nome da empresa" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, company: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Setor</label>
+                <input type="text" placeholder="Setor do colaborador" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, sector: e.target.value})} />
+              </div>
+            </>
+          )}
+
+          {movementType !== 'demissao' && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Setor Atual</label>
+                  <input type="text" placeholder="Setor atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldSector: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Setor Destino</label>
+                  <input type="text" placeholder="Novo setor" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newSector: e.target.value})} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Função Atual</label>
+                  <input type="text" placeholder="Função atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldPosition: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Função Destino</label>
+                  <input type="text" placeholder="Nova função" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newPosition: e.target.value})} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Data da Mudança</label>
+                <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, changeDate: e.target.value})} />
+              </div>
+            </>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Data Limite para Respostas</label>
+            <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, deadline: e.target.value})} />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Observações Gerais</label>
+            <textarea placeholder="Digite observações adicionais..." className="w-full border rounded-lg px-3 py-2 h-24" onChange={(e) => setFormData({...formData, observation: e.target.value})} />
+          </div>
+
           <div className="border-t pt-4">
-            <label className="block font-medium mb-3">Equipes * ({selectedTeams.length})</label>
+            <label className="block text-sm font-medium text-gray-700 mb-3">Selecione as Equipes * ({selectedTeams.length} selecionadas)</label>
             <div className="grid grid-cols-2 gap-2">
               {TEAMS.map(t => <label key={t.id} className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer ${selectedTeams.includes(t.id) ? 'border-blue-500 bg-blue-50' : ''}`}><input type="checkbox" checked={selectedTeams.includes(t.id)} onChange={() => setSelectedTeams((prev: string[]) => prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id])} className="w-4 h-4" /><span className="text-sm">{t.name}</span></label>)}
             </div>
           </div>
+
           <button onClick={onSubmit} disabled={!formData.employeeName || selectedTeams.length === 0 || loading} className="w-full bg-blue-600 text-white py-2.5 rounded-lg disabled:bg-gray-300 flex items-center justify-center gap-2">
-            {loading ? <><Loader2 className="w-5 h-5 animate-spin" />Criando...</> : 'Criar'}
+            {loading ? <><Loader2 className="w-5 h-5 animate-spin" />Criando...</> : 'Criar Movimentação'}
           </button>
         </div>
       </div>
