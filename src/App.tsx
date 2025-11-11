@@ -458,7 +458,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
           ) : (
             <>
               {(isAdmin ? movements : myMovements).map((movement: Movement) => {
-                const Icon = MOVEMENT_TYPES[movement.type].icon;
+                const Icon = MOVEMENT_TYPES[movement.type as MovementType].icon;
                 const progress = getTeamProgress(movement);
                 const myTeamResponse = movement.responses[currentUser?.team_id || ''];
                 const isMyTeamInvolved = movement.selected_teams.includes(currentUser?.team_id || '');
