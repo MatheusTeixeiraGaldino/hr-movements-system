@@ -644,6 +644,89 @@ export default function App() {
       }
     };
 
+    const handleCreateMovement = async () => {
+      if (!formData.employeeName?.trim()) {
+        alert('Preencha o nome do colaborador');
+        return;
+      }
+      if (selectedTeams.length === 0) {
+        alert('Selecione pelo menos uma equipe');
+        return;
+      }
+
+      setLoading(true);
+      
+      try {
+        const responsesObj = selectedTeams.reduce((acc, teamId) => {
+          acc[teamId] = { status: 'pending' };
+          return acc;
+        }, {} as Record<string, any>);
+
+        const newMovement = {
+          type: movementType!,
+          employee_name: formData.employeeName,
+          selected_teams: selectedTeams,
+          status: 'pending' as const,
+          responses: responsesObj,
+          created_by: currentUser?.name || '',
+          details: {
+            ...(formData.dismissalDate && { dismissalDate: formData.dismissalDate }),
+            ...(formData.company && { company: formData.company }),
+            ...(formData.oldSector && { oldSector: formData.oldSector }),
+            ...(formData.newSector && { newSector: formData.newSector }),
+            ...(formData.oldPosition && { oldPosition: formData.oldPosition }),
+            ...(formData.newPosition && { newPosition: formData.newPosition }),
+            ...(formData.changeDate && { changeDate: formData.changeDate })
+          },
+          observation: formData.observation || '',
+          deadline: formData.deadline || null
+        };
+
+        const { data, error } = await supabase
+          .from('movements')
+          .insert([newMovement])
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Erro Supabase:', error);
+          throw error;
+        }
+
+        // Enviar webhook para o Make
+        try {
+          await fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...data,
+              movimento_tipo: MOVEMENT_TYPES[data.type as MovementType].label,
+              criado_por: data.created_by,
+              equipes_envolvidas: data.selected_teams.map((teamId: string) => 
+                TEAMS.find(t => t.id === teamId)?.name || teamId
+              ).join(', ')
+            })
+          });
+        } catch (webhookError) {
+          console.error('Erro ao enviar webhook:', webhookError);
+        }
+
+        alert('Movimentação criada com sucesso!');
+        await loadMovements();
+        setShowNewMovement(false);
+        setMovementType(null);
+        setFormData({});
+        setSelectedTeams([]);
+      } catch (err: any) {
+        console.error('Erro completo:', err);
+        alert(`Erro ao criar movimentação: ${err.message || 'Erro desconhecido'}`);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     const myMovements = movements.filter(m => 
       m.selected_teams.includes(currentUser?.team_id || '')
     );
