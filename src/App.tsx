@@ -43,10 +43,10 @@ const TEAMS = [
 ];
 
 const MOVEMENT_TYPES = {
-  demissao: { label: 'Demissão', icon: UserX, color: 'red' },
-  transferencia: { label: 'Transferência', icon: Users, color: 'blue' },
-  alteracao: { label: 'Alteração Salarial', icon: TrendingUp, color: 'green' },
-  promocao: { label: 'Promoção', icon: TrendingUp, color: 'purple' }
+  demissao: { label: 'Demissão', icon: UserX },
+  transferencia: { label: 'Transferência', icon: Users },
+  alteracao: { label: 'Alteração Salarial', icon: TrendingUp },
+  promocao: { label: 'Promoção', icon: TrendingUp }
 };
 
 export default function App() {
@@ -65,15 +65,11 @@ export default function App() {
   const loadMovements = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('movements')
-        .select('*')
-        .order('created_at', { ascending: false });
-
+      const { data, error } = await supabase.from('movements').select('*').order('created_at', { ascending: false });
       if (error) throw error;
       setMovements(data || []);
     } catch (error) {
-      console.error('Erro ao carregar movimentações:', error);
+      console.error('Erro:', error);
     } finally {
       setLoading(false);
     }
@@ -124,18 +120,11 @@ function LoginComponent({ setCurrentUser, setView }: any) {
     setError('');
 
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email.toLowerCase())
-        .eq('password', password)
-        .single();
-
+      const { data, error } = await supabase.from('users').select('*').eq('email', email.toLowerCase()).eq('password', password).single();
       if (error || !data) {
         setError('Email ou senha incorretos');
         return;
       }
-
       setCurrentUser(data);
       setView('dashboard');
     } catch (err) {
@@ -155,67 +144,27 @@ function LoginComponent({ setCurrentUser, setView }: any) {
           <h1 className="text-2xl font-bold text-gray-900">Sistema de Movimentações</h1>
           <p className="text-gray-600 mt-2">Gestão de Colaboradores</p>
         </div>
-
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">E-mail</label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="seu@email.com"
-                required
-                disabled={loadingLogin}
-              />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg" required disabled={loadingLogin} />
             </div>
           </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Senha</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-12 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="••••••••"
-                required
-                disabled={loadingLogin}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-              >
+              <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-10 pr-12 py-2 border rounded-lg" required disabled={loadingLogin} />
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 transform -translate-y-1/2">
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
             </div>
           </div>
-
-          {error && (
-            <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" />
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loadingLogin}
-            className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:bg-blue-400 flex items-center justify-center gap-2"
-          >
-            {loadingLogin ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Entrando...
-              </>
-            ) : (
-              'Entrar'
-            )}
+          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4" />{error}</div>}
+          <button type="submit" disabled={loadingLogin} className="w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 disabled:bg-blue-400 flex items-center justify-center gap-2">
+            {loadingLogin ? <><Loader2 className="w-5 h-5 animate-spin" />Entrando...</> : 'Entrar'}
           </button>
         </form>
       </div>
@@ -238,18 +187,9 @@ function HeaderComponent({ currentUser, setCurrentUser, setView }: any) {
           <div className="flex items-center space-x-4">
             <div className="text-right">
               <p className="text-sm font-medium">{currentUser.name}</p>
-              <p className="text-xs text-gray-500">
-                {currentUser.team_name} • {currentUser.role === 'admin' ? 'Administrador' : 'Membro'}
-              </p>
+              <p className="text-xs text-gray-500">{currentUser.team_name}</p>
             </div>
-            <button 
-              onClick={() => { 
-                setCurrentUser(null); 
-                setView('login'); 
-              }} 
-              className="text-gray-600 hover:text-gray-900 transition"
-              title="Sair"
-            >
+            <button onClick={() => { setCurrentUser(null); setView('login'); }} className="text-gray-600 hover:text-gray-900">
               <LogOut className="w-5 h-5" />
             </button>
           </div>
@@ -268,39 +208,26 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
   const [loadingCreate, setLoadingCreate] = useState(false);
 
-  const canCreateDemissao = currentUser?.role === 'admin' && currentUser?.can_manage_demissoes;
-  const canCreateTransferencia = currentUser?.role === 'admin' && currentUser?.can_manage_transferencias;
   const isAdmin = currentUser?.role === 'admin';
+  const canCreateDemissao = isAdmin && currentUser?.can_manage_demissoes;
+  const canCreateTransferencia = isAdmin && currentUser?.can_manage_transferencias;
 
-  const isOverdue = (deadline?: string) => {
-    if (!deadline) return false;
-    return new Date(deadline) < new Date();
+  const isOverdue = (deadline?: string) => !deadline ? false : new Date(deadline) < new Date();
+
+  const getProgress = (m: Movement) => {
+    const completed = m.selected_teams.filter(t => m.responses[t]?.status === 'completed').length;
+    return { completed, total: m.selected_teams.length, percentage: m.selected_teams.length > 0 ? (completed / m.selected_teams.length) * 100 : 0 };
   };
 
-  const getTeamProgress = (movement: Movement) => {
-    const teams = movement.selected_teams || [];
-    const completed = teams.filter(t => movement.responses[t]?.status === 'completed').length;
-    return { completed, total: teams.length, percentage: teams.length > 0 ? (completed / teams.length) * 100 : 0 };
-  };
-
-  const handleCreateMovement = async () => {
-    if (!formData.employeeName?.trim()) {
-      alert('Preencha o nome do colaborador');
-      return;
-    }
-    if (selectedTeams.length === 0) {
-      alert('Selecione pelo menos uma equipe');
+  const handleCreate = async () => {
+    if (!formData.employeeName?.trim() || selectedTeams.length === 0) {
+      alert('Preencha os campos obrigatórios');
       return;
     }
 
     setLoadingCreate(true);
-
     try {
-      const responsesObj = selectedTeams.reduce((acc, teamId) => {
-        acc[teamId] = { status: 'pending' };
-        return acc;
-      }, {} as Record<string, any>);
-
+      const responsesObj = selectedTeams.reduce((acc, teamId) => ({ ...acc, [teamId]: { status: 'pending' } }), {});
       const newMovement = {
         type: movementType!,
         employee_name: formData.employeeName,
@@ -308,77 +235,51 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
         status: 'pending' as const,
         responses: responsesObj,
         created_by: currentUser?.name || '',
-        details: {
-          ...(formData.dismissalDate && { dismissalDate: formData.dismissalDate }),
-          ...(formData.company && { company: formData.company }),
-          ...(formData.oldSector && { oldSector: formData.oldSector }),
-          ...(formData.newSector && { newSector: formData.newSector }),
-          ...(formData.oldPosition && { oldPosition: formData.oldPosition }),
-          ...(formData.newPosition && { newPosition: formData.newPosition }),
-          ...(formData.changeDate && { changeDate: formData.changeDate })
-        },
+        details: { ...formData },
         observation: formData.observation || '',
         deadline: formData.deadline || null
       };
 
-      const { data, error } = await supabase
-        .from('movements')
-        .insert([newMovement])
-        .select()
-        .single();
-
+      const { data, error } = await supabase.from('movements').insert([newMovement]).select().single();
       if (error) throw error;
 
-      // Webhook Make
+      // Webhook
       try {
-        const movementTypeKey = data.type as MovementType;
         await fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...data,
-            movimento_tipo: MOVEMENT_TYPES[movementTypeKey].label,
-            criado_por: data.created_by,
-            equipes_envolvidas: data.selected_teams.map((teamId: string) => 
-              TEAMS.find(t => t.id === teamId)?.name || teamId
-            ).join(', ')
+            movimento_tipo: MOVEMENT_TYPES[data.type as MovementType].label,
+            equipes_envolvidas: data.selected_teams.map((id: string) => TEAMS.find(t => t.id === id)?.name || id).join(', ')
           })
         });
-      } catch (webhookError) {
-        console.error('Erro webhook:', webhookError);
+      } catch (e) {
+        console.error('Webhook erro:', e);
       }
 
-      alert('Movimentação criada com sucesso!');
+      alert('Movimentação criada!');
       await loadMovements();
       setShowNewMovement(false);
       setMovementType(null);
       setFormData({});
       setSelectedTeams([]);
     } catch (err: any) {
-      alert(`Erro: ${err.message || 'Erro desconhecido'}`);
+      alert(`Erro: ${err.message}`);
     } finally {
       setLoadingCreate(false);
     }
   };
 
-  const myMovements = movements.filter((m: Movement) => 
-    m.selected_teams.includes(currentUser?.team_id || '')
-  );
-
-  const pendingMovements = myMovements.filter((m: Movement) => 
-    m.responses[currentUser?.team_id || '']?.status === 'pending'
-  );
+  const myMovs = movements.filter((m: Movement) => m.selected_teams.includes(currentUser?.team_id || ''));
+  const pending = myMovs.filter((m: Movement) => m.responses[currentUser?.team_id || '']?.status === 'pending');
 
   return (
     <div>
-      {pendingMovements.length > 0 && (
+      {pending.length > 0 && (
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded">
-          <div className="flex items-center gap-2">
-            <Clock className="w-5 h-5 text-yellow-600" />
-            <p className="font-medium text-yellow-800">
-              Você tem {pendingMovements.length} movimentação(ões) pendente(s)
-            </p>
-          </div>
+          <Clock className="w-5 h-5 text-yellow-600 inline mr-2" />
+          <span className="font-medium text-yellow-800">Você tem {pending.length} movimentação(ões) pendente(s)</span>
         </div>
       )}
 
@@ -386,22 +287,8 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold">Dashboard</h2>
           <div className="flex gap-2">
-            {isAdmin && (
-              <button
-                onClick={() => setShowRegisterUser(true)}
-                className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
-              >
-                <UserPlus className="w-4 h-4" />
-                Cadastrar Usuário
-              </button>
-            )}
-            <button
-              onClick={() => setShowChangePassword(true)}
-              className="flex items-center gap-2 px-3 py-2 border rounded-lg text-sm"
-            >
-              <Settings className="w-4 h-4" />
-              Alterar Senha
-            </button>
+            {isAdmin && <button onClick={() => setShowRegisterUser(true)} className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm"><UserPlus className="w-4 h-4" />Cadastrar</button>}
+            <button onClick={() => setShowChangePassword(true)} className="flex items-center gap-2 px-3 py-2 border rounded-lg text-sm"><Settings className="w-4 h-4" />Senha</button>
           </div>
         </div>
 
@@ -409,105 +296,53 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
           <div className="mb-6 pb-6 border-b">
             <h3 className="font-semibold mb-3">Nova Movimentação</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {canCreateDemissao && (
-                <button
-                  onClick={() => { setShowNewMovement(true); setMovementType('demissao'); }}
-                  className="p-4 border-2 border-red-200 rounded-lg hover:bg-red-50"
-                >
-                  <UserX className="w-8 h-8 text-red-600 mx-auto mb-2" />
-                  <p className="text-sm font-medium">Demissão</p>
-                </button>
-              )}
+              {canCreateDemissao && <button onClick={() => { setShowNewMovement(true); setMovementType('demissao'); }} className="p-4 border-2 border-red-200 rounded-lg hover:bg-red-50"><UserX className="w-8 h-8 text-red-600 mx-auto mb-2" /><p className="text-sm font-medium">Demissão</p></button>}
               {canCreateTransferencia && (
                 <>
-                  <button
-                    onClick={() => { setShowNewMovement(true); setMovementType('transferencia'); }}
-                    className="p-4 border-2 border-blue-200 rounded-lg hover:bg-blue-50"
-                  >
-                    <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-                    <p className="text-sm font-medium">Transferência</p>
-                  </button>
-                  <button
-                    onClick={() => { setShowNewMovement(true); setMovementType('alteracao'); }}
-                    className="p-4 border-2 border-green-200 rounded-lg hover:bg-green-50"
-                  >
-                    <TrendingUp className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                    <p className="text-sm font-medium">Alteração</p>
-                  </button>
-                  <button
-                    onClick={() => { setShowNewMovement(true); setMovementType('promocao'); }}
-                    className="p-4 border-2 border-purple-200 rounded-lg hover:bg-purple-50"
-                  >
-                    <TrendingUp className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-                    <p className="text-sm font-medium">Promoção</p>
-                  </button>
+                  <button onClick={() => { setShowNewMovement(true); setMovementType('transferencia'); }} className="p-4 border-2 border-blue-200 rounded-lg hover:bg-blue-50"><Users className="w-8 h-8 text-blue-600 mx-auto mb-2" /><p className="text-sm font-medium">Transferência</p></button>
+                  <button onClick={() => { setShowNewMovement(true); setMovementType('alteracao'); }} className="p-4 border-2 border-green-200 rounded-lg hover:bg-green-50"><TrendingUp className="w-8 h-8 text-green-600 mx-auto mb-2" /><p className="text-sm font-medium">Alteração</p></button>
+                  <button onClick={() => { setShowNewMovement(true); setMovementType('promocao'); }} className="p-4 border-2 border-purple-200 rounded-lg hover:bg-purple-50"><TrendingUp className="w-8 h-8 text-purple-600 mx-auto mb-2" /><p className="text-sm font-medium">Promoção</p></button>
                 </>
               )}
             </div>
           </div>
         )}
 
-        <div className="space-y-3">
-          <h3 className="font-semibold">
-            {isAdmin ? 'Todas as Movimentações' : 'Minhas Movimentações'}
-          </h3>
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-            </div>
-          ) : (
-            <>
-              {(isAdmin ? movements : myMovements).map((movement: Movement) => {
-                const Icon = MOVEMENT_TYPES[movement.type as MovementType].icon;
-                const progress = getTeamProgress(movement);
-                const myTeamResponse = movement.responses[currentUser?.team_id || ''];
-                const isMyTeamInvolved = movement.selected_teams.includes(currentUser?.team_id || '');
-                const overdue = isOverdue(movement.deadline);
+        <h3 className="font-semibold mb-3">{isAdmin ? 'Todas' : 'Minhas'} Movimentações</h3>
+        {loading ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
+        ) : (
+          <div className="space-y-3">
+            {(isAdmin ? movements : myMovs).map((m: Movement) => {
+              const Icon = MOVEMENT_TYPES[m.type as MovementType].icon;
+              const prog = getProgress(m);
+              const myResp = m.responses[currentUser?.team_id || ''];
+              const involved = m.selected_teams.includes(currentUser?.team_id || '');
+              const overdue = isOverdue(m.deadline);
 
-                return (
-                  <div
-                    key={movement.id}
-                    className={`border rounded-lg p-4 hover:bg-gray-50 cursor-pointer ${overdue ? 'border-red-300 bg-red-50' : ''}`}
-                    onClick={() => { setSelectedMovement(movement); setView('detail'); }}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-3">
-                        <Icon className="w-6 h-6" />
-                        <div>
-                          <h3 className="font-semibold">{movement.employee_name}</h3>
-                          <p className="text-sm text-gray-600">{MOVEMENT_TYPES[movement.type as MovementType].label}</p>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        {movement.deadline && (
-                          <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${overdue ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
-                            <Clock className="w-3 h-3" />
-                            {new Date(movement.deadline).toLocaleDateString('pt-BR')}
-                          </span>
-                        )}
-                        {isMyTeamInvolved && (
-                          <span className={`text-xs px-2 py-1 rounded ${myTeamResponse?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                            {myTeamResponse?.status === 'completed' ? '✓ Respondido' : '⏳ Pendente'}
-                          </span>
-                        )}
+              return (
+                <div key={m.id} className={`border rounded-lg p-4 hover:bg-gray-50 cursor-pointer ${overdue ? 'border-red-300 bg-red-50' : ''}`} onClick={() => { setSelectedMovement(m); setView('detail'); }}>
+                  <div className="flex justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                      <Icon className="w-6 h-6" />
+                      <div>
+                        <h3 className="font-semibold">{m.employee_name}</h3>
+                        <p className="text-sm text-gray-600">{MOVEMENT_TYPES[m.type as MovementType].label}</p>
                       </div>
                     </div>
-                    <div className="text-sm text-gray-600 mb-2">
-                      Progresso: {progress.completed}/{progress.total} equipes • 
-                      Criado em {new Date(movement.created_at).toLocaleDateString('pt-BR')}
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${progress.percentage}%` }}></div>
+                    <div className="flex gap-2">
+                      {m.deadline && <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${overdue ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}><Clock className="w-3 h-3" />{new Date(m.deadline).toLocaleDateString('pt-BR')}</span>}
+                      {involved && <span className={`text-xs px-2 py-1 rounded ${myResp?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{myResp?.status === 'completed' ? '✓' : '⏳'}</span>}
                     </div>
                   </div>
-                );
-              })}
-              {(isAdmin ? movements : myMovements).length === 0 && (
-                <p className="text-gray-500 text-center py-8">Nenhuma movimentação encontrada</p>
-              )}
-            </>
-          )}
-        </div>
+                  <div className="text-sm text-gray-600 mb-2">Progresso: {prog.completed}/{prog.total}</div>
+                  <div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-blue-600 h-2 rounded-full" style={{ width: `${prog.percentage}%` }}></div></div>
+                </div>
+              );
+            })}
+            {(isAdmin ? movements : myMovs).length === 0 && <p className="text-center py-8 text-gray-500">Nenhuma movimentação</p>}
+          </div>
+        )}
       </div>
 
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
@@ -521,7 +356,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
           setSelectedTeams={setSelectedTeams}
           loading={loadingCreate}
           onClose={() => { setShowNewMovement(false); setMovementType(null); setFormData({}); setSelectedTeams([]); }}
-          onSubmit={handleCreateMovement}
+          onSubmit={handleCreate}
         />
       )}
     </div>
@@ -530,110 +365,65 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
 
 function DetailView({ currentUser, selectedMovement, setView, setSelectedMovement, loadMovements }: any) {
   const [comment, setComment] = useState('');
-  const [loadingSubmit, setLoadingSubmit] = useState(false);
+  const [loadingSub, setLoadingSub] = useState(false);
 
   const isMyTeam = selectedMovement.selected_teams.includes(currentUser?.team_id || '');
-  const myTeamResponse = currentUser?.team_id ? selectedMovement.responses[currentUser.team_id] : null;
-  const hasResponded = myTeamResponse?.status === 'completed';
+  const myResp = currentUser?.team_id ? selectedMovement.responses[currentUser.team_id] : null;
+  const hasResponded = myResp?.status === 'completed';
 
-  const handleSubmitComment = async () => {
-    if (!comment.trim() || !currentUser?.team_id) return;
-
-    setLoadingSubmit(true);
-
+  const handleSubmit = async () => {
+    if (!comment.trim()) return;
+    setLoadingSub(true);
     try {
-      const updatedResponses = {
-        ...selectedMovement.responses,
-        [currentUser.team_id!]: {
-          status: 'completed',
-          comment: comment.trim(),
-          date: new Date().toISOString().split('T')[0]
-        }
-      };
-
-      const allCompleted = selectedMovement.selected_teams.every(
-        (teamId: string) => updatedResponses[teamId]?.status === 'completed'
-      );
-
-      const { error } = await supabase
-        .from('movements')
-        .update({ 
-          responses: updatedResponses,
-          status: allCompleted ? 'completed' : 'in_progress'
-        })
-        .eq('id', selectedMovement.id);
-
+      const updated = { ...selectedMovement.responses, [currentUser.team_id!]: { status: 'completed', comment: comment.trim(), date: new Date().toISOString().split('T')[0] } };
+      const allDone = selectedMovement.selected_teams.every((id: string) => updated[id]?.status === 'completed');
+      const { error } = await supabase.from('movements').update({ responses: updated, status: allDone ? 'completed' : 'in_progress' }).eq('id', selectedMovement.id);
       if (error) throw error;
-
-      alert('Parecer enviado com sucesso!');
+      alert('Parecer enviado!');
       await loadMovements();
       setView('dashboard');
       setSelectedMovement(null);
     } catch (err) {
-      alert('Erro ao enviar parecer');
+      alert('Erro ao enviar');
     } finally {
-      setLoadingSubmit(false);
+      setLoadingSub(false);
     }
   };
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <div className="flex justify-between items-start mb-6">
+      <div className="flex justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold">{selectedMovement.employee_name}</h2>
-          <p className="text-gray-600">{MOVEMENT_TYPES[selectedMovement.type].label}</p>
+          <p className="text-gray-600">{MOVEMENT_TYPES[selectedMovement.type as MovementType].label}</p>
         </div>
-        <button 
-          onClick={() => { setView('dashboard'); setSelectedMovement(null); }} 
-          className="text-gray-600 hover:text-gray-900 font-medium"
-        >
-          ← Voltar
-        </button>
+        <button onClick={() => { setView('dashboard'); setSelectedMovement(null); }} className="text-gray-600 hover:text-gray-900">← Voltar</button>
       </div>
 
       <div className="bg-gray-50 rounded-lg p-4 mb-6">
         <h3 className="font-semibold mb-3">Informações</h3>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <span className="text-gray-600">Criado por:</span>
-            <p className="font-medium">{selectedMovement.created_by}</p>
-          </div>
-          <div>
-            <span className="text-gray-600">Data:</span>
-            <p className="font-medium">{new Date(selectedMovement.created_at).toLocaleDateString('pt-BR')}</p>
-          </div>
+        <div className="text-sm space-y-2">
+          <p><strong>Criado por:</strong> {selectedMovement.created_by}</p>
+          <p><strong>Data:</strong> {new Date(selectedMovement.created_at).toLocaleDateString('pt-BR')}</p>
         </div>
-        {selectedMovement.observation && (
-          <div className="mt-4 pt-4 border-t">
-            <span className="text-gray-600 font-medium">Observações:</span>
-            <p className="text-sm mt-2 bg-white p-3 rounded">{selectedMovement.observation}</p>
-          </div>
-        )}
+        {selectedMovement.observation && <p className="mt-4 pt-4 border-t text-sm bg-white p-3 rounded">{selectedMovement.observation}</p>}
       </div>
 
-      <div className="space-y-4 mb-6">
-        <h3 className="font-semibold">Pareceres das Equipes</h3>
-        {selectedMovement.selected_teams.map((teamId: string) => {
-          const team = TEAMS.find(t => t.id === teamId);
-          const response = selectedMovement.responses[teamId];
-          const isMyTeamCard = teamId === currentUser?.team_id;
-
+      <h3 className="font-semibold mb-3">Pareceres</h3>
+      <div className="space-y-3 mb-6">
+        {selectedMovement.selected_teams.map((id: string) => {
+          const team = TEAMS.find(t => t.id === id);
+          const resp = selectedMovement.responses[id];
+          const isMine = id === currentUser?.team_id;
           return (
-            <div 
-              key={teamId} 
-              className={`border rounded-lg p-4 ${isMyTeamCard ? 'border-blue-500 bg-blue-50' : ''}`}
-            >
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-medium">
-                  {team?.name} {isMyTeamCard && '(Sua Equipe)'}
-                </span>
-                <span className={`text-xs px-2 py-1 rounded ${response?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                  {response?.status === 'completed' ? '✓ Respondido' : '⏳ Pendente'}
+            <div key={id} className={`border rounded-lg p-4 ${isMine ? 'border-blue-500 bg-blue-50' : ''}`}>
+              <div className="flex justify-between mb-2">
+                <span className="font-medium">{team?.name} {isMine && '(Sua Equipe)'}</span>
+                <span className={`text-xs px-2 py-1 rounded ${resp?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                  {resp?.status === 'completed' ? '✓ Respondido' : '⏳ Pendente'}
                 </span>
               </div>
-              {response?.comment && (
-                <p className="text-sm bg-white p-3 rounded border mt-2">{response.comment}</p>
-              )}
+              {resp?.comment && <p className="text-sm bg-white p-3 rounded">{resp.comment}</p>}
             </div>
           );
         })}
@@ -642,204 +432,48 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
       {isMyTeam && !hasResponded && (
         <div className="border-t pt-6">
           <h3 className="font-semibold mb-3">Adicionar Parecer</h3>
-          <textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="Digite seu parecer..."
-            className="w-full border rounded-lg p-3 h-32"
-            disabled={loadingSubmit}
-          />
-          <button
-            onClick={handleSubmitComment}
-            disabled={!comment.trim() || loadingSubmit}
-            className="mt-3 bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 flex items-center gap-2"
-          >
-            {loadingSubmit ? <><Loader2 className="w-5 h-5 animate-spin" /> Enviando...</> : 'Enviar Parecer'}
+          <textarea value={comment} onChange={(e) => setComment(e.target.value)} className="w-full border rounded-lg p-3 h-32" disabled={loadingSub} />
+          <button onClick={handleSubmit} disabled={!comment.trim() || loadingSub} className="mt-3 bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2">
+            {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Enviando...</> : 'Enviar'}
           </button>
         </div>
       )}
 
-      {isMyTeam && hasResponded && (
-        <div className="border-t pt-6 bg-green-50 p-4 rounded">
-          <span className="text-green-800 font-medium">✓ Você já respondeu esta movimentação</span>
-        </div>
-      )}
+      {isMyTeam && hasResponded && <div className="border-t pt-6 bg-green-50 p-4 rounded"><span className="text-green-800">✓ Você já respondeu</span></div>}
     </div>
   );
 }
 
 function ChangePasswordModal({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 max-w-md w-full">
-        <h3 className="text-lg font-bold mb-4">Alterar Senha</h3>
-        <p className="text-sm text-gray-600 mb-4">Funcionalidade em desenvolvimento</p>
-        <button onClick={onClose} className="w-full bg-blue-600 text-white px-4 py-2 rounded">Fechar</button>
-      </div>
-    </div>
-  );
+  return <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"><div className="bg-white rounded-xl p-6 max-w-md w-full"><h3 className="font-bold mb-4">Alterar Senha</h3><p className="text-sm mb-4">Em desenvolvimento</p><button onClick={onClose} className="w-full bg-blue-600 text-white px-4 py-2 rounded">Fechar</button></div></div>;
 }
 
 function RegisterUserModal({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 max-w-md w-full">
-        <h3 className="text-lg font-bold mb-4">Cadastrar Usuário</h3>
-        <p className="text-sm text-gray-600 mb-4">Funcionalidade em desenvolvimento</p>
-        <button onClick={onClose} className="w-full bg-blue-600 text-white px-4 py-2 rounded">Fechar</button>
-      </div>
-    </div>
-  );
+  return <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"><div className="bg-white rounded-xl p-6 max-w-md w-full"><h3 className="font-bold mb-4">Cadastrar Usuário</h3><p className="text-sm mb-4">Em desenvolvimento</p><button onClick={onClose} className="w-full bg-blue-600 text-white px-4 py-2 rounded">Fechar</button></div></div>;
 }
 
 function NewMovementModal({ movementType, formData, setFormData, selectedTeams, setSelectedTeams, loading, onClose, onSubmit }: any) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full my-8 p-6">
-        <div className="flex justify-between items-center mb-6">
+      <div className="bg-white rounded-xl max-w-2xl w-full my-8 p-6">
+        <div className="flex justify-between mb-6">
           <h2 className="text-xl font-bold">Nova {MOVEMENT_TYPES[movementType as MovementType].label}</h2>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
+          <button onClick={onClose}>✕</button>
         </div>
-
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-          <div>
-            <label className="block text-sm font-medium mb-2">Nome do Colaborador *</label>
-            <input
-              type="text"
-              className="w-full border rounded-lg px-3 py-2"
-              onChange={(e) => setFormData({...formData, employeeName: e.target.value})}
-            />
-          </div>
-
-          {movementType === 'demissao' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium mb-2">Data do Desligamento</label>
-                <input 
-                  type="date" 
-                  className="w-full border rounded-lg px-3 py-2" 
-                  onChange={(e) => setFormData({...formData, dismissalDate: e.target.value})} 
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Empresa</label>
-                <input 
-                  type="text" 
-                  className="w-full border rounded-lg px-3 py-2" 
-                  onChange={(e) => setFormData({...formData, company: e.target.value})} 
-                />
-              </div>
-            </>
-          )}
-
-          {movementType !== 'demissao' && (
-            <>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Setor Atual</label>
-                  <input 
-                    type="text" 
-                    className="w-full border rounded-lg px-3 py-2" 
-                    onChange={(e) => setFormData({...formData, oldSector: e.target.value})} 
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Novo Setor</label>
-                  <input 
-                    type="text" 
-                    className="w-full border rounded-lg px-3 py-2" 
-                    onChange={(e) => setFormData({...formData, newSector: e.target.value})} 
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Função Atual</label>
-                  <input 
-                    type="text" 
-                    className="w-full border rounded-lg px-3 py-2" 
-                    onChange={(e) => setFormData({...formData, oldPosition: e.target.value})} 
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Nova Função</label>
-                  <input 
-                    type="text" 
-                    className="w-full border rounded-lg px-3 py-2" 
-                    onChange={(e) => setFormData({...formData, newPosition: e.target.value})} 
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Data da Mudança</label>
-                <input 
-                  type="date" 
-                  className="w-full border rounded-lg px-3 py-2" 
-                  onChange={(e) => setFormData({...formData, changeDate: e.target.value})} 
-                />
-              </div>
-            </>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium mb-2">Data Limite</label>
-            <input 
-              type="date" 
-              className="w-full border rounded-lg px-3 py-2" 
-              onChange={(e) => setFormData({...formData, deadline: e.target.value})} 
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-2">Observações</label>
-            <textarea
-              className="w-full border rounded-lg px-3 py-2 h-24"
-              placeholder="Digite observações..."
-              onChange={(e) => setFormData({...formData, observation: e.target.value})}
-            />
-          </div>
-
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+          <input type="text" placeholder="Nome do Colaborador *" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, employeeName: e.target.value})} />
+          {movementType === 'demissao' && <><input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, dismissalDate: e.target.value})} /><input type="text" placeholder="Empresa" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, company: e.target.value})} /></>}
+          {movementType !== 'demissao' && <><div className="grid grid-cols-2 gap-4"><input type="text" placeholder="Setor Atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldSector: e.target.value})} /><input type="text" placeholder="Novo Setor" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newSector: e.target.value})} /></div><input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, changeDate: e.target.value})} /></>}
+          <input type="date" placeholder="Data Limite" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, deadline: e.target.value})} />
+          <textarea placeholder="Observações" className="w-full border rounded-lg px-3 py-2 h-24" onChange={(e) => setFormData({...formData, observation: e.target.value})} />
           <div className="border-t pt-4">
-            <label className="block text-sm font-medium mb-3">
-              Selecione as Equipes * ({selectedTeams.length} selecionadas)
-            </label>
+            <label className="block font-medium mb-3">Equipes * ({selectedTeams.length})</label>
             <div className="grid grid-cols-2 gap-2">
-              {TEAMS.map(team => (
-                <label 
-                  key={team.id} 
-                  className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer ${selectedTeams.includes(team.id) ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedTeams.includes(team.id)}
-                    onChange={() => {
-                      setSelectedTeams((prev: string[]) => 
-                        prev.includes(team.id) 
-                          ? prev.filter(id => id !== team.id) 
-                          : [...prev, team.id]
-                      );
-                    }}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">{team.name}</span>
-                </label>
-              ))}
+              {TEAMS.map(t => <label key={t.id} className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer ${selectedTeams.includes(t.id) ? 'border-blue-500 bg-blue-50' : ''}`}><input type="checkbox" checked={selectedTeams.includes(t.id)} onChange={() => setSelectedTeams((prev: string[]) => prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id])} className="w-4 h-4" /><span className="text-sm">{t.name}</span></label>)}
             </div>
           </div>
-
-          <button
-            onClick={onSubmit}
-            disabled={selectedTeams.length === 0 || !formData.employeeName || loading}
-            className="w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Criando...
-              </>
-            ) : (
-              'Criar Movimentação'
-            )}
+          <button onClick={onSubmit} disabled={!formData.employeeName || selectedTeams.length === 0 || loading} className="w-full bg-blue-600 text-white py-2.5 rounded-lg disabled:bg-gray-300 flex items-center justify-center gap-2">
+            {loading ? <><Loader2 className="w-5 h-5 animate-spin" />Criando...</> : 'Criar'}
           </button>
         </div>
       </div>
