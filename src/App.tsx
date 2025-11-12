@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus, Clock } from 'lucide-react';
+import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus, Clock, CheckSquare, Square } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
 type UserRole = 'admin' | 'team_member';
@@ -23,7 +23,7 @@ interface Movement {
   employee_name: string;
   selected_teams: string[];
   status: 'pending' | 'in_progress' | 'completed';
-  responses: Record<string, { status: string; comment?: string; date?: string }>;
+  responses: Record<string, { status: string; comment?: string; date?: string; checklist?: Record<string, boolean> }>;
   created_at: string;
   created_by: string;
   details: Record<string, any>;
@@ -39,7 +39,9 @@ const TEAMS = [
   { id: 'desenvolvimento', name: 'Desenvolvimento' },
   { id: 'seguranca', name: 'Segurança do Trabalho' },
   { id: 'ambulatorio', name: 'Ambulatório' },
-  { id: 'financeiro', name: 'Financeiro' }
+  { id: 'financeiro', name: 'Financeiro' },
+  { id: 'dp', name: 'DP' },
+  { id: 'treinamento', name: 'Treinamento e Desenvolvimento' }
 ];
 
 const MOVEMENT_TYPES = {
@@ -47,6 +49,142 @@ const MOVEMENT_TYPES = {
   transferencia: { label: 'Transferência', icon: Users },
   alteracao: { label: 'Alteração Salarial', icon: TrendingUp },
   promocao: { label: 'Promoção', icon: TrendingUp }
+};
+
+// Checklist por tipo de movimento e equipe
+const CHECKLISTS = {
+  demissao: {
+    rh: [
+      'Requisição de desligamento',
+      'Entrevista de desligamento'
+    ],
+    ponto: [
+      'Entrega espelho de ponto'
+    ],
+    transporte: [
+      'Valores de multas',
+      'Baixa de carro responsável'
+    ],
+    ti: [
+      'Baixa de usuário'
+    ],
+    seguranca: [
+      'Entrega de EPIs',
+      'Sem acidente de trabalho',
+      'Não é membro da CIPA'
+    ],
+    ambulatorio: [
+      'Valores farmácia',
+      'Baixa plano de saúde',
+      'Baixa plano odonto',
+      'Exame demissional',
+      'Valores plano de saúde'
+    ],
+    financeiro: [
+      'Existe multas',
+      'Existe adiantamento',
+      'Valores a descontar'
+    ],
+    dp: [
+      'Comissões recebidas',
+      'Aviso prévio assinado',
+      'Valores marmita'
+    ],
+    treinamento: [
+      'Valores a devolver bolsa de estudos',
+      'Valores a devolver adiantamento treinamentos'
+    ]
+  },
+  transferencia: {
+    rh: [
+      'Transferência temporária',
+      'Colaborador apto para a função'
+    ],
+    ponto: [
+      'Análise alteração no ponto do colaborador'
+    ],
+    transporte: [
+      'Colaborador apto a dirigir veículo da empresa'
+    ],
+    ti: [
+      'Alteração de acessos colaborador'
+    ],
+    seguranca: [
+      'Ordem de serviço assinada',
+      'Colaborador habilitado em NR'
+    ],
+    treinamento: [
+      'Treinamentos obrigatórios'
+    ],
+    ambulatorio: [
+      'ASO'
+    ],
+    dp: [
+      'Transferência programada',
+      'Necessário criação de função ou seção'
+    ]
+  },
+  alteracao: {
+    rh: [
+      'Alteração temporária',
+      'Colaborador apto para a função'
+    ],
+    ponto: [
+      'Análise alteração no ponto do colaborador'
+    ],
+    transporte: [
+      'Colaborador apto a dirigir veículo da empresa'
+    ],
+    ti: [
+      'Alteração de acessos colaborador'
+    ],
+    seguranca: [
+      'Ordem de serviço assinada',
+      'Colaborador habilitado em NR'
+    ],
+    treinamento: [
+      'Treinamentos obrigatórios'
+    ],
+    ambulatorio: [
+      'ASO'
+    ],
+    dp: [
+      'Alteração programada',
+      'Necessário criação de função ou seção'
+    ]
+  },
+  promocao: {
+    rh: [
+      'Colaborador apto para a função',
+      'Testes necessários para função',
+      'Promoção para liderança de equipe, fez treinamento de líderes'
+    ],
+    ponto: [
+      'Análise alteração no ponto do colaborador'
+    ],
+    transporte: [
+      'Colaborador apto a dirigir veículo da empresa'
+    ],
+    ti: [
+      'Alteração de acessos colaborador'
+    ],
+    seguranca: [
+      'Ordem de serviço assinada',
+      'Colaborador habilitado em NR'
+    ],
+    treinamento: [
+      'Treinamentos obrigatórios'
+    ],
+    ambulatorio: [
+      'ASO',
+      'Alteração plano de saúde'
+    ],
+    dp: [
+      'Promoção programada',
+      'Necessário criação de função ou seção',
+      'Alteração seguro de vida'
+    ]
+  }
 };
 
 export default function App() {
@@ -227,7 +365,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
 
     setLoadingCreate(true);
     try {
-      const responsesObj = selectedTeams.reduce((acc, teamId) => ({ ...acc, [teamId]: { status: 'pending' } }), {});
+      const responsesObj = selectedTeams.reduce((acc, teamId) => ({ ...acc, [teamId]: { status: 'pending', checklist: {} } }), {});
       const newMovement = {
         type: movementType!,
         employee_name: formData.employeeName,
@@ -243,7 +381,6 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
       const { data, error } = await supabase.from('movements').insert([newMovement]).select().single();
       if (error) throw error;
 
-      // Webhook
       try {
         await fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
           method: 'POST',
@@ -368,26 +505,57 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   const [loadingSub, setLoadingSub] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState(selectedMovement.details);
+  const [checklist, setChecklist] = useState<Record<string, boolean>>(
+    selectedMovement.responses[currentUser?.team_id]?.checklist || {}
+  );
 
   const isMyTeam = selectedMovement.selected_teams.includes(currentUser?.team_id || '');
   const myResp = currentUser?.team_id ? selectedMovement.responses[currentUser.team_id] : null;
   const hasResponded = myResp?.status === 'completed';
   const isAdmin = currentUser?.role === 'admin';
 
+  const checklistItems = CHECKLISTS[selectedMovement.type as MovementType]?.[currentUser?.team_id] || [];
+
+  const handleChecklistToggle = (item: string) => {
+    setChecklist(prev => ({
+      ...prev,
+      [item]: !prev[item]
+    }));
+  };
+
+  const allChecklistCompleted = checklistItems.length > 0 && checklistItems.every(item => checklist[item]);
+
   const handleSubmit = async () => {
-    if (!comment.trim()) return;
+    if (!comment.trim()) {
+      alert('Por favor, adicione um comentário');
+      return;
+    }
+    
+    if (checklistItems.length > 0 && !allChecklistCompleted) {
+      alert('Por favor, complete todos os itens do checklist antes de enviar');
+      return;
+    }
+
     setLoadingSub(true);
     try {
-      const updated = { ...selectedMovement.responses, [currentUser.team_id!]: { status: 'completed', comment: comment.trim(), date: new Date().toISOString().split('T')[0] } };
+      const updated = { 
+        ...selectedMovement.responses, 
+        [currentUser.team_id!]: { 
+          status: 'completed', 
+          comment: comment.trim(), 
+          date: new Date().toISOString().split('T')[0],
+          checklist: checklist
+        } 
+      };
       const allDone = selectedMovement.selected_teams.every((id: string) => updated[id]?.status === 'completed');
       const { error } = await supabase.from('movements').update({ responses: updated, status: allDone ? 'completed' : 'in_progress' }).eq('id', selectedMovement.id);
       if (error) throw error;
-      alert('Parecer enviado!');
+      alert('Parecer enviado com sucesso!');
       await loadMovements();
       setView('dashboard');
       setSelectedMovement(null);
     } catch (err) {
-      alert('Erro ao enviar');
+      alert('Erro ao enviar parecer');
     } finally {
       setLoadingSub(false);
     }
@@ -559,6 +727,8 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           const team = TEAMS.find(t => t.id === id);
           const resp = selectedMovement.responses[id];
           const isMine = id === currentUser?.team_id;
+          const teamChecklistItems = CHECKLISTS[selectedMovement.type as MovementType]?.[id] || [];
+          
           return (
             <div key={id} className={`border rounded-lg p-4 ${isMine ? 'border-blue-500 bg-blue-50' : ''}`}>
               <div className="flex justify-between mb-2">
@@ -567,6 +737,21 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                   {resp?.status === 'completed' ? '✓ Respondido' : '⏳ Pendente'}
                 </span>
               </div>
+              
+              {resp?.checklist && Object.keys(resp.checklist).length > 0 && (
+                <div className="mt-3 bg-white p-3 rounded border">
+                  <p className="text-xs font-semibold text-gray-600 mb-2">Checklist:</p>
+                  <div className="space-y-1">
+                    {Object.entries(resp.checklist).map(([item, checked]) => (
+                      <div key={item} className="flex items-center gap-2 text-sm">
+                        {checked ? <CheckSquare className="w-4 h-4 text-green-600" /> : <Square className="w-4 h-4 text-gray-400" />}
+                        <span className={checked ? 'text-gray-900' : 'text-gray-500'}>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
               {resp?.comment && (
                 <div className="mt-2">
                   <p className="text-sm bg-white p-3 rounded border">{resp.comment}</p>
@@ -580,11 +765,51 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
 
       {isMyTeam && !hasResponded && (
         <div className="border-t pt-6">
+          {checklistItems.length > 0 && (
+            <div className="mb-6">
+              <h3 className="font-semibold mb-3 flex items-center gap-2">
+                <CheckSquare className="w-5 h-5" />
+                Checklist de Verificação
+              </h3>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                {checklistItems.map((item: string) => (
+                  <label key={item} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
+                    <input
+                      type="checkbox"
+                      checked={checklist[item] || false}
+                      onChange={() => handleChecklistToggle(item)}
+                      className="mt-1 w-5 h-5 rounded border-gray-300"
+                    />
+                    <span className="text-sm flex-1">{item}</span>
+                  </label>
+                ))}
+                <div className="mt-4 pt-3 border-t border-blue-200">
+                  <p className="text-xs text-gray-600">
+                    {checklistItems.filter(item => checklist[item]).length} de {checklistItems.length} itens concluídos
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <h3 className="font-semibold mb-3">Adicionar Parecer</h3>
-          <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Digite seu parecer sobre esta movimentação..." className="w-full border rounded-lg p-3 h-32" disabled={loadingSub} />
-          <button onClick={handleSubmit} disabled={!comment.trim() || loadingSub} className="mt-3 bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2">
+          <textarea 
+            value={comment} 
+            onChange={(e) => setComment(e.target.value)} 
+            placeholder="Digite seu parecer sobre esta movimentação..." 
+            className="w-full border rounded-lg p-3 h-32" 
+            disabled={loadingSub} 
+          />
+          <button 
+            onClick={handleSubmit} 
+            disabled={!comment.trim() || loadingSub || (checklistItems.length > 0 && !allChecklistCompleted)} 
+            className="mt-3 bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2"
+          >
             {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Enviando...</> : 'Enviar Parecer'}
           </button>
+          {checklistItems.length > 0 && !allChecklistCompleted && (
+            <p className="text-sm text-red-600 mt-2">Complete todos os itens do checklist antes de enviar</p>
+          )}
         </div>
       )}
 
@@ -616,8 +841,6 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 
     setLoading(true);
     try {
-      // Aqui você precisaria validar a senha atual e atualizar
-      // Por enquanto, apenas simula sucesso
       await new Promise(resolve => setTimeout(resolve, 1000));
       alert('Senha alterada com sucesso!');
       onClose();
@@ -638,58 +861,22 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
         <form onSubmit={handleChange} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Senha Atual</label>
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2"
-              required
-              disabled={loading}
-            />
+            <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Nova Senha</label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2"
-              required
-              minLength={6}
-              disabled={loading}
-            />
+            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" required minLength={6} disabled={loading} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Confirmar Nova Senha</label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2"
-              required
-              disabled={loading}
-            />
+            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
           </div>
-          {error && (
-            <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">
-              {error}
-            </div>
-          )}
+          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">{error}</div>}
           <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
-            >
+            <button type="submit" disabled={loading} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300">
               {loading ? 'Alterando...' : 'Alterar Senha'}
             </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400"
-            >
-              Cancelar
-            </button>
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
           </div>
         </form>
       </div>
@@ -766,48 +953,19 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
         <form onSubmit={handleRegister} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Nome Completo *</label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({...formData, name: e.target.value})}
-              className="w-full border rounded-lg px-3 py-2"
-              required
-              disabled={loading}
-            />
+            <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">E-mail *</label>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({...formData, email: e.target.value})}
-              className="w-full border rounded-lg px-3 py-2"
-              required
-              disabled={loading}
-            />
+            <input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Senha *</label>
-            <input
-              type="password"
-              value={formData.password}
-              onChange={(e) => setFormData({...formData, password: e.target.value})}
-              className="w-full border rounded-lg px-3 py-2"
-              required
-              minLength={6}
-              placeholder="Mínimo 6 caracteres"
-              disabled={loading}
-            />
+            <input type="password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full border rounded-lg px-3 py-2" required minLength={6} placeholder="Mínimo 6 caracteres" disabled={loading} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Equipe *</label>
-            <select
-              value={formData.team_id}
-              onChange={(e) => setFormData({...formData, team_id: e.target.value})}
-              className="w-full border rounded-lg px-3 py-2"
-              required
-              disabled={loading}
-            >
+            <select value={formData.team_id} onChange={(e) => setFormData({...formData, team_id: e.target.value})} className="w-full border rounded-lg px-3 py-2" required disabled={loading}>
               <option value="">Selecione uma equipe</option>
               {TEAMS.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
@@ -816,35 +974,14 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
             <label className="block text-sm font-medium text-gray-700 mb-3">Tipo de Usuário *</label>
             <div className="space-y-2">
               <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                <input
-                  type="radio"
-                  name="role"
-                  value="team_member"
-                  checked={formData.role === 'team_member'}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    role: e.target.value as UserRole,
-                    can_manage_demissoes: false,
-                    can_manage_transferencias: false
-                  })}
-                  className="w-4 h-4"
-                  disabled={loading}
-                />
+                <input type="radio" name="role" value="team_member" checked={formData.role === 'team_member'} onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole, can_manage_demissoes: false, can_manage_transferencias: false })} className="w-4 h-4" disabled={loading} />
                 <div>
                   <p className="font-medium">Membro da Equipe</p>
                   <p className="text-xs text-gray-600">Pode responder movimentações da sua equipe</p>
                 </div>
               </label>
               <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                <input
-                  type="radio"
-                  name="role"
-                  value="admin"
-                  checked={formData.role === 'admin'}
-                  onChange={(e) => setFormData({...formData, role: e.target.value as UserRole})}
-                  className="w-4 h-4"
-                  disabled={loading}
-                />
+                <input type="radio" name="role" value="admin" checked={formData.role === 'admin'} onChange={(e) => setFormData({...formData, role: e.target.value as UserRole})} className="w-4 h-4" disabled={loading} />
                 <div>
                   <p className="font-medium">Administrador</p>
                   <p className="text-xs text-gray-600">Pode criar e gerenciar movimentações</p>
@@ -857,48 +994,22 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
               <label className="block text-sm font-medium text-gray-700 mb-3">Permissões do Administrador</label>
               <div className="space-y-2">
                 <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                  <input
-                    type="checkbox"
-                    checked={formData.can_manage_demissoes}
-                    onChange={(e) => setFormData({...formData, can_manage_demissoes: e.target.checked})}
-                    className="w-4 h-4"
-                    disabled={loading}
-                  />
+                  <input type="checkbox" checked={formData.can_manage_demissoes} onChange={(e) => setFormData({...formData, can_manage_demissoes: e.target.checked})} className="w-4 h-4" disabled={loading} />
                   <span className="text-sm">Pode gerenciar Demissões</span>
                 </label>
                 <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                  <input
-                    type="checkbox"
-                    checked={formData.can_manage_transferencias}
-                    onChange={(e) => setFormData({...formData, can_manage_transferencias: e.target.checked})}
-                    className="w-4 h-4"
-                    disabled={loading}
-                  />
+                  <input type="checkbox" checked={formData.can_manage_transferencias} onChange={(e) => setFormData({...formData, can_manage_transferencias: e.target.checked})} className="w-4 h-4" disabled={loading} />
                   <span className="text-sm">Pode gerenciar Transferências, Alterações e Promoções</span>
                 </label>
               </div>
             </div>
           )}
-          {error && (
-            <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">
-              {error}
-            </div>
-          )}
+          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">{error}</div>}
           <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
-            >
+            <button type="submit" disabled={loading} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300">
               {loading ? 'Cadastrando...' : 'Cadastrar Usuário'}
             </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400"
-            >
-              Cancelar
-            </button>
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
           </div>
         </form>
       </div>
