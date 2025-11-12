@@ -52,7 +52,7 @@ const MOVEMENT_TYPES = {
 };
 
 // Checklist por tipo de movimento e equipe
-const CHECKLISTS = {
+const CHECKLISTS: Record<MovementType, Record<string, string[]>> = {
   demissao: {
     rh: [
       'Requisição de desligamento',
@@ -514,7 +514,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   const hasResponded = myResp?.status === 'completed';
   const isAdmin = currentUser?.role === 'admin';
 
-  const checklistItems = CHECKLISTS[selectedMovement.type as MovementType]?.[currentUser?.team_id] || [];
+  const checklistItems: string[] = CHECKLISTS[selectedMovement.type as MovementType]?.[currentUser?.team_id || ''] || [];
 
   const handleChecklistToggle = (item: string) => {
     setChecklist(prev => ({
@@ -727,7 +727,6 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           const team = TEAMS.find(t => t.id === id);
           const resp = selectedMovement.responses[id];
           const isMine = id === currentUser?.team_id;
-          const teamChecklistItems = CHECKLISTS[selectedMovement.type as MovementType]?.[id] || [];
           
           return (
             <div key={id} className={`border rounded-lg p-4 ${isMine ? 'border-blue-500 bg-blue-50' : ''}`}>
@@ -742,7 +741,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                 <div className="mt-3 bg-white p-3 rounded border">
                   <p className="text-xs font-semibold text-gray-600 mb-2">Checklist:</p>
                   <div className="space-y-1">
-                    {Object.entries(resp.checklist).map(([item, checked]) => (
+                    {Object.entries(resp.checklist).map(([item, checked]: [string, any]) => (
                       <div key={item} className="flex items-center gap-2 text-sm">
                         {checked ? <CheckSquare className="w-4 h-4 text-green-600" /> : <Square className="w-4 h-4 text-gray-400" />}
                         <span className={checked ? 'text-gray-900' : 'text-gray-500'}>{item}</span>
