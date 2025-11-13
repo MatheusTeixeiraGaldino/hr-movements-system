@@ -880,7 +880,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                 ))}
                 <div className="mt-4 pt-3 border-t border-blue-200">
                   <p className="text-xs text-gray-600">
-                    {checklistItems.filter((item: string) => checklist[item]).length} de {checklistItems.length} itens concluídos
+                    {checklistItems.filter((itm: string) => checklist[itm]).length} de {checklistItems.length} itens concluídos
                   </p>
                 </div>
               </div>
