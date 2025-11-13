@@ -350,7 +350,10 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
   const canCreateDemissao = isAdmin && currentUser?.can_manage_demissoes;
   const canCreateTransferencia = isAdmin && currentUser?.can_manage_transferencias;
 
-  const isOverdue = (deadline?: string) => !deadline ? false : new Date(deadline) < new Date();
+  const isOverdue = (deadline?: string | null) => {
+    if (!deadline) return false;
+    return new Date(deadline) < new Date();
+  };
 
   const getProgress = (m: Movement) => {
     const completed = m.selected_teams.filter(t => m.responses[t]?.status === 'completed').length;
@@ -373,16 +376,20 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
         observation: formData.observation || ''
       };
       
-      const newMovement = {
+      const newMovement: any = {
         type: movementType!,
         employee_name: formData.employeeName,
         selected_teams: selectedTeams,
         status: 'pending' as const,
         responses: responsesObj,
         created_by: currentUser?.name || '',
-        details: detailsWithObservation,
-        deadline: formData.deadline || null
+        details: detailsWithObservation
       };
+
+      // Adicionar deadline apenas se existir
+      if (formData.deadline) {
+        newMovement.deadline = formData.deadline;
+      }
 
       const { data, error } = await supabase.from('movements').insert([newMovement]).select().single();
       if (error) throw error;
