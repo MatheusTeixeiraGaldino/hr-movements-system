@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus, Clock, CheckSquare, Square } from 'lucide-react';
+import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, History } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
 type UserRole = 'admin' | 'team_member';
@@ -23,7 +23,19 @@ interface Movement {
   employee_name: string;
   selected_teams: string[];
   status: 'pending' | 'in_progress' | 'completed';
-  responses: Record<string, { status: string; comment?: string; date?: string; checklist?: Record<string, boolean> }>;
+  responses: Record<string, { 
+    status: string; 
+    comment?: string; 
+    date?: string; 
+    checklist?: Record<string, boolean>;
+    history?: Array<{
+      user_name: string;
+      user_email: string;
+      action: 'created' | 'updated';
+      date: string;
+      timestamp: string;
+    }>;
+  }>;
   created_at: string;
   created_by: string;
   details: Record<string, any>;
@@ -518,11 +530,24 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   const [checklist, setChecklist] = useState<Record<string, boolean>>(
     selectedMovement.responses[currentUser?.team_id]?.checklist || {}
   );
+  const [isEditingResponse, setIsEditingResponse] = useState(false);
+  const [showHistory, setShowHistory] = useState<string | null>(null);
 
   const isMyTeam = selectedMovement.selected_teams.includes(currentUser?.team_id || '');
   const myResp = currentUser?.team_id ? selectedMovement.responses[currentUser.team_id] : null;
   const hasResponded = myResp?.status === 'completed';
   const isAdmin = currentUser?.role === 'admin';
+
+  const checklistItems: string[] = CHECKLISTS[selectedMovement.type as MovementType]?.[currentUser?.team_id || ''] || [];
+
+  // Carregar dados existentes quando for editar
+  const handleStartEdit = () => {
+    if (myResp) {
+      setComment(myResp.comment || '');
+      setChecklist(myResp.checklist || {});
+      setIsEditingResponse(true);
+    }
+  };
 
   const checklistItems: string[] = CHECKLISTS[selectedMovement.type as MovementType]?.[currentUser?.team_id || ''] || [];
 
@@ -548,19 +573,39 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
 
     setLoadingSub(true);
     try {
+      const now = new Date();
+      const action = hasResponded ? 'updated' : 'created';
+      
+      // Criar ou atualizar histórico
+      const existingHistory = myResp?.history || [];
+      const newHistoryEntry = {
+        user_name: currentUser.name,
+        user_email: currentUser.email,
+        action: action,
+        date: now.toISOString().split('T')[0],
+        timestamp: now.toISOString()
+      };
+      
       const updated = { 
         ...selectedMovement.responses, 
         [currentUser.team_id!]: { 
           status: 'completed', 
           comment: comment.trim(), 
-          date: new Date().toISOString().split('T')[0],
-          checklist: checklist
+          date: now.toISOString().split('T')[0],
+          checklist: checklist,
+          history: [...existingHistory, newHistoryEntry]
         } 
       };
+      
       const allDone = selectedMovement.selected_teams.every((id: string) => updated[id]?.status === 'completed');
-      const { error } = await supabase.from('movements').update({ responses: updated, status: allDone ? 'completed' : 'in_progress' }).eq('id', selectedMovement.id);
+      const { error } = await supabase.from('movements').update({ 
+        responses: updated, 
+        status: allDone ? 'completed' : 'in_progress' 
+      }).eq('id', selectedMovement.id);
+      
       if (error) throw error;
-      alert('Parecer enviado com sucesso!');
+      
+      alert(hasResponded ? 'Parecer atualizado com sucesso!' : 'Parecer enviado com sucesso!');
       await loadMovements();
       setView('dashboard');
       setSelectedMovement(null);
@@ -738,14 +783,52 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           const resp = selectedMovement.responses[id];
           const isMine = id === currentUser?.team_id;
           
+          // Não-admins só veem o parecer da própria equipe
+          if (!isAdmin && !isMine) {
+            return null;
+          }
+          
           return (
             <div key={id} className={`border rounded-lg p-4 ${isMine ? 'border-blue-500 bg-blue-50' : ''}`}>
               <div className="flex justify-between mb-2">
                 <span className="font-medium">{team?.name} {isMine && '(Sua Equipe)'}</span>
-                <span className={`text-xs px-2 py-1 rounded ${resp?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                  {resp?.status === 'completed' ? '✓ Respondido' : '⏳ Pendente'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-1 rounded ${resp?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                    {resp?.status === 'completed' ? '✓ Respondido' : '⏳ Pendente'}
+                  </span>
+                  {resp?.history && resp.history.length > 0 && (
+                    <button
+                      onClick={() => setShowHistory(showHistory === id ? null : id)}
+                      className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded flex items-center gap-1"
+                    >
+                      <Clock className="w-3 h-3" />
+                      Histórico
+                    </button>
+                  )}
+                </div>
               </div>
+              
+              {showHistory === id && resp?.history && (
+                <div className="mb-3 bg-gray-50 border rounded p-3">
+                  <p className="text-xs font-semibold text-gray-600 mb-2">Histórico de Alterações:</p>
+                  <div className="space-y-2">
+                    {resp.history.map((entry: any, idx: number) => (
+                      <div key={idx} className="text-xs bg-white p-2 rounded border">
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-900">{entry.user_name}</span>
+                          <span className="text-gray-500">{new Date(entry.timestamp).toLocaleString('pt-BR')}</span>
+                        </div>
+                        <div className="text-gray-600 mt-1">
+                          <span className={`inline-block px-2 py-0.5 rounded ${entry.action === 'created' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
+                            {entry.action === 'created' ? 'Criou o parecer' : 'Atualizou o parecer'}
+                          </span>
+                          <span className="ml-2">({entry.user_email})</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               
               {resp?.checklist && Object.keys(resp.checklist).length > 0 && (
                 <div className="mt-3 bg-white p-3 rounded border">
@@ -764,7 +847,10 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
               {resp?.comment && (
                 <div className="mt-2">
                   <p className="text-sm bg-white p-3 rounded border">{resp.comment}</p>
-                  <p className="text-xs text-gray-500 mt-1">Respondido em {new Date(resp.date!).toLocaleDateString('pt-BR')}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Respondido em {new Date(resp.date!).toLocaleDateString('pt-BR')}
+                    {resp.history && resp.history.length > 1 && ' (editado)'}
+                  </p>
                 </div>
               )}
             </div>
@@ -822,7 +908,82 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
         </div>
       )}
 
-      {isMyTeam && hasResponded && <div className="border-t pt-6 bg-green-50 p-4 rounded"><span className="text-green-800 font-medium">✓ Você já respondeu esta movimentação</span></div>}
+      {isMyTeam && hasResponded && !isEditingResponse && (
+        <div className="border-t pt-6 space-y-3">
+          <div className="bg-green-50 p-4 rounded flex items-center justify-between">
+            <span className="text-green-800 font-medium">✓ Você já respondeu esta movimentação</span>
+            <button
+              onClick={handleStartEdit}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+            >
+              Editar Parecer
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isMyTeam && hasResponded && isEditingResponse && (
+        <div className="border-t pt-6">
+          {checklistItems.length > 0 && (
+            <div className="mb-6">
+              <h3 className="font-semibold mb-3 flex items-center gap-2">
+                <CheckSquare className="w-5 h-5" />
+                Checklist de Verificação
+              </h3>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                {checklistItems.map((item: string) => (
+                  <label key={item} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
+                    <input
+                      type="checkbox"
+                      checked={checklist[item] || false}
+                      onChange={() => handleChecklistToggle(item)}
+                      className="mt-1 w-5 h-5 rounded border-gray-300"
+                    />
+                    <span className="text-sm flex-1">{item}</span>
+                  </label>
+                ))}
+                <div className="mt-4 pt-3 border-t border-blue-200">
+                  <p className="text-xs text-gray-600">
+                    {checklistItems.filter(item => checklist[item]).length} de {checklistItems.length} itens concluídos
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <h3 className="font-semibold mb-3">Editar Parecer</h3>
+          <textarea 
+            value={comment} 
+            onChange={(e) => setComment(e.target.value)} 
+            placeholder="Digite seu parecer sobre esta movimentação..." 
+            className="w-full border rounded-lg p-3 h-32" 
+            disabled={loadingSub} 
+          />
+          <div className="flex gap-2 mt-3">
+            <button 
+              onClick={handleSubmit} 
+              disabled={!comment.trim() || loadingSub || (checklistItems.length > 0 && !allChecklistCompleted)} 
+              className="bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2"
+            >
+              {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Salvando...</> : 'Salvar Alterações'}
+            </button>
+            <button
+              onClick={() => {
+                setIsEditingResponse(false);
+                setComment('');
+                setChecklist(myResp?.checklist || {});
+              }}
+              className="px-6 py-2.5 bg-gray-300 rounded-lg hover:bg-gray-400"
+              disabled={loadingSub}
+            >
+              Cancelar
+            </button>
+          </div>
+          {checklistItems.length > 0 && !allChecklistCompleted && (
+            <p className="text-sm text-red-600 mt-2">Complete todos os itens do checklist antes de salvar</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
