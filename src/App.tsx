@@ -27,8 +27,8 @@ interface Movement {
   created_at: string;
   created_by: string;
   details: Record<string, any>;
-  observation?: string;
-  deadline?: string;
+  observation?: string | null;
+  deadline?: string | null;
 }
 
 const TEAMS = [
@@ -366,6 +366,13 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
     setLoadingCreate(true);
     try {
       const responsesObj = selectedTeams.reduce((acc, teamId) => ({ ...acc, [teamId]: { status: 'pending', checklist: {} } }), {});
+      
+      // Criar objeto de detalhes incluindo observation
+      const detailsWithObservation = {
+        ...formData,
+        observation: formData.observation || ''
+      };
+      
       const newMovement = {
         type: movementType!,
         employee_name: formData.employeeName,
@@ -373,27 +380,23 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
         status: 'pending' as const,
         responses: responsesObj,
         created_by: currentUser?.name || '',
-        details: { ...formData },
-        observation: formData.observation || '',
+        details: detailsWithObservation,
         deadline: formData.deadline || null
       };
 
       const { data, error } = await supabase.from('movements').insert([newMovement]).select().single();
       if (error) throw error;
 
-      try {
-        await fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...data,
-            movimento_tipo: MOVEMENT_TYPES[data.type as MovementType].label,
-            equipes_envolvidas: data.selected_teams.map((id: string) => TEAMS.find(t => t.id === id)?.name || id).join(', ')
-          })
-        });
-      } catch (e) {
-        console.error('Webhook erro:', e);
-      }
+      // Webhook - executar em background sem bloquear
+      fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...data,
+          movimento_tipo: MOVEMENT_TYPES[data.type as MovementType].label,
+          equipes_envolvidas: data.selected_teams.map((id: string) => TEAMS.find(t => t.id === id)?.name || id).join(', ')
+        })
+      }).catch(e => console.error('Webhook erro:', e));
 
       alert('Movimentação criada!');
       await loadMovements();
@@ -712,10 +715,10 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
               );
             })}
           </div>
-          {selectedMovement.observation && (
+          {(selectedMovement.details?.observation || selectedMovement.observation) && (
             <div className="mt-4 pt-4 border-t">
               <span className="text-gray-600 font-medium">Observações:</span>
-              <p className="text-sm text-gray-700 mt-2 bg-white p-3 rounded border">{selectedMovement.observation}</p>
+              <p className="text-sm text-gray-700 mt-2 bg-white p-3 rounded border">{selectedMovement.details?.observation || selectedMovement.observation}</p>
             </div>
           )}
         </div>
