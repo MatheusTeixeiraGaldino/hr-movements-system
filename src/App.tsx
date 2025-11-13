@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, History } from 'lucide-react';
+import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus, Clock, CheckSquare, Square } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
 type UserRole = 'admin' | 'team_member';
@@ -880,7 +880,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                 ))}
                 <div className="mt-4 pt-3 border-t border-blue-200">
                   <p className="text-xs text-gray-600">
-                    {checklistItems.filter(item => checklist[item]).length} de {checklistItems.length} itens concluídos
+                    {checklistItems.filter((item: string) => checklist[item]).length} de {checklistItems.length} itens concluídos
                   </p>
                 </div>
               </div>
@@ -944,7 +944,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                 ))}
                 <div className="mt-4 pt-3 border-t border-blue-200">
                   <p className="text-xs text-gray-600">
-                    {checklistItems.filter(item => checklist[item]).length} de {checklistItems.length} itens concluídos
+                    {checklistItems.filter((item: string) => checklist[item]).length} de {checklistItems.length} itens concluídos
                   </p>
                 </div>
               </div>
