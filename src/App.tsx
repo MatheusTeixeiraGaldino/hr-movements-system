@@ -566,7 +566,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
       return;
     }
     
-    if (checklistItems.length > 0 && !allChecklistCompleted) {
+    if (myChecklistItems.length > 0 && !allChecklistCompleted) {
       alert('Por favor, complete todos os itens do checklist antes de enviar');
       return;
     }
@@ -860,14 +860,14 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
 
       {isMyTeam && !hasResponded && (
         <div className="border-t pt-6">
-          {checklistItems.length > 0 && (
+          {myChecklistItems.length > 0 && (
             <div className="mb-6">
               <h3 className="font-semibold mb-3 flex items-center gap-2">
                 <CheckSquare className="w-5 h-5" />
                 Checklist de Verificação
               </h3>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
-                {checklistItems.map((checkItem: string) => (
+                {myChecklistItems.map((checkItem: string) => (
                   <label key={checkItem} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
                     <input
                       type="checkbox"
@@ -880,7 +880,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                 ))}
                 <div className="mt-4 pt-3 border-t border-blue-200">
                   <p className="text-xs text-gray-600">
-                    {checklistItems.filter((itm: string) => checklist[itm]).length} de {checklistItems.length} itens concluídos
+                    {myChecklistItems.filter((itm: string) => checklist[itm]).length} de {myChecklistItems.length} itens concluídos
                   </p>
                 </div>
               </div>
@@ -897,12 +897,12 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           />
           <button 
             onClick={handleSubmit} 
-            disabled={!comment.trim() || loadingSub || (checklistItems.length > 0 && !allChecklistCompleted)} 
+            disabled={!comment.trim() || loadingSub || (myChecklistItems.length > 0 && !allChecklistCompleted)} 
             className="mt-3 bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2"
           >
             {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Enviando...</> : 'Enviar Parecer'}
           </button>
-          {checklistItems.length > 0 && !allChecklistCompleted && (
+          {myChecklistItems.length > 0 && !allChecklistCompleted && (
             <p className="text-sm text-red-600 mt-2">Complete todos os itens do checklist antes de enviar</p>
           )}
         </div>
@@ -924,14 +924,14 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
 
       {isMyTeam && hasResponded && isEditingResponse && (
         <div className="border-t pt-6">
-          {checklistItems.length > 0 && (
+          {myChecklistItems.length > 0 && (
             <div className="mb-6">
               <h3 className="font-semibold mb-3 flex items-center gap-2">
                 <CheckSquare className="w-5 h-5" />
                 Checklist de Verificação
               </h3>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
-                {checklistItems.map((checkItem: string) => (
+                {myChecklistItems.map((checkItem: string) => (
                   <label key={checkItem} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
                     <input
                       type="checkbox"
@@ -944,7 +944,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                 ))}
                 <div className="mt-4 pt-3 border-t border-blue-200">
                   <p className="text-xs text-gray-600">
-                    {checklistItems.filter((itm: string) => checklist[itm]).length} de {checklistItems.length} itens concluídos
+                    {myChecklistItems.filter((itm: string) => checklist[itm]).length} de {myChecklistItems.length} itens concluídos
                   </p>
                 </div>
               </div>
@@ -962,7 +962,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           <div className="flex gap-2 mt-3">
             <button 
               onClick={handleSubmit} 
-              disabled={!comment.trim() || loadingSub || (checklistItems.length > 0 && !allChecklistCompleted)} 
+              disabled={!comment.trim() || loadingSub || (myChecklistItems.length > 0 && !allChecklistCompleted)} 
               className="bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2"
             >
               {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Salvando...</> : 'Salvar Alterações'}
@@ -979,7 +979,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
               Cancelar
             </button>
           </div>
-          {checklistItems.length > 0 && !allChecklistCompleted && (
+          {myChecklistItems.length > 0 && !allChecklistCompleted && (
             <p className="text-sm text-red-600 mt-2">Complete todos os itens do checklist antes de salvar</p>
           )}
         </div>
@@ -1272,3 +1272,6 @@ function NewMovementModal({ movementType, formData, setFormData, selectedTeams, 
     </div>
   );
 }
+
+// Force this file to be treated as a module
+export {};
