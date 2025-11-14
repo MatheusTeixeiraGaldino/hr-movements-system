@@ -867,15 +867,15 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                 Checklist de Verificação
               </h3>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
-                {checklistItems.map((item: string) => (
-                  <label key={item} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
+                {checklistItems.map((checkItem: string) => (
+                  <label key={checkItem} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
                     <input
                       type="checkbox"
-                      checked={checklist[item] || false}
-                      onChange={() => handleChecklistToggle(item)}
+                      checked={checklist[checkItem] || false}
+                      onChange={() => handleChecklistToggle(checkItem)}
                       className="mt-1 w-5 h-5 rounded border-gray-300"
                     />
-                    <span className="text-sm flex-1">{item}</span>
+                    <span className="text-sm flex-1">{checkItem}</span>
                   </label>
                 ))}
                 <div className="mt-4 pt-3 border-t border-blue-200">
@@ -931,20 +931,20 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                 Checklist de Verificação
               </h3>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
-                {checklistItems.map((item: string) => (
-                  <label key={item} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
+                {checklistItems.map((checkItem: string) => (
+                  <label key={checkItem} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
                     <input
                       type="checkbox"
-                      checked={checklist[item] || false}
-                      onChange={() => handleChecklistToggle(item)}
+                      checked={checklist[checkItem] || false}
+                      onChange={() => handleChecklistToggle(checkItem)}
                       className="mt-1 w-5 h-5 rounded border-gray-300"
                     />
-                    <span className="text-sm flex-1">{item}</span>
+                    <span className="text-sm flex-1">{checkItem}</span>
                   </label>
                 ))}
                 <div className="mt-4 pt-3 border-t border-blue-200">
                   <p className="text-xs text-gray-600">
-                    {checklistItems.filter((item: string) => checklist[item]).length} de {checklistItems.length} itens concluídos
+                    {checklistItems.filter((itm: string) => checklist[itm]).length} de {checklistItems.length} itens concluídos
                   </p>
                 </div>
               </div>
