@@ -1,70 +1,11 @@
-{selectedMovement.type === 'demissao' && (
+<div>
+            <label className="block text-sm font-medium mb-2">Nome do Colaborador</label>
+            <input type="text" value={editData.employeeName || selectedMovement.employee_name} onChange={(e) => setEditData({...editData, employeeName: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
+          </div>
+          
+          {selectedMovement.type === 'demissao' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Empresa/Coligada</label>
-                <input type="text" placeholder="Nome da empresa" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, company: e.target.value})} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Setor</label>
-                <input type="text" placeholder="Setor do colaborador" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, sector: e.target.value})} />
-              </div>
-            </>
-          )}
-
-          {movementType !== 'demissao' && (
-            <>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Setor Atual</label>
-                  <input type="text" placeholder="Setor atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldSector: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Setor Destino</label>
-                  <input type="text" placeholder="Novo setor" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newSector: e.target.value})} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Função Atual</label>
-                  <input type="text" placeholder="Função atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldPosition: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Função Destino</label>
-                  <input type="text" placeholder="Nova função" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newPosition: e.target.value})} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Data da Mudança</label>
-                <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, changeDate: e.target.value})} />
-              </div>
-            </>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Data Limite para Respostas</label>
-            <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, deadline: e.target.value})} />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Observações Gerais</label>
-            <textarea placeholder="Digite observações adicionais..." className="w-full border rounded-lg px-3 py-2 h-24" onChange={(e) => setFormData({...formData, observation: e.target.value})} />
-          </div>
-
-          <div className="border-t pt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-3">Selecione as Equipes * ({selectedTeams.length} selecionadas)</label>
-            <div className="grid grid-cols-2 gap-2">
-              {TEAMS.map(t => <label key={t.id} className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer ${selectedTeams.includes(t.id) ? 'border-blue-500 bg-blue-50' : ''}`}><input type="checkbox" checked={selectedTeams.includes(t.id)} onChange={() => setSelectedTeams((prev: string[]) => prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id])} className="w-4 h-4" /><span className="text-sm">{t.name}</span></label>)}
-            </div>
-          </div>
-
-          <button onClick={onSubmit} disabled={!formData.employeeName || selectedTeams.length === 0 || loading} className="w-full bg-blue-600 text-white py-2.5 rounded-lg disabled:bg-gray-300 flex items-center justify-center gap-2">
-            {loading ? <><Loader2 className="w-5 h-5 animate-spin" />Criando...</> : 'Criar Movimentação'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
                 <label className="block text-sm font-medium mb-2">Data do Desligamento</label>
                 <input type="date" value={editData.dismissalDate || ''} onChange={(e) => setEditData({...editData, dismissalDate: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
               </div>
@@ -577,7 +518,7 @@ function NewMovementModal({ movementType, formData, setFormData, selectedTeams, 
       <div className="bg-white rounded-xl max-w-2xl w-full my-8 p-6">
         <div className="flex justify-between mb-6">
           <h2 className="text-xl font-bold">Nova {MOVEMENT_TYPES[movementType as MovementType].label}</h2>
-          <button onClick={onClose}>✕</button>
+          <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
         </div>
         <div className="space-y-4 max-h-[70vh] overflow-y-auto">
           <div>
@@ -591,7 +532,92 @@ function NewMovementModal({ movementType, formData, setFormData, selectedTeams, 
                 <label className="block text-sm font-medium text-gray-700 mb-2">Data do Desligamento</label>
                 <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, dismissalDate: e.target.value})} />
               </div>
-              <div>import React, { useState, useEffect } from 'react';
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Empresa/Coligada</label>
+                <input type="text" placeholder="Nome da empresa" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, company: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Setor</label>
+                <input type="text" placeholder="Setor do colaborador" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, sector: e.target.value})} />
+              </div>
+            </>
+          )}
+
+          {movementType !== 'demissao' && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Setor Atual</label>
+                  <input type="text" placeholder="Setor atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldSector: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Setor Destino</label>
+                  <input type="text" placeholder="Novo setor" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newSector: e.target.value})} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Função Atual</label>
+                  <input type="text" placeholder="Função atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldPosition: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Função Destino</label>
+                  <input type="text" placeholder="Nova função" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newPosition: e.target.value})} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Data da Mudança</label>
+                <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, changeDate: e.target.value})} />
+              </div>
+            </>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Data Limite para Respostas</label>
+            <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, deadline: e.target.value})} />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Observações Gerais</label>
+            <textarea placeholder="Digite observações adicionais..." className="w-full border rounded-lg px-3 py-2 h-24" onChange={(e) => setFormData({...formData, observation: e.target.value})} />
+          </div>
+
+          <div className="border-t pt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-3">Selecione as Equipes * ({selectedTeams.length} selecionadas)</label>
+            <div className="grid grid-cols-2 gap-2">
+              {TEAMS.map(t => (
+                <label key={t.id} className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer ${selectedTeams.includes(t.id) ? 'border-blue-500 bg-blue-50' : ''}`}>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedTeams.includes(t.id)} 
+                    onChange={() => setSelectedTeams((prev: string[]) => prev.includes(t.id) ? prev.filter((id: string) => id !== t.id) : [...prev, t.id])} 
+                    className="w-4 h-4" 
+                  />
+                  <span className="text-sm">{t.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <button 
+            onClick={onSubmit} 
+            disabled={!formData.employeeName || selectedTeams.length === 0 || loading} 
+            className="w-full bg-blue-600 text-white py-2.5 rounded-lg disabled:bg-gray-300 flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Criando...
+              </>
+            ) : (
+              'Criar Movimentação'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}import React, { useState, useEffect } from 'react';
 import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus, Clock, CheckSquare, Square } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
@@ -1168,7 +1194,4 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           <h3 className="font-semibold mb-3">Editar Informações</h3>
           <div>
             <label className="block text-sm font-medium mb-2">Nome do Colaborador</label>
-            <input type="text" value={editData.employeeName || selectedMovement.employee_name} onChange={(e) => setEditData({...editData, employeeName: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-          </div>
-          
-          {selectedMovement.type ===
+            <input type="text" value={editData.employeeName || selectedMovement.employee_name} onChange={(e) => setEditData({...
