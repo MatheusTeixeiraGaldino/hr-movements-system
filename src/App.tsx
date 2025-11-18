@@ -737,6 +737,7 @@ export default function App() {
     if (currentUser) {
       loadMovements();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
   const loadMovements = async () => {
