@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus, Clock, CheckSquare, Square } from 'lucide-react';
 import { supabase } from './lib/supabase';
+import { sendMovementCreatedEmail, sendMovementUpdatedEmail } from './lib/emailService';
 
 type UserRole = 'admin' | 'team_member';
 type MovementType = 'demissao' | 'transferencia' | 'alteracao' | 'promocao';
@@ -312,13 +313,25 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
       const { data, error } = await supabase.from('movements').insert([newMovement]).select().single();
       if (error) throw error;
 
+      // Buscar emails das equipes envolvidas
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('email, name, team_id, team_name')
+        .in('team_id', selectedTeams);
+
+      // Enviar webhook para Make.com com informações dos destinatários
       fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...data,
-          movimento_tipo: MOVEMENT_TYPES[data.type as MovementType].label,
-          equipes_envolvidas: data.selected_teams.map((id: string) => TEAMS.find(t => t.id === id)?.name || id).join(', ')
+          action: 'movement_created',
+          movement: {
+            ...data,
+            movimento_tipo: MOVEMENT_TYPES[data.type as MovementType].label,
+            equipes_envolvidas: data.selected_teams.map((id: string) => TEAMS.find(t => t.id === id)?.name || id).join(', ')
+          },
+          recipients: usersData || [],
+          created_by_email: currentUser?.email || ''
         })
       }).catch(e => console.error('Webhook erro:', e));
 
@@ -525,6 +538,30 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
         employee_name: editData.employeeName || selectedMovement.employee_name
       }).eq('id', selectedMovement.id);
       if (error) throw error;
+
+      // Buscar emails das equipes envolvidas
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('email, name, team_id, team_name')
+        .in('team_id', selectedMovement.selected_teams);
+
+      // Notificar sobre atualização
+      fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'movement_updated',
+          movement: {
+            ...selectedMovement,
+            employee_name: editData.employeeName || selectedMovement.employee_name,
+            details: editData,
+            movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label
+          },
+          recipients: usersData || [],
+          updated_by: currentUser?.name || ''
+        })
+      }).catch(e => console.error('Webhook erro:', e));
+
       alert('Movimentação atualizada!');
       await loadMovements();
       setIsEditing(false);
