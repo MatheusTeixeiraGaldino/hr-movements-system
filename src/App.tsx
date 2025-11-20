@@ -309,7 +309,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
         newMovement.deadline = formData.deadline;
       }
 
-      const { data, error } = await supabase.from('movements').insert([newMovement]).select().single();
+      const { error } = await supabase.from('movements').insert([newMovement]).select().single();
       if (error) throw error;
 
       // Buscar emails das equipes envolvidas
