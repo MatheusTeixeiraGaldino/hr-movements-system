@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus, Clock, CheckSquare, Square } from 'lucide-react';
 import { supabase } from './lib/supabase';
-import { sendMovementCreatedEmail, sendMovementUpdatedEmail } from './lib/emailService';
 
 type UserRole = 'admin' | 'team_member';
 type MovementType = 'demissao' | 'transferencia' | 'alteracao' | 'promocao';
@@ -319,21 +318,26 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
         .select('email, name, team_id, team_name')
         .in('team_id', selectedTeams);
 
-      // Enviar webhook para Make.com com informações dos destinatários
-      fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'movement_created',
-          movement: {
-            ...data,
-            movimento_tipo: MOVEMENT_TYPES[data.type as MovementType].label,
-            equipes_envolvidas: data.selected_teams.map((id: string) => TEAMS.find(t => t.id === id)?.name || id).join(', ')
-          },
-          recipients: usersData || [],
-          created_by_email: currentUser?.email || ''
-        })
-      }).catch(e => console.error('Webhook erro:', e));
+      // Enviar webhook com dados dos destinatários para envio de emails
+      if (usersData && usersData.length > 0) {
+        fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'movement_created',
+            movement: {
+              employee_name: formData.employeeName,
+              type: movementType!,
+              movimento_tipo: MOVEMENT_TYPES[movementType as MovementType].label,
+              created_by: currentUser?.name || '',
+              deadline: formData.deadline,
+              selected_teams: selectedTeams
+            },
+            recipients: usersData,
+            email_type: 'created'
+          })
+        }).catch(e => console.error('Webhook erro:', e));
+      }
 
       alert('Movimentação criada!');
       await loadMovements();
@@ -545,22 +549,27 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
         .select('email, name, team_id, team_name')
         .in('team_id', selectedMovement.selected_teams);
 
-      // Notificar sobre atualização
-      fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'movement_updated',
-          movement: {
-            ...selectedMovement,
-            employee_name: editData.employeeName || selectedMovement.employee_name,
-            details: editData,
-            movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label
-          },
-          recipients: usersData || [],
-          updated_by: currentUser?.name || ''
-        })
-      }).catch(e => console.error('Webhook erro:', e));
+      // Enviar notificação de atualização via webhook
+      if (usersData && usersData.length > 0) {
+        fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'movement_updated',
+            movement: {
+              employee_name: editData.employeeName || selectedMovement.employee_name,
+              type: selectedMovement.type,
+              movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label,
+              created_by: selectedMovement.created_by,
+              deadline: selectedMovement.deadline,
+              selected_teams: selectedMovement.selected_teams
+            },
+            recipients: usersData,
+            updated_by: currentUser?.name || '',
+            email_type: 'updated'
+          })
+        }).catch(e => console.error('Webhook erro:', e));
+      }
 
       alert('Movimentação atualizada!');
       await loadMovements();
