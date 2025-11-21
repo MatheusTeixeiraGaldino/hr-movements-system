@@ -121,7 +121,7 @@ async function uploadFile(file: File, movementId: string, teamId: string): Promi
     const fileExt = file.name.split('.').pop();
     const fileName = `${movementId}/${teamId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
     
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from('movement-attachments')
       .upload(fileName, file);
 
