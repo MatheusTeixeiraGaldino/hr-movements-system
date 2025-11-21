@@ -1,9 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus, Clock, CheckSquare, Square } from 'lucide-react';
+import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
 type UserRole = 'admin' | 'team_member';
 type MovementType = 'demissao' | 'transferencia' | 'alteracao' | 'promocao';
+
+interface Attachment {
+  name: string;
+  url: string;
+  size: number;
+  uploadedAt: string;
+}
 
 interface User {
   id: string;
@@ -28,6 +35,7 @@ interface Movement {
     comment?: string; 
     date?: string; 
     checklist?: Record<string, boolean>;
+    attachments?: Attachment[];
     history?: Array<{
       user_name: string;
       user_email: string;
@@ -106,6 +114,165 @@ const CHECKLISTS: Record<MovementType, Record<string, string[]>> = {
     dp: ['Promoção programada', 'Necessário criação de função ou seção', 'Alteração seguro de vida']
   }
 };
+
+// Função auxiliar para upload de arquivo
+async function uploadFile(file: File, movementId: string, teamId: string): Promise<Attachment | null> {
+  try {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${movementId}/${teamId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+    
+    const { data, error } = await supabase.storage
+      .from('movement-attachments')
+      .upload(fileName, file);
+
+    if (error) throw error;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('movement-attachments')
+      .getPublicUrl(fileName);
+
+    return {
+      name: file.name,
+      url: publicUrl,
+      size: file.size,
+      uploadedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('Erro ao fazer upload:', error);
+    return null;
+  }
+}
+
+// Função auxiliar para deletar arquivo
+async function deleteFile(url: string): Promise<boolean> {
+  try {
+    const path = url.split('/movement-attachments/')[1];
+    if (!path) return false;
+
+    const { error } = await supabase.storage
+      .from('movement-attachments')
+      .remove([path]);
+
+    return !error;
+  } catch (error) {
+    console.error('Erro ao deletar arquivo:', error);
+    return false;
+  }
+}
+
+// Componente para gerenciar anexos
+function AttachmentManager({ 
+  attachments, 
+  onAdd, 
+  onRemove, 
+  disabled 
+}: { 
+  attachments: Attachment[]; 
+  onAdd: (file: File) => void; 
+  onRemove: (attachment: Attachment) => void;
+  disabled?: boolean;
+}) {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Limitar tamanho do arquivo a 10MB
+      if (file.size > 10 * 1024 * 1024) {
+        alert('O arquivo deve ter no máximo 10MB');
+        return;
+      }
+      onAdd(file);
+    }
+    // Resetar input para permitir upload do mesmo arquivo novamente
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="block text-sm font-medium text-gray-700">Anexos</label>
+        {!disabled && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 text-sm"
+          >
+            <Upload className="w-4 h-4" />
+            Adicionar Arquivo
+          </button>
+        )}
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        onChange={handleFileSelect}
+        className="hidden"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif"
+        disabled={disabled}
+      />
+
+      {attachments.length > 0 && (
+        <div className="space-y-2">
+          {attachments.map((attachment, index) => (
+            <div
+              key={index}
+              className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border"
+            >
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <File className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {attachment.name}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {formatFileSize(attachment.size)} • {new Date(attachment.uploadedAt).toLocaleString('pt-BR')}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <a
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                  title="Baixar arquivo"
+                >
+                  <Download className="w-4 h-4" />
+                </a>
+                {!disabled && (
+                  <button
+                    type="button"
+                    onClick={() => onRemove(attachment)}
+                    className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                    title="Remover arquivo"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {attachments.length === 0 && (
+        <p className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg border-2 border-dashed">
+          Nenhum anexo adicionado
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -288,7 +455,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
 
     setLoadingCreate(true);
     try {
-      const responsesObj = selectedTeams.reduce((acc, teamId) => ({ ...acc, [teamId]: { status: 'pending', checklist: {} } }), {});
+      const responsesObj = selectedTeams.reduce((acc, teamId) => ({ ...acc, [teamId]: { status: 'pending', checklist: {}, attachments: [] } }), {});
       
       const detailsWithObservation = {
         ...formData,
@@ -312,13 +479,11 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
       const { error } = await supabase.from('movements').insert([newMovement]).select().single();
       if (error) throw error;
 
-      // Buscar emails das equipes envolvidas
       const { data: usersData } = await supabase
         .from('users')
         .select('email, name, team_id, team_name')
         .in('team_id', selectedTeams);
 
-      // Enviar webhook com dados dos destinatários para envio de emails
       if (usersData && usersData.length > 0) {
         fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
           method: 'POST',
@@ -454,6 +619,10 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   );
   const [isEditingResponse, setIsEditingResponse] = useState(false);
   const [showHistory, setShowHistory] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>(
+    selectedMovement.responses[currentUser?.team_id]?.attachments || []
+  );
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   const isMyTeam = selectedMovement.selected_teams.includes(currentUser?.team_id || '');
   const myResp = currentUser?.team_id ? selectedMovement.responses[currentUser.team_id] : null;
@@ -466,6 +635,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
     if (myResp) {
       setComment(myResp.comment || '');
       setChecklist(myResp.checklist || {});
+      setAttachments(myResp.attachments || []);
       setIsEditingResponse(true);
     }
   };
@@ -475,6 +645,33 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
       ...prev,
       [item]: !prev[item]
     }));
+  };
+
+  const handleAddAttachment = async (file: File) => {
+    setUploadingFile(true);
+    try {
+      const attachment = await uploadFile(file, selectedMovement.id, currentUser.team_id);
+      if (attachment) {
+        setAttachments(prev => [...prev, attachment]);
+      } else {
+        alert('Erro ao fazer upload do arquivo');
+      }
+    } catch (error) {
+      alert('Erro ao fazer upload do arquivo');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleRemoveAttachment = async (attachment: Attachment) => {
+    if (!confirm('Deseja remover este arquivo?')) return;
+    
+    const success = await deleteFile(attachment.url);
+    if (success) {
+      setAttachments(prev => prev.filter(a => a.url !== attachment.url));
+    } else {
+      alert('Erro ao remover arquivo');
+    }
   };
 
   const allChecklistCompleted = userTeamChecklist.length > 0 && userTeamChecklist.every(checkItem => checklist[checkItem]);
@@ -511,6 +708,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           comment: comment.trim(), 
           date: now.toISOString().split('T')[0],
           checklist: checklist,
+          attachments: attachments,
           history: [...existingHistory, newHistoryEntry]
         } 
       };
@@ -543,13 +741,11 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
       }).eq('id', selectedMovement.id);
       if (error) throw error;
 
-      // Buscar emails das equipes envolvidas
       const { data: usersData } = await supabase
         .from('users')
         .select('email, name, team_id, team_name')
         .in('team_id', selectedMovement.selected_teams);
 
-      // Enviar notificação de atualização via webhook
       if (usersData && usersData.length > 0) {
         fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
           method: 'POST',
@@ -706,6 +902,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                 newPosition: 'Função Destino',
                 changeDate: 'Data da Mudança'
               };
+              if (key === 'observation') return null;
               return (
                 <div key={key}>
                   <span className="text-gray-600 font-medium">{labels[key] || key}:</span>
@@ -789,6 +986,18 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                   </div>
                 </div>
               )}
+
+              {resp?.attachments && resp.attachments.length > 0 && (
+                <div className="mt-3 bg-white p-3 rounded border">
+                  <p className="text-xs font-semibold text-gray-600 mb-2">Anexos ({resp.attachments.length}):</p>
+                  <AttachmentManager
+                    attachments={resp.attachments}
+                    onAdd={() => {}}
+                    onRemove={() => {}}
+                    disabled={true}
+                  />
+                </div>
+              )}
               
               {resp?.comment && (
                 <div className="mt-2">
@@ -832,6 +1041,21 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
               </div>
             </div>
           )}
+
+          <div className="mb-6">
+            <AttachmentManager
+              attachments={attachments}
+              onAdd={handleAddAttachment}
+              onRemove={handleRemoveAttachment}
+              disabled={uploadingFile}
+            />
+            {uploadingFile && (
+              <div className="flex items-center gap-2 text-sm text-blue-600 mt-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Fazendo upload do arquivo...
+              </div>
+            )}
+          </div>
           
           <h3 className="font-semibold mb-3">Adicionar Parecer</h3>
           <textarea 
@@ -843,7 +1067,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           />
           <button 
             onClick={handleSubmit} 
-            disabled={!comment.trim() || loadingSub || (userTeamChecklist.length > 0 && !allChecklistCompleted)} 
+            disabled={!comment.trim() || loadingSub || uploadingFile || (userTeamChecklist.length > 0 && !allChecklistCompleted)} 
             className="mt-3 bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2"
           >
             {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Enviando...</> : 'Enviar Parecer'}
@@ -896,6 +1120,21 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
               </div>
             </div>
           )}
+
+          <div className="mb-6">
+            <AttachmentManager
+              attachments={attachments}
+              onAdd={handleAddAttachment}
+              onRemove={handleRemoveAttachment}
+              disabled={uploadingFile}
+            />
+            {uploadingFile && (
+              <div className="flex items-center gap-2 text-sm text-blue-600 mt-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Fazendo upload do arquivo...
+              </div>
+            )}
+          </div>
           
           <h3 className="font-semibold mb-3">Editar Parecer</h3>
           <textarea 
@@ -908,7 +1147,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           <div className="flex gap-2 mt-3">
             <button 
               onClick={handleSubmit} 
-              disabled={!comment.trim() || loadingSub || (userTeamChecklist.length > 0 && !allChecklistCompleted)} 
+              disabled={!comment.trim() || loadingSub || uploadingFile || (userTeamChecklist.length > 0 && !allChecklistCompleted)} 
               className="bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2"
             >
               {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Salvando...</> : 'Salvar Alterações'}
@@ -918,6 +1157,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                 setIsEditingResponse(false);
                 setComment('');
                 setChecklist(myResp?.checklist || {});
+                setAttachments(myResp?.attachments || []);
               }}
               className="px-6 py-2.5 bg-gray-300 rounded-lg hover:bg-gray-400"
               disabled={loadingSub}
