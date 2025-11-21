@@ -432,6 +432,8 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
   const [formData, setFormData] = useState<any>({});
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
   const [loadingCreate, setLoadingCreate] = useState(false);
+  const [filterType, setFilterType] = useState<MovementType | 'all'>('all');
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const isAdmin = currentUser?.role === 'admin';
   const canCreateDemissao = isAdmin && currentUser?.can_manage_demissoes;
