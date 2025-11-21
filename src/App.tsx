@@ -476,7 +476,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
         newMovement.deadline = formData.deadline;
       }
 
-      const { error } = await supabase.from('movements').insert([newMovement]).select().single();
+      const { error } = await supabase.from('movements').insert([newMovement]);
       if (error) throw error;
 
       const { data: usersData } = await supabase
