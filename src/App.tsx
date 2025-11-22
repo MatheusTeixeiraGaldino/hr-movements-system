@@ -115,7 +115,6 @@ const CHECKLISTS: Record<MovementType, Record<string, string[]>> = {
   }
 };
 
-// Função auxiliar para upload de arquivo
 async function uploadFile(file: File, movementId: string, teamId: string): Promise<Attachment | null> {
   try {
     const fileExt = file.name.split('.').pop();
@@ -143,7 +142,6 @@ async function uploadFile(file: File, movementId: string, teamId: string): Promi
   }
 }
 
-// Função auxiliar para deletar arquivo
 async function deleteFile(url: string): Promise<boolean> {
   try {
     const path = url.split('/movement-attachments/')[1];
@@ -160,7 +158,6 @@ async function deleteFile(url: string): Promise<boolean> {
   }
 }
 
-// Componente para gerenciar anexos
 function AttachmentManager({ 
   attachments, 
   onAdd, 
@@ -177,14 +174,12 @@ function AttachmentManager({
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Limitar tamanho do arquivo a 10MB
       if (file.size > 10 * 1024 * 1024) {
         alert('O arquivo deve ter no máximo 10MB');
         return;
       }
       onAdd(file);
     }
-    // Resetar input para permitir upload do mesmo arquivo novamente
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -521,19 +516,37 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
 
   const myMovs = movements.filter((m: Movement) => m.selected_teams.includes(currentUser?.team_id || ''));
   const pending = myMovs.filter((m: Movement) => m.responses[currentUser?.team_id || '']?.status === 'pending');
+  const completed = myMovs.filter((m: Movement) => m.responses[currentUser?.team_id || '']?.status === 'completed');
+
+  const getFilteredMovements = () => {
+    let filtered = showCompleted ? completed : pending;
+    
+    if (filterType !== 'all') {
+      filtered = filtered.filter((m: Movement) => m.type === filterType);
+    }
+    
+    return filtered;
+  };
+
+  const filteredMovements = getFilteredMovements();
+
+  const getCountByType = (type: MovementType, includeCompleted: boolean = false) => {
+    const movs = includeCompleted ? myMovs : pending;
+    return movs.filter((m: Movement) => m.type === type).length;
+  };
 
   return (
     <div>
       {pending.length > 0 && (
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded">
           <Clock className="w-5 h-5 text-yellow-600 inline mr-2" />
-          <span className="font-medium text-yellow-800">Você tem {pending.length} movimentação(ões) pendente(s)</span>
+          <span className="font-medium text-yellow-800">Você tem {pending.length} movimentação(ões) pendente(s) de parecer</span>
         </div>
       )}
 
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">Dashboard</h2>
+          <h2 className="text-xl font-bold">Dashboard - {showCompleted ? 'Respondidas' : 'Pendentes'}</h2>
           <div className="flex gap-2">
             {isAdmin && <button onClick={() => setShowRegisterUser(true)} className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm"><UserPlus className="w-4 h-4" />Cadastrar</button>}
             <button onClick={() => setShowChangePassword(true)} className="flex items-center gap-2 px-3 py-2 border rounded-lg text-sm"><Settings className="w-4 h-4" />Senha</button>
@@ -556,20 +569,127 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
           </div>
         )}
 
-        <h3 className="font-semibold mb-3">{isAdmin ? 'Todas' : 'Minhas'} Movimentações</h3>
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setShowCompleted(false)}
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${
+              !showCompleted 
+                ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-400' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            ⏳ Pendentes ({pending.length})
+          </button>
+          <button
+            onClick={() => setShowCompleted(true)}
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${
+              showCompleted 
+                ? 'bg-green-100 text-green-800 border-2 border-green-400' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            ✓ Respondidas ({completed.length})
+          </button>
+        </div>
+
+        <div className="mb-6">
+          <h3 className="font-semibold mb-3">Filtrar por Tipo</h3>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <button
+              onClick={() => setFilterType('all')}
+              className={`p-3 border-2 rounded-lg transition ${
+                filterType === 'all'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <div className="text-center">
+                <p className="text-2xl font-bold">{showCompleted ? completed.length : pending.length}</p>
+                <p className="text-xs font-medium mt-1">Todas</p>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => setFilterType('demissao')}
+              className={`p-3 border-2 rounded-lg transition ${
+                filterType === 'demissao'
+                  ? 'border-red-500 bg-red-50 text-red-700'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <div className="text-center">
+                <UserX className="w-6 h-6 mx-auto mb-1 text-red-600" />
+                <p className="text-xl font-bold">{getCountByType('demissao', showCompleted)}</p>
+                <p className="text-xs font-medium">Demissões</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setFilterType('transferencia')}
+              className={`p-3 border-2 rounded-lg transition ${
+                filterType === 'transferencia'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <div className="text-center">
+                <Users className="w-6 h-6 mx-auto mb-1 text-blue-600" />
+                <p className="text-xl font-bold">{getCountByType('transferencia', showCompleted)}</p>
+                <p className="text-xs font-medium">Transferências</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setFilterType('alteracao')}
+              className={`p-3 border-2 rounded-lg transition ${
+                filterType === 'alteracao'
+                  ? 'border-green-500 bg-green-50 text-green-700'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <div className="text-center">
+                <TrendingUp className="w-6 h-6 mx-auto mb-1 text-green-600" />
+                <p className="text-xl font-bold">{getCountByType('alteracao', showCompleted)}</p>
+                <p className="text-xs font-medium">Alterações</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setFilterType('promocao')}
+              className={`p-3 border-2 rounded-lg transition ${
+                filterType === 'promocao'
+                  ? 'border-purple-500 bg-purple-50 text-purple-700'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <div className="text-center">
+                <TrendingUp className="w-6 h-6 mx-auto mb-1 text-purple-600" />
+                <p className="text-xl font-bold">{getCountByType('promocao', showCompleted)}</p>
+                <p className="text-xs font-medium">Promoções</p>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <h3 className="font-semibold mb-3">
+          {filterType === 'all' 
+            ? `Todas as Movimentações ${showCompleted ? 'Respondidas' : 'Pendentes'}`
+            : `${MOVEMENT_TYPES[filterType as MovementType].label} ${showCompleted ? 'Respondidas' : 'Pendentes'}`
+          } ({filteredMovements.length})
+        </h3>
+        
         {loading ? (
           <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
         ) : (
           <div className="space-y-3">
-            {(isAdmin ? movements : myMovs).map((m: Movement) => {
+            {filteredMovements.map((m: Movement) => {
               const Icon = MOVEMENT_TYPES[m.type as MovementType].icon;
               const prog = getProgress(m);
               const myResp = m.responses[currentUser?.team_id || ''];
-              const involved = m.selected_teams.includes(currentUser?.team_id || '');
               const overdue = isOverdue(m.deadline);
 
               return (
-                <div key={m.id} className={`border rounded-lg p-4 hover:bg-gray-50 cursor-pointer ${overdue ? 'border-red-300 bg-red-50' : ''}`} onClick={() => { setSelectedMovement(m); setView('detail'); }}>
+                <div key={m.id} className={`border rounded-lg p-4 hover:bg-gray-50 cursor-pointer ${overdue && !showCompleted ? 'border-red-300 bg-red-50' : ''}`} onClick={() => { setSelectedMovement(m); setView('detail'); }}>
                   <div className="flex justify-between mb-2">
                     <div className="flex items-center gap-3">
                       <Icon className="w-6 h-6" />
@@ -579,16 +699,31 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      {m.deadline && <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${overdue ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}><Clock className="w-3 h-3" />{new Date(m.deadline).toLocaleDateString('pt-BR')}</span>}
-                      {involved && <span className={`text-xs px-2 py-1 rounded ${myResp?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{myResp?.status === 'completed' ? '✓' : '⏳'}</span>}
+                      {m.deadline && <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${overdue && !showCompleted ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}><Clock className="w-3 h-3" />{new Date(m.deadline).toLocaleDateString('pt-BR')}</span>}
+                      <span className={`text-xs px-2 py-1 rounded ${myResp?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{myResp?.status === 'completed' ? '✓' : '⏳'}</span>
                     </div>
                   </div>
-                  <div className="text-sm text-gray-600 mb-2">Progresso: {prog.completed}/{prog.total}</div>
+                  <div className="text-sm text-gray-600 mb-2">Progresso geral: {prog.completed}/{prog.total} equipes</div>
                   <div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-blue-600 h-2 rounded-full" style={{ width: `${prog.percentage}%` }}></div></div>
                 </div>
               );
             })}
-            {(isAdmin ? movements : myMovs).length === 0 && <p className="text-center py-8 text-gray-500">Nenhuma movimentação</p>}
+            {filteredMovements.length === 0 && (
+              <div className="text-center py-12 bg-gray-50 rounded-lg">
+                <p className="text-gray-500 text-lg">
+                  {showCompleted 
+                    ? '🎉 Nenhuma movimentação respondida ainda'
+                    : '✅ Nenhuma movimentação pendente'
+                  }
+                </p>
+                <p className="text-gray-400 text-sm mt-2">
+                  {showCompleted 
+                    ? 'Quando você responder movimentações, elas aparecerão aqui'
+                    : 'Você está em dia com todas as suas tarefas!'
+                  }
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
