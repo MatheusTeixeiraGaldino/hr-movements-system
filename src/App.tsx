@@ -957,6 +957,81 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
     }
   };
 
+  const handleUpdateTeams = async () => {
+    if (selectedTeamsEdit.length === 0) {
+      alert('Selecione pelo menos uma equipe');
+      return;
+    }
+
+    setLoadingSub(true);
+    try {
+      // Identificar equipes removidas e novas equipes
+      const removedTeams = selectedMovement.selected_teams.filter((t: string) => !selectedTeamsEdit.includes(t));
+      const newTeams = selectedTeamsEdit.filter((t: string) => !selectedMovement.selected_teams.includes(t));
+
+      // Atualizar responses: manter existentes, remover equipes removidas, adicionar novas
+      const updatedResponses = { ...selectedMovement.responses };
+      
+      // Remover equipes que não estão mais selecionadas
+      removedTeams.forEach((teamId: string) => {
+        delete updatedResponses[teamId];
+      });
+
+      // Adicionar novas equipes
+      newTeams.forEach((teamId: string) => {
+        updatedResponses[teamId] = {
+          status: 'pending',
+          checklist: {},
+          attachments: []
+        };
+      });
+
+      // Atualizar no banco
+      const { error } = await supabase.from('movements').update({
+        selected_teams: selectedTeamsEdit,
+        responses: updatedResponses
+      }).eq('id', selectedMovement.id);
+
+      if (error) throw error;
+
+      // Notificar novas equipes adicionadas
+      if (newTeams.length > 0) {
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('email, name, team_id, team_name')
+          .in('team_id', newTeams);
+
+        if (usersData && usersData.length > 0) {
+          fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'movement_created',
+              movement: {
+                employee_name: selectedMovement.employee_name,
+                type: selectedMovement.type,
+                movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label,
+                created_by: selectedMovement.created_by,
+                deadline: selectedMovement.deadline,
+                selected_teams: newTeams
+              },
+              recipients: usersData,
+              email_type: 'created'
+            })
+          }).catch(e => console.error('Webhook erro:', e));
+        }
+      }
+
+      alert('Equipes atualizadas com sucesso!');
+      await loadMovements();
+      setEditingTeams(false);
+    } catch (err) {
+      alert('Erro ao atualizar equipes');
+    } finally {
+      setLoadingSub(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!confirm('Tem certeza que deseja excluir esta movimentação?')) return;
     setLoadingSub(true);
@@ -1101,6 +1176,90 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
       )}
 
       <h3 className="font-semibold mb-3">Pareceres das Equipes</h3>
+      
+      {isAdmin && !editingTeams && !isEditing && (
+        <div className="mb-4">
+          <button
+            onClick={() => setEditingTeams(true)}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm flex items-center gap-2"
+          >
+            <Settings className="w-4 h-4" />
+            Gerenciar Equipes
+          </button>
+        </div>
+      )}
+
+      {editingTeams && (
+        <div className="mb-6 p-4 bg-indigo-50 border-2 border-indigo-200 rounded-lg">
+          <h4 className="font-semibold mb-3 text-indigo-900">Editar Equipes Participantes</h4>
+          <p className="text-sm text-indigo-700 mb-4">
+            ⚠️ Atenção: Remover equipes irá apagar seus pareceres. Adicionar novas equipes irá notificá-las.
+          </p>
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            {TEAMS.map(t => {
+              const wasSelected = selectedMovement.selected_teams.includes(t.id);
+              const isSelected = selectedTeamsEdit.includes(t.id);
+              const hasResponse = selectedMovement.responses[t.id]?.status === 'completed';
+              
+              return (
+                <label 
+                  key={t.id} 
+                  className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer transition ${
+                    isSelected ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-white'
+                  } ${hasResponse && wasSelected ? 'opacity-75' : ''}`}
+                >
+                  <input 
+                    type="checkbox" 
+                    checked={isSelected}
+                    onChange={() => {
+                      if (hasResponse && wasSelected && isSelected) {
+                        if (!confirm(`A equipe "${t.name}" já respondeu. Tem certeza que deseja removê-la? O parecer será perdido.`)) {
+                          return;
+                        }
+                      }
+                      setSelectedTeamsEdit((prev: string[]) => 
+                        prev.includes(t.id) 
+                          ? prev.filter((id: string) => id !== t.id) 
+                          : [...prev, t.id]
+                      );
+                    }}
+                    className="w-4 h-4" 
+                  />
+                  <div className="flex-1">
+                    <span className="text-sm font-medium">{t.name}</span>
+                    {hasResponse && wasSelected && (
+                      <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">✓ Respondeu</span>
+                    )}
+                    {!wasSelected && isSelected && (
+                      <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">+ Nova</span>
+                    )}
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleUpdateTeams}
+              disabled={loadingSub || selectedTeamsEdit.length === 0}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 flex items-center gap-2"
+            >
+              {loadingSub ? <><Loader2 className="w-4 h-4 animate-spin" />Salvando...</> : 'Salvar Alterações'}
+            </button>
+            <button
+              onClick={() => {
+                setEditingTeams(false);
+                setSelectedTeamsEdit(selectedMovement.selected_teams);
+              }}
+              disabled={loadingSub}
+              className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-3 mb-6">
         {selectedMovement.selected_teams.map((id: string) => {
           const team = TEAMS.find(t => t.id === id);
