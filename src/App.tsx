@@ -563,7 +563,12 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
       {pending.length > 0 && (
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded">
           <Clock className="w-5 h-5 text-yellow-600 inline mr-2" />
-          <span className="font-medium text-yellow-800">Você tem {pending.length} movimentação(ões) pendente(s) de parecer</span>
+          <span className="font-medium text-yellow-800">
+            {isAdmin 
+              ? `Você tem ${pending.filter(m => m.selected_teams.includes(currentUser?.team_id || '')).length} movimentação(ões) pendente(s) de parecer`
+              : `Você tem ${pending.length} movimentação(ões) pendente(s) de parecer`
+            }
+          </span>
         </div>
       )}
 
@@ -710,6 +715,8 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
               const prog = getProgress(m);
               const myResp = m.responses[currentUser?.team_id || ''];
               const overdue = isOverdue(m.deadline);
+              const isCreator = m.created_by === currentUser?.name;
+              const isParticipant = m.selected_teams.includes(currentUser?.team_id || '');
 
               return (
                 <div key={m.id} className={`border rounded-lg p-4 hover:bg-gray-50 cursor-pointer ${overdue && !showCompleted ? 'border-red-300 bg-red-50' : ''}`} onClick={() => { setSelectedMovement(m); setView('detail'); }}>
@@ -723,10 +730,21 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
                     </div>
                     <div className="flex gap-2">
                       {m.deadline && <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${overdue && !showCompleted ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}><Clock className="w-3 h-3" />{new Date(m.deadline).toLocaleDateString('pt-BR')}</span>}
-                      <span className={`text-xs px-2 py-1 rounded ${myResp?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{myResp?.status === 'completed' ? '✓' : '⏳'}</span>
+                      {isCreator && !isParticipant && (
+                        <span className="text-xs px-2 py-1 rounded bg-purple-100 text-purple-800">👤 Criador</span>
+                      )}
+                      {isParticipant && (
+                        <span className={`text-xs px-2 py-1 rounded ${myResp?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{myResp?.status === 'completed' ? '✓' : '⏳'}</span>
+                      )}
                     </div>
                   </div>
-                  <div className="text-sm text-gray-600 mb-2">Progresso geral: {prog.completed}/{prog.total} equipes</div>
+                  <div className="text-sm text-gray-600 mb-2">
+                    {isCreator && !isParticipant ? (
+                      <>Acompanhamento: {prog.completed}/{prog.total} equipes responderam</>
+                    ) : (
+                      <>Progresso geral: {prog.completed}/{prog.total} equipes</>
+                    )}
+                  </div>
                   <div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-blue-600 h-2 rounded-full" style={{ width: `${prog.percentage}%` }}></div></div>
                 </div>
               );
@@ -783,6 +801,8 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
     selectedMovement.responses[currentUser?.team_id]?.attachments || []
   );
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [editingTeams, setEditingTeams] = useState(false);
+  const [selectedTeamsEdit, setSelectedTeamsEdit] = useState<string[]>(selectedMovement.selected_teams);
 
   const isMyTeam = selectedMovement.selected_teams.includes(currentUser?.team_id || '');
   const myResp = currentUser?.team_id ? selectedMovement.responses[currentUser.team_id] : null;
