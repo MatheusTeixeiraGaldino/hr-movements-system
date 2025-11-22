@@ -514,9 +514,32 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
     }
   };
 
-  const myMovs = movements.filter((m: Movement) => m.selected_teams.includes(currentUser?.team_id || ''));
-  const pending = myMovs.filter((m: Movement) => m.responses[currentUser?.team_id || '']?.status === 'pending');
-  const completed = myMovs.filter((m: Movement) => m.responses[currentUser?.team_id || '']?.status === 'completed');
+  const myMovs = movements.filter((m: Movement) => {
+    // Se for admin, mostrar as movimentações criadas por ele OU que sua equipe participa
+    if (isAdmin) {
+      return m.created_by === currentUser?.name || m.selected_teams.includes(currentUser?.team_id || '');
+    }
+    // Se não for admin, mostrar apenas as que sua equipe participa
+    return m.selected_teams.includes(currentUser?.team_id || '');
+  });
+  
+  const pending = myMovs.filter((m: Movement) => {
+    // Para movimentações criadas pelo admin mas que ele não participa, sempre mostrar como "visualização"
+    if (m.created_by === currentUser?.name && !m.selected_teams.includes(currentUser?.team_id || '')) {
+      return m.status !== 'completed'; // Mostrar até que todas as equipes respondam
+    }
+    // Para movimentações onde o usuário participa, mostrar apenas se ele ainda não respondeu
+    return m.responses[currentUser?.team_id || '']?.status === 'pending';
+  });
+  
+  const completed = myMovs.filter((m: Movement) => {
+    // Para movimentações criadas pelo admin mas que ele não participa
+    if (m.created_by === currentUser?.name && !m.selected_teams.includes(currentUser?.team_id || '')) {
+      return m.status === 'completed'; // Mostrar quando todas as equipes responderam
+    }
+    // Para movimentações onde o usuário participa
+    return m.responses[currentUser?.team_id || '']?.status === 'completed';
+  });
 
   const getFilteredMovements = () => {
     let filtered = showCompleted ? completed : pending;
