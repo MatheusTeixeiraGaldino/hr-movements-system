@@ -515,29 +515,23 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
   };
 
   const myMovs = movements.filter((m: Movement) => {
-    // Se for admin, mostrar as movimentações criadas por ele OU que sua equipe participa
     if (isAdmin) {
       return m.created_by === currentUser?.name || m.selected_teams.includes(currentUser?.team_id || '');
     }
-    // Se não for admin, mostrar apenas as que sua equipe participa
     return m.selected_teams.includes(currentUser?.team_id || '');
   });
   
   const pending = myMovs.filter((m: Movement) => {
-    // Para movimentações criadas pelo admin mas que ele não participa, sempre mostrar como "visualização"
     if (m.created_by === currentUser?.name && !m.selected_teams.includes(currentUser?.team_id || '')) {
-      return m.status !== 'completed'; // Mostrar até que todas as equipes respondam
+      return m.status !== 'completed';
     }
-    // Para movimentações onde o usuário participa, mostrar apenas se ele ainda não respondeu
     return m.responses[currentUser?.team_id || '']?.status === 'pending';
   });
   
   const completed = myMovs.filter((m: Movement) => {
-    // Para movimentações criadas pelo admin mas que ele não participa
     if (m.created_by === currentUser?.name && !m.selected_teams.includes(currentUser?.team_id || '')) {
-      return m.status === 'completed'; // Mostrar quando todas as equipes responderam
+      return m.status === 'completed';
     }
-    // Para movimentações onde o usuário participa
     return m.responses[currentUser?.team_id || '']?.status === 'completed';
   });
 
@@ -783,6 +777,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
     selectedMovement.responses[currentUser?.team_id]?.attachments || []
   );
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [editSelectedTeams, setEditSelectedTeams] = useState<string[]>(selectedMovement.selected_teams);
 
   const isMyTeam = selectedMovement.selected_teams.includes(currentUser?.team_id || '');
   const myResp = currentUser?.team_id ? selectedMovement.responses[currentUser.team_id] : null;
@@ -895,16 +890,75 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   const handleUpdate = async () => {
     setLoadingSub(true);
     try {
+      // Criar responses para novas equipes adicionadas
+      const updatedResponses = { ...selectedMovement.responses };
+      
+      // Adicionar novas equipes com status pending
+      editSelectedTeams.forEach(teamId => {
+        if (!updatedResponses[teamId]) {
+          updatedResponses[teamId] = {
+            status: 'pending',
+            checklist: {},
+            attachments: []
+          };
+        }
+      });
+      
+      // Remover equipes que foram desmarcadas
+      Object.keys(updatedResponses).forEach(teamId => {
+        if (!editSelectedTeams.includes(teamId)) {
+          delete updatedResponses[teamId];
+        }
+      });
+
+      // Verificar se todas as equipes selecionadas completaram
+      const allDone = editSelectedTeams.every(id => updatedResponses[id]?.status === 'completed');
+      
       const { error } = await supabase.from('movements').update({ 
         details: editData,
-        employee_name: editData.employeeName || selectedMovement.employee_name
+        employee_name: editData.employeeName || selectedMovement.employee_name,
+        selected_teams: editSelectedTeams,
+        responses: updatedResponses,
+        status: allDone ? 'completed' : (Object.values(updatedResponses).some((r: any) => r.status === 'completed') ? 'in_progress' : 'pending')
       }).eq('id', selectedMovement.id);
+      
       if (error) throw error;
 
+      // Buscar usuários das novas equipes adicionadas
+      const newTeams = editSelectedTeams.filter(id => !selectedMovement.selected_teams.includes(id));
+      
+      if (newTeams.length > 0) {
+        const { data: newUsersData } = await supabase
+          .from('users')
+          .select('email, name, team_id, team_name')
+          .in('team_id', newTeams);
+
+        if (newUsersData && newUsersData.length > 0) {
+          fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'movement_created',
+              movement: {
+                employee_name: editData.employeeName || selectedMovement.employee_name,
+                type: selectedMovement.type,
+                movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label,
+                created_by: selectedMovement.created_by,
+                deadline: selectedMovement.deadline,
+                selected_teams: newTeams
+              },
+              recipients: newUsersData,
+              email_type: 'created'
+            })
+          }).catch(e => console.error('Webhook erro:', e));
+        }
+      }
+
+      // Notificar todas as equipes sobre a atualização
       const { data: usersData } = await supabase
         .from('users')
         .select('email, name, team_id, team_name')
-        .in('team_id', selectedMovement.selected_teams);
+        .in('team_id', editSelectedTeams);
 
       if (usersData && usersData.length > 0) {
         fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
@@ -918,7 +972,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
               movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label,
               created_by: selectedMovement.created_by,
               deadline: selectedMovement.deadline,
-              selected_teams: selectedMovement.selected_teams
+              selected_teams: editSelectedTeams
             },
             recipients: usersData,
             updated_by: currentUser?.name || '',
@@ -1026,11 +1080,66 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
             </>
           )}
 
+          <div className="border-t pt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Equipes Selecionadas ({editSelectedTeams.length} selecionadas)
+            </label>
+            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-3">
+              <p className="text-xs text-blue-800 mb-2">
+                ℹ️ <strong>Importante:</strong> Ao adicionar novas equipes, elas receberão notificação por email. 
+                Ao remover equipes, suas respostas serão perdidas.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+              {TEAMS.map(t => {
+                const wasOriginallySelected = selectedMovement.selected_teams.includes(t.id);
+                const hasResponse = selectedMovement.responses[t.id]?.status === 'completed';
+                const isSelected = editSelectedTeams.includes(t.id);
+                
+                return (
+                  <label 
+                    key={t.id} 
+                    className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer transition ${
+                      isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                    } ${hasResponse && !isSelected ? 'opacity-50' : ''}`}
+                  >
+                    <input 
+                      type="checkbox" 
+                      checked={isSelected} 
+                      onChange={() => {
+                        if (hasResponse && isSelected) {
+                          if (!confirm(`A equipe "${t.name}" já respondeu esta movimentação. Tem certeza que deseja removê-la? A resposta será perdida.`)) {
+                            return;
+                          }
+                        }
+                        setEditSelectedTeams((prev: string[]) => 
+                          prev.includes(t.id) 
+                            ? prev.filter((id: string) => id !== t.id) 
+                            : [...prev, t.id]
+                        );
+                      }}
+                      className="w-4 h-4" 
+                    />
+                    <div className="flex-1">
+                      <span className="text-sm">{t.name}</span>
+                      {hasResponse && (
+                        <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">✓ Respondida</span>
+                      )}
+                      {!wasOriginallySelected && isSelected && (
+                        <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">Nova</span>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="flex gap-2 pt-4">
-            <button onClick={handleUpdate} disabled={loadingSub} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300">
+            <button onClick={handleUpdate} disabled={loadingSub || editSelectedTeams.length === 0} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300">
               {loadingSub ? 'Salvando...' : 'Salvar'}
             </button>
-            <button onClick={() => setIsEditing(false)} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
+            <button onClick={() => { setIsEditing(false); setEditSelectedTeams(selectedMovement.selected_teams); }} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
           </div>
         </div>
       ) : (
