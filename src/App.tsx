@@ -56,7 +56,7 @@ const TEAMS = [
   { id: 'ponto', name: 'Ponto' },
   { id: 'transporte', name: 'Transporte' },
   { id: 'ti', name: 'T.I' },
-  { id: 'desenvolvimento', name: 'Desenvolvimento' },
+  { id: 'comunicacao', name: 'Comunicação' },
   { id: 'seguranca', name: 'Segurança do Trabalho' },
   { id: 'ambulatorio', name: 'Ambulatório' },
   { id: 'financeiro', name: 'Financeiro' },
@@ -81,7 +81,8 @@ const CHECKLISTS: Record<MovementType, Record<string, string[]>> = {
     ambulatorio: ['Valores farmácia', 'Baixa plano de saúde', 'Baixa plano odonto', 'Exame demissional', 'Valores plano de saúde'],
     financeiro: ['Existe multas', 'Existe adiantamento', 'Valores a descontar'],
     dp: ['Comissões recebidas', 'Aviso prévio assinado', 'Valores marmita'],
-    treinamento: ['Valores a devolver bolsa de estudos', 'Valores a devolver adiantamento treinamentos']
+    treinamento: ['Valores a devolver bolsa de estudos', 'Valores a devolver adiantamento treinamentos'],
+    comunicacao:['Retirar dos grupos de Whatsapp e comunicação']
   },
   transferencia: {
     rh: ['Transferência temporária', 'Colaborador apto para a função'],
@@ -111,7 +112,8 @@ const CHECKLISTS: Record<MovementType, Record<string, string[]>> = {
     seguranca: ['Ordem de serviço assinada', 'Colaborador habilitado em NR'],
     treinamento: ['Treinamentos obrigatórios'],
     ambulatorio: ['ASO', 'Alteração plano de saúde'],
-    dp: ['Promoção programada', 'Necessário criação de função ou seção', 'Alteração seguro de vida']
+    dp: ['Promoção programada', 'Necessário criação de função ou seção', 'Alteração seguro de vida'],
+    comunicacao:['Programado post de promoção']
   }
 };
 
