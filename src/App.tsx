@@ -484,7 +484,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
         .in('team_id', selectedTeams);
 
       if (usersData && usersData.length > 0) {
-        fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
+        fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -936,7 +936,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           .in('team_id', newTeams);
 
         if (newUsersData && newUsersData.length > 0) {
-          fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
+          fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
