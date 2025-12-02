@@ -56,7 +56,7 @@ export async function sendMovementUpdatedEmail(
   updatedBy: string
 ) {
   try {
-    const response = await fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
+const response = await fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
