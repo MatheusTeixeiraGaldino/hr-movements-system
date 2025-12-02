@@ -90,7 +90,7 @@ export default async function handler(
 
     // Enviar todos os emails via webhook do Make.com
     if (emailsToSend.length > 0) {
-      await fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
+      await fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
