@@ -549,6 +549,12 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
 
   const filteredMovements = getFilteredMovements();
 
+  const isDashboardReminderActive = () => {
+    const today = new Date();
+    const day = today.getDate();
+    return day >= 15 && day <= 20;
+  };
+
   const getCountByType = (type: MovementType, includeCompleted: boolean = false) => {
     const movs = includeCompleted ? myMovs : pending;
     return movs.filter((m: Movement) => m.type === type).length;
@@ -556,6 +562,14 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
 
   return (
     <div>
+      {isDashboardReminderActive() && (
+        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded">
+          <AlertCircle className="w-5 h-5 text-blue-600 inline mr-2" />
+          <span className="font-medium text-blue-800">
+            Lembrete: Para garantir o processamento no mesmo mês, faça o cadastro das movimentações até o dia 20. Cadastros após essa data podem seguir para o mês seguinte.
+          </span>
+        </div>
+      )}
       {pending.length > 0 && (
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded">
           <Clock className="w-5 h-5 text-yellow-600 inline mr-2" />
@@ -963,7 +977,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
         .in('team_id', editSelectedTeams);
 
       if (usersData && usersData.length > 0) {
-        fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
+        fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1644,6 +1658,11 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+const isPost20th = () => {
+  const today = new Date();
+  return today.getDate() > 20;
+};
+
 function NewMovementModal({ movementType, formData, setFormData, selectedTeams, setSelectedTeams, loading, onClose, onSubmit }: any) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
@@ -1652,6 +1671,14 @@ function NewMovementModal({ movementType, formData, setFormData, selectedTeams, 
           <h2 className="text-xl font-bold">Nova {MOVEMENT_TYPES[movementType as MovementType].label}</h2>
           <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
         </div>
+        {isPost20th() && ['transferencia', 'alteracao', 'promocao'].includes(movementType) && (
+          <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6 rounded">
+            <AlertCircle className="w-5 h-5 text-red-600 inline mr-2" />
+            <span className="font-medium text-red-800">
+              Lembrete: Movimentações cadastradas após o dia 20 podem ser processadas no mês seguinte.
+            </span>
+          </div>
+        )}
         <div className="space-y-4 max-h-[70vh] overflow-y-auto">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Colaborador *</label>
