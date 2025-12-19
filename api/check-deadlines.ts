@@ -1,5 +1,6 @@
 // api/check-deadlines.ts
 // API Route para verificar prazos e enviar lembretes
+// ATUALIZADO PARA SUPORTAR MÚLTIPLAS EQUIPES POR USUÁRIO
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
@@ -63,9 +64,9 @@ export default async function handler(
 
       if (pendingTeams.length === 0) continue;
 
-      // Buscar usuários das equipes pendentes
+      // MUDANÇA: Buscar usuários usando overlaps para arrays
       const usersResponse = await fetch(
-        `${supabaseUrl}/rest/v1/users?team_id=in.(${pendingTeams.join(',')})&select=email,name,team_id,team_name`,
+        `${supabaseUrl}/rest/v1/users?select=email,name,team_ids,team_names`,
         {
           headers: {
             'apikey': supabaseKey,
@@ -75,16 +76,37 @@ export default async function handler(
         }
       );
 
-      const users = await usersResponse.json();
+      const allUsers = await usersResponse.json();
 
-      if (users && users.length > 0) {
+      // Filtrar usuários que pertencem às equipes pendentes
+      // e expandir para criar um email por equipe
+      const expandedRecipients = allUsers
+        .flatMap((user: any) => {
+          if (!user.team_ids || !Array.isArray(user.team_ids)) return [];
+          
+          return user.team_ids
+            .map((teamId: string, index: number) => {
+              if (pendingTeams.includes(teamId)) {
+                return {
+                  email: user.email,
+                  name: user.name,
+                  team_id: teamId,
+                  team_name: user.team_names[index]
+                };
+              }
+              return null;
+            })
+            .filter((item: any) => item !== null);
+        });
+
+      if (expandedRecipients.length > 0) {
         // Adicionar à lista de emails para enviar
         emailsToSend.push({
           movement,
-          users,
+          users: expandedRecipients,
           daysRemaining
         });
-        emailsSent += users.length;
+        emailsSent += expandedRecipients.length;
       }
     }
 
@@ -114,7 +136,12 @@ export default async function handler(
       success: true,
       message: `${emailsSent} emails serão enviados`,
       movements_checked: movements.length,
-      reminders_sent: emailsToSend.length
+      reminders_sent: emailsToSend.length,
+      details: emailsToSend.map(item => ({
+        employee: item.movement.employee_name,
+        days_remaining: item.daysRemaining,
+        emails_count: item.users.length
+      }))
     });
   } catch (error: any) {
     console.error('Error:', error);
