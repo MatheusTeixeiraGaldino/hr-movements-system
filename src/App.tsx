@@ -20,8 +20,8 @@ interface User {
   role: UserRole;
   can_manage_demissoes: boolean;
   can_manage_transferencias: boolean;
-  team_id: string;
-  team_name: string;
+  team_ids: string[];
+  team_names: string[];
 }
 
 interface Movement {
@@ -160,12 +160,7 @@ async function deleteFile(url: string): Promise<boolean> {
   }
 }
 
-function AttachmentManager({ 
-  attachments, 
-  onAdd, 
-  onRemove, 
-  disabled 
-}: { 
+function AttachmentManager({ attachments, onAdd, onRemove, disabled }: { 
   attachments: Attachment[]; 
   onAdd: (file: File) => void; 
   onRemove: (attachment: Attachment) => void;
@@ -221,41 +216,17 @@ function AttachmentManager({
       {attachments.length > 0 && (
         <div className="space-y-2">
           {attachments.map((attachment, index) => (
-            <div
-              key={index}
-              className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border"
-            >
+            <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 <File className="w-5 h-5 text-gray-400 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {attachment.name}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {formatFileSize(attachment.size)} • {new Date(attachment.uploadedAt).toLocaleString('pt-BR')}
-                  </p>
+                  <p className="text-sm font-medium text-gray-900 truncate">{attachment.name}</p>
+                  <p className="text-xs text-gray-500">{formatFileSize(attachment.size)} • {new Date(attachment.uploadedAt).toLocaleString('pt-BR')}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <a
-                  href={attachment.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
-                  title="Baixar arquivo"
-                >
-                  <Download className="w-4 h-4" />
-                </a>
-                {!disabled && (
-                  <button
-                    type="button"
-                    onClick={() => onRemove(attachment)}
-                    className="p-1.5 text-red-600 hover:bg-red-50 rounded"
-                    title="Remover arquivo"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
+                <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="Baixar arquivo"><Download className="w-4 h-4" /></a>
+                {!disabled && <button type="button" onClick={() => onRemove(attachment)} className="p-1.5 text-red-600 hover:bg-red-50 rounded" title="Remover arquivo"><X className="w-4 h-4" /></button>}
               </div>
             </div>
           ))}
@@ -263,10 +234,29 @@ function AttachmentManager({
       )}
 
       {attachments.length === 0 && (
-        <p className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg border-2 border-dashed">
-          Nenhum anexo adicionado
-        </p>
+        <p className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg border-2 border-dashed">Nenhum anexo adicionado</p>
       )}
+    </div>
+  );
+}
+
+function TeamSelector({ currentUser, activeTeamId, setActiveTeamId }: { 
+  currentUser: User; 
+  activeTeamId: string;
+  setActiveTeamId: (id: string) => void;
+}) {
+  if (currentUser.team_ids.length <= 1) return null;
+
+  return (
+    <div className="bg-white rounded-lg shadow p-4 mb-6">
+      <label className="block text-sm font-medium text-gray-700 mb-3">📋 Você está respondendo como equipe:</label>
+      <div className="flex flex-wrap gap-2">
+        {currentUser.team_ids.map((teamId, index) => (
+          <button key={teamId} onClick={() => setActiveTeamId(teamId)} className={`px-4 py-2 rounded-lg font-medium transition ${activeTeamId === teamId ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+            {currentUser.team_names[index]}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -277,9 +267,13 @@ export default function App() {
   const [view, setView] = useState('login');
   const [selectedMovement, setSelectedMovement] = useState<Movement | null>(null);
   const [loading, setLoading] = useState(false);
+  const [activeTeamId, setActiveTeamId] = useState<string>('');
 
   useEffect(() => {
     if (currentUser) {
+      if (!activeTeamId && currentUser.team_ids.length > 0) {
+        setActiveTeamId(currentUser.team_ids[0]);
+      }
       loadMovements();
     }
   }, [currentUser]);
@@ -298,38 +292,28 @@ export default function App() {
   };
 
   if (!currentUser) {
-    return <LoginComponent setCurrentUser={setCurrentUser} setView={setView} />;
+    return <LoginComponent setCurrentUser={setCurrentUser} setView={setView} setActiveTeamId={setActiveTeamId} />;
   }
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <HeaderComponent currentUser={currentUser} setCurrentUser={setCurrentUser} setView={setView} />
+      <HeaderComponent currentUser={currentUser} setCurrentUser={setCurrentUser} setView={setView} activeTeamId={activeTeamId} />
       <main className="max-w-7xl mx-auto px-4 py-6">
         {view === 'dashboard' && (
-          <DashboardView 
-            currentUser={currentUser} 
-            movements={movements} 
-            loading={loading}
-            loadMovements={loadMovements}
-            setSelectedMovement={setSelectedMovement}
-            setView={setView}
-          />
+          <>
+            <TeamSelector currentUser={currentUser} activeTeamId={activeTeamId} setActiveTeamId={setActiveTeamId} />
+            <DashboardView currentUser={currentUser} movements={movements} loading={loading} loadMovements={loadMovements} setSelectedMovement={setSelectedMovement} setView={setView} activeTeamId={activeTeamId} />
+          </>
         )}
         {view === 'detail' && selectedMovement && (
-          <DetailView 
-            currentUser={currentUser}
-            selectedMovement={selectedMovement}
-            setView={setView}
-            setSelectedMovement={setSelectedMovement}
-            loadMovements={loadMovements}
-          />
+          <DetailView currentUser={currentUser} selectedMovement={selectedMovement} setView={setView} setSelectedMovement={setSelectedMovement} loadMovements={loadMovements} activeTeamId={activeTeamId} />
         )}
       </main>
     </div>
   );
 }
 
-function LoginComponent({ setCurrentUser, setView }: any) {
+function LoginComponent({ setCurrentUser, setView, setActiveTeamId }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -348,6 +332,9 @@ function LoginComponent({ setCurrentUser, setView }: any) {
         return;
       }
       setCurrentUser(data);
+      if (data.team_ids && data.team_ids.length > 0) {
+        setActiveTeamId(data.team_ids[0]);
+      }
       setView('dashboard');
     } catch (err) {
       setError('Erro ao fazer login');
@@ -394,7 +381,11 @@ function LoginComponent({ setCurrentUser, setView }: any) {
   );
 }
 
-function HeaderComponent({ currentUser, setCurrentUser, setView }: any) {
+function HeaderComponent({ currentUser, setCurrentUser, setView, activeTeamId }: any) {
+  const activeTeamName = currentUser.team_ids.map((id: string, index: number) => 
+    id === activeTeamId ? currentUser.team_names[index] : null
+  ).find((name: string | null) => name !== null);
+
   return (
     <header className="bg-white shadow">
       <div className="max-w-7xl mx-auto px-4 py-4">
@@ -409,7 +400,10 @@ function HeaderComponent({ currentUser, setCurrentUser, setView }: any) {
           <div className="flex items-center space-x-4">
             <div className="text-right">
               <p className="text-sm font-medium">{currentUser.name}</p>
-              <p className="text-xs text-gray-500">{currentUser.team_name}</p>
+              <p className="text-xs text-gray-500">
+                {activeTeamName}
+                {currentUser.team_ids.length > 1 && ` (+${currentUser.team_ids.length - 1})`}
+              </p>
             </div>
             <button onClick={() => { setCurrentUser(null); setView('login'); }} className="text-gray-600 hover:text-gray-900">
               <LogOut className="w-5 h-5" />
@@ -421,7 +415,271 @@ function HeaderComponent({ currentUser, setCurrentUser, setView }: any) {
   );
 }
 
-function DashboardView({ currentUser, movements, loading, loadMovements, setSelectedMovement, setView }: any) {
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (newPassword.length < 6) {
+      setError('A nova senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError('As senhas não coincidem');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      alert('Senha alterada com sucesso!');
+      onClose();
+    } catch (err) {
+      setError('Erro ao alterar senha');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl p-6 max-w-md w-full">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-lg font-bold">Alterar Senha</h3>
+          <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
+        </div>
+        <form onSubmit={handleChange} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Senha Atual</label>
+            <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Nova Senha</label>
+            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" required minLength={6} disabled={loading} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Confirmar Nova Senha</label>
+            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
+          </div>
+          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">{error}</div>}
+          <div className="flex gap-2">
+            <button type="submit" disabled={loading} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300">
+              {loading ? 'Alterando...' : 'Alterar Senha'}
+            </button>
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function RegisterUserModal({ onClose }: { onClose: () => void }) {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'team_member' as UserRole,
+    can_manage_demissoes: false,
+    can_manage_transferencias: false
+  });
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!formData.name || !formData.email || !formData.password || selectedTeamIds.length === 0) {
+      setError('Preencha todos os campos obrigatórios');
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      setError('A senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const selectedTeamNames = selectedTeamIds.map(id => 
+        TEAMS.find(t => t.id === id)?.name || ''
+      );
+
+      const { error } = await supabase.from('users').insert([{
+        name: formData.name,
+        email: formData.email.toLowerCase(),
+        password: formData.password,
+        role: formData.role,
+        can_manage_demissoes: formData.can_manage_demissoes,
+        can_manage_transferencias: formData.can_manage_transferencias,
+        team_ids: selectedTeamIds,
+        team_names: selectedTeamNames
+      }]);
+
+      if (error) {
+        if (error.code === '23505') {
+          setError('Este email já está cadastrado');
+        } else {
+          throw error;
+        }
+        return;
+      }
+
+      alert('Usuário cadastrado com sucesso!');
+      onClose();
+    } catch (err) {
+      setError('Erro ao cadastrar usuário');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-white rounded-xl p-6 max-w-2xl w-full my-8">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-lg font-bold">Cadastrar Novo Usuário</h3>
+          <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
+        </div>
+        <form onSubmit={handleRegister} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Nome Completo *</label>
+            <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">E-mail *</label>
+            <input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Senha *</label>
+            <input type="password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full border rounded-lg px-3 py-2" required minLength={6} placeholder="Mínimo 6 caracteres" disabled={loading} />
+          </div>
+          
+          <div className="border-t pt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Equipes * ({selectedTeamIds.length} selecionada{selectedTeamIds.length !== 1 ? 's' : ''})
+            </label>
+            <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-lg p-3 bg-gray-50">
+              {TEAMS.map(t => (
+                <label 
+                  key={t.id} 
+                  className={`flex items-center gap-2 p-2 border rounded cursor-pointer transition ${
+                    selectedTeamIds.includes(t.id) 
+                      ? 'border-blue-500 bg-blue-50' 
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <input 
+                    type="checkbox" 
+                    checked={selectedTeamIds.includes(t.id)} 
+                    onChange={() => {
+                      setSelectedTeamIds(prev => 
+                        prev.includes(t.id) 
+                          ? prev.filter(id => id !== t.id) 
+                          : [...prev, t.id]
+                      );
+                    }}
+                    className="w-4 h-4" 
+                  />
+                  <span className="text-sm">{t.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-3">Tipo de Usuário *</label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                <input 
+                  type="radio" 
+                  name="role" 
+                  value="team_member" 
+                  checked={formData.role === 'team_member'} 
+                  onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole, can_manage_demissoes: false, can_manage_transferencias: false })} 
+                  className="w-4 h-4" 
+                  disabled={loading} 
+                />
+                <div>
+                  <p className="font-medium">Membro da Equipe</p>
+                  <p className="text-xs text-gray-600">Pode responder movimentações das suas equipes</p>
+                </div>
+              </label>
+              <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                <input 
+                  type="radio" 
+                  name="role" 
+                  value="admin" 
+                  checked={formData.role === 'admin'} 
+                  onChange={(e) => setFormData({...formData, role: e.target.value as UserRole})} 
+                  className="w-4 h-4" 
+                  disabled={loading} 
+                />
+                <div>
+                  <p className="font-medium">Administrador</p>
+                  <p className="text-xs text-gray-600">Pode criar e gerenciar movimentações</p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {formData.role === 'admin' && (
+            <div className="border-t pt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-3">Permissões do Administrador</label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input 
+                    type="checkbox" 
+                    checked={formData.can_manage_demissoes} 
+                    onChange={(e) => setFormData({...formData, can_manage_demissoes: e.target.checked})} 
+                    className="w-4 h-4" 
+                    disabled={loading} 
+                  />
+                  <span className="text-sm">Pode gerenciar Demissões</span>
+                </label>
+                <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input 
+                    type="checkbox" 
+                    checked={formData.can_manage_transferencias} 
+                    onChange={(e) => setFormData({...formData, can_manage_transferencias: e.target.checked})} 
+                    className="w-4 h-4" 
+                    disabled={loading} 
+                  />
+                  <span className="text-sm">Pode gerenciar Transferências, Alterações e Promoções</span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">{error}</div>}
+          
+          <div className="flex gap-2">
+            <button 
+              type="submit" 
+              disabled={loading || selectedTeamIds.length === 0} 
+              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
+            >
+              {loading ? 'Cadastrando...' : 'Cadastrar Usuário'}
+            </button>
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+// Adicione estes componentes ao App.tsx após os componentes anteriores
+
+function DashboardView({ currentUser, movements, loading, loadMovements, setSelectedMovement, setView, activeTeamId }: any) {
   const [showNewMovement, setShowNewMovement] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showRegisterUser, setShowRegisterUser] = useState(false);
@@ -480,10 +738,26 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
 
       const { data: usersData } = await supabase
         .from('users')
-        .select('email, name, team_id, team_name')
-        .in('team_id', selectedTeams);
+        .select('email, name, team_ids, team_names')
+        .overlaps('team_ids', selectedTeams);
 
       if (usersData && usersData.length > 0) {
+        const expandedRecipients = usersData.flatMap((user: any) => 
+          user.team_ids
+            .map((teamId: string, index: number) => {
+              if (selectedTeams.includes(teamId)) {
+                return {
+                  email: user.email,
+                  name: user.name,
+                  team_id: teamId,
+                  team_name: user.team_names[index]
+                };
+              }
+              return null;
+            })
+            .filter((item: any) => item !== null)
+        );
+
         fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -497,7 +771,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
               deadline: formData.deadline,
               selected_teams: selectedTeams
             },
-            recipients: usersData,
+            recipients: expandedRecipients,
             email_type: 'created'
           })
         }).catch(e => console.error('Webhook erro:', e));
@@ -518,23 +792,23 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
 
   const myMovs = movements.filter((m: Movement) => {
     if (isAdmin) {
-      return m.created_by === currentUser?.name || m.selected_teams.includes(currentUser?.team_id || '');
+      return m.created_by === currentUser?.name || m.selected_teams.some((t: string) => currentUser?.team_ids.includes(t));
     }
-    return m.selected_teams.includes(currentUser?.team_id || '');
+    return m.selected_teams.includes(activeTeamId);
   });
   
   const pending = myMovs.filter((m: Movement) => {
-    if (m.created_by === currentUser?.name && !m.selected_teams.includes(currentUser?.team_id || '')) {
+    if (m.created_by === currentUser?.name && !m.selected_teams.includes(activeTeamId)) {
       return m.status !== 'completed';
     }
-    return m.responses[currentUser?.team_id || '']?.status === 'pending';
+    return m.responses[activeTeamId]?.status === 'pending';
   });
   
   const completed = myMovs.filter((m: Movement) => {
-    if (m.created_by === currentUser?.name && !m.selected_teams.includes(currentUser?.team_id || '')) {
+    if (m.created_by === currentUser?.name && !m.selected_teams.includes(activeTeamId)) {
       return m.status === 'completed';
     }
-    return m.responses[currentUser?.team_id || '']?.status === 'completed';
+    return m.responses[activeTeamId]?.status === 'completed';
   });
 
   const getFilteredMovements = () => {
@@ -558,6 +832,11 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
   const getCountByType = (type: MovementType, includeCompleted: boolean = false) => {
     const movs = includeCompleted ? myMovs : pending;
     return movs.filter((m: Movement) => m.type === type).length;
+  };
+
+  const isPost20th = () => {
+    const today = new Date();
+    return today.getDate() > 20;
   };
 
   return (
@@ -590,12 +869,26 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
           <div className="mb-6 pb-6 border-b">
             <h3 className="font-semibold mb-3">Nova Movimentação</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {canCreateDemissao && <button onClick={() => { setShowNewMovement(true); setMovementType('demissao'); }} className="p-4 border-2 border-red-200 rounded-lg hover:bg-red-50"><UserX className="w-8 h-8 text-red-600 mx-auto mb-2" /><p className="text-sm font-medium">Demissão</p></button>}
+              {canCreateDemissao && (
+                <button onClick={() => { setShowNewMovement(true); setMovementType('demissao'); }} className="p-4 border-2 border-red-200 rounded-lg hover:bg-red-50">
+                  <UserX className="w-8 h-8 text-red-600 mx-auto mb-2" />
+                  <p className="text-sm font-medium">Demissão</p>
+                </button>
+              )}
               {canCreateTransferencia && (
                 <>
-                  <button onClick={() => { setShowNewMovement(true); setMovementType('transferencia'); }} className="p-4 border-2 border-blue-200 rounded-lg hover:bg-blue-50"><Users className="w-8 h-8 text-blue-600 mx-auto mb-2" /><p className="text-sm font-medium">Transferência</p></button>
-                  <button onClick={() => { setShowNewMovement(true); setMovementType('alteracao'); }} className="p-4 border-2 border-green-200 rounded-lg hover:bg-green-50"><TrendingUp className="w-8 h-8 text-green-600 mx-auto mb-2" /><p className="text-sm font-medium">Alteração</p></button>
-                  <button onClick={() => { setShowNewMovement(true); setMovementType('promocao'); }} className="p-4 border-2 border-purple-200 rounded-lg hover:bg-purple-50"><TrendingUp className="w-8 h-8 text-purple-600 mx-auto mb-2" /><p className="text-sm font-medium">Promoção</p></button>
+                  <button onClick={() => { setShowNewMovement(true); setMovementType('transferencia'); }} className="p-4 border-2 border-blue-200 rounded-lg hover:bg-blue-50">
+                    <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+                    <p className="text-sm font-medium">Transferência</p>
+                  </button>
+                  <button onClick={() => { setShowNewMovement(true); setMovementType('alteracao'); }} className="p-4 border-2 border-green-200 rounded-lg hover:bg-green-50">
+                    <TrendingUp className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                    <p className="text-sm font-medium">Alteração</p>
+                  </button>
+                  <button onClick={() => { setShowNewMovement(true); setMovementType('promocao'); }} className="p-4 border-2 border-purple-200 rounded-lg hover:bg-purple-50">
+                    <TrendingUp className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+                    <p className="text-sm font-medium">Promoção</p>
+                  </button>
                 </>
               )}
             </div>
@@ -718,7 +1011,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
             {filteredMovements.map((m: Movement) => {
               const Icon = MOVEMENT_TYPES[m.type as MovementType].icon;
               const prog = getProgress(m);
-              const myResp = m.responses[currentUser?.team_id || ''];
+              const myResp = m.responses[activeTeamId];
               const overdue = isOverdue(m.deadline);
 
               return (
@@ -773,34 +1066,151 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
           loading={loadingCreate}
           onClose={() => { setShowNewMovement(false); setMovementType(null); setFormData({}); setSelectedTeams([]); }}
           onSubmit={handleCreate}
+          isPost20th={isPost20th}
         />
       )}
     </div>
   );
 }
 
-function DetailView({ currentUser, selectedMovement, setView, setSelectedMovement, loadMovements }: any) {
+function NewMovementModal({ movementType, formData, setFormData, selectedTeams, setSelectedTeams, loading, onClose, onSubmit, isPost20th }: any) {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white rounded-xl max-w-2xl w-full my-8 p-6">
+        <div className="flex justify-between mb-6">
+          <h2 className="text-xl font-bold">Nova {MOVEMENT_TYPES[movementType as MovementType].label}</h2>
+          <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
+        </div>
+        {isPost20th() && ['transferencia', 'alteracao', 'promocao'].includes(movementType) && (
+          <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6 rounded">
+            <AlertCircle className="w-5 h-5 text-red-600 inline mr-2" />
+            <span className="font-medium text-red-800">
+              Lembrete: Movimentações cadastradas após o dia 20 podem ser processadas no mês seguinte.
+            </span>
+          </div>
+        )}
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Colaborador *</label>
+            <input type="text" placeholder="Digite o nome completo" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, employeeName: e.target.value})} />
+          </div>
+
+          {movementType === 'demissao' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Data do Desligamento</label>
+                <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, dismissalDate: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Empresa/Coligada</label>
+                <input type="text" placeholder="Nome da empresa" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, company: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Setor</label>
+                <input type="text" placeholder="Setor do colaborador" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, sector: e.target.value})} />
+              </div>
+            </>
+          )}
+
+          {movementType !== 'demissao' && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Setor Atual</label>
+                  <input type="text" placeholder="Setor atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldSector: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Setor Destino</label>
+                  <input type="text" placeholder="Novo setor" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newSector: e.target.value})} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Função Atual</label>
+                  <input type="text" placeholder="Função atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldPosition: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Função Destino</label>
+                  <input type="text" placeholder="Nova função" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newPosition: e.target.value})} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Data da Mudança</label>
+                <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, changeDate: e.target.value})} />
+              </div>
+            </>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Data Limite para Respostas</label>
+            <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, deadline: e.target.value})} />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Observações Gerais</label>
+            <textarea placeholder="Digite observações adicionais..." className="w-full border rounded-lg px-3 py-2 h-24" onChange={(e) => setFormData({...formData, observation: e.target.value})} />
+          </div>
+
+          <div className="border-t pt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-3">Selecione as Equipes * ({selectedTeams.length} selecionadas)</label>
+            <div className="grid grid-cols-2 gap-2">
+              {TEAMS.map(t => (
+                <label key={t.id} className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer ${selectedTeams.includes(t.id) ? 'border-blue-500 bg-blue-50' : ''}`}>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedTeams.includes(t.id)} 
+                    onChange={() => setSelectedTeams((prev: string[]) => prev.includes(t.id) ? prev.filter((id: string) => id !== t.id) : [...prev, t.id])} 
+                    className="w-4 h-4" 
+                  />
+                  <span className="text-sm">{t.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <button 
+            onClick={onSubmit} 
+            disabled={!formData.employeeName || selectedTeams.length === 0 || loading} 
+            className="w-full bg-blue-600 text-white py-2.5 rounded-lg disabled:bg-gray-300 flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Criando...
+              </>
+            ) : (
+              'Criar Movimentação'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+// Adicione este componente final ao App.tsx
+
+function DetailView({ currentUser, selectedMovement, setView, setSelectedMovement, loadMovements, activeTeamId }: any) {
   const [comment, setComment] = useState('');
   const [loadingSub, setLoadingSub] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState(selectedMovement.details);
   const [checklist, setChecklist] = useState<Record<string, boolean>>(
-    selectedMovement.responses[currentUser?.team_id]?.checklist || {}
+    selectedMovement.responses[activeTeamId]?.checklist || {}
   );
   const [isEditingResponse, setIsEditingResponse] = useState(false);
   const [showHistory, setShowHistory] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>(
-    selectedMovement.responses[currentUser?.team_id]?.attachments || []
+    selectedMovement.responses[activeTeamId]?.attachments || []
   );
   const [uploadingFile, setUploadingFile] = useState(false);
   const [editSelectedTeams, setEditSelectedTeams] = useState<string[]>(selectedMovement.selected_teams);
 
-  const isMyTeam = selectedMovement.selected_teams.includes(currentUser?.team_id || '');
-  const myResp = currentUser?.team_id ? selectedMovement.responses[currentUser.team_id] : null;
+  const isMyTeam = selectedMovement.selected_teams.includes(activeTeamId);
+  const myResp = activeTeamId ? selectedMovement.responses[activeTeamId] : null;
   const hasResponded = myResp?.status === 'completed';
   const isAdmin = currentUser?.role === 'admin';
 
-  const userTeamChecklist: string[] = CHECKLISTS[selectedMovement.type as MovementType]?.[currentUser?.team_id || ''] || [];
+  const userTeamChecklist: string[] = CHECKLISTS[selectedMovement.type as MovementType]?.[activeTeamId || ''] || [];
 
   const handleStartEdit = () => {
     if (myResp) {
@@ -821,7 +1231,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   const handleAddAttachment = async (file: File) => {
     setUploadingFile(true);
     try {
-      const attachment = await uploadFile(file, selectedMovement.id, currentUser.team_id);
+      const attachment = await uploadFile(file, selectedMovement.id, activeTeamId);
       if (attachment) {
         setAttachments(prev => [...prev, attachment]);
       } else {
@@ -874,7 +1284,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
       
       const updated = { 
         ...selectedMovement.responses, 
-        [currentUser.team_id!]: { 
+        [activeTeamId!]: { 
           status: 'completed', 
           comment: comment.trim(), 
           date: now.toISOString().split('T')[0],
@@ -906,10 +1316,8 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   const handleUpdate = async () => {
     setLoadingSub(true);
     try {
-      // Criar responses para novas equipes adicionadas
       const updatedResponses = { ...selectedMovement.responses };
       
-      // Adicionar novas equipes com status pending
       editSelectedTeams.forEach(teamId => {
         if (!updatedResponses[teamId]) {
           updatedResponses[teamId] = {
@@ -920,14 +1328,12 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
         }
       });
       
-      // Remover equipes que foram desmarcadas
       Object.keys(updatedResponses).forEach(teamId => {
         if (!editSelectedTeams.includes(teamId)) {
           delete updatedResponses[teamId];
         }
       });
 
-      // Verificar se todas as equipes selecionadas completaram
       const allDone = editSelectedTeams.every(id => updatedResponses[id]?.status === 'completed');
       
       const { error } = await supabase.from('movements').update({ 
@@ -940,16 +1346,31 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
       
       if (error) throw error;
 
-      // Buscar usuários das novas equipes adicionadas
       const newTeams = editSelectedTeams.filter(id => !selectedMovement.selected_teams.includes(id));
       
       if (newTeams.length > 0) {
         const { data: newUsersData } = await supabase
           .from('users')
-          .select('email, name, team_id, team_name')
-          .in('team_id', newTeams);
+          .select('email, name, team_ids, team_names')
+          .overlaps('team_ids', newTeams);
 
         if (newUsersData && newUsersData.length > 0) {
+          const expandedRecipients = newUsersData.flatMap((user: any) => 
+            user.team_ids
+              .map((teamId: string, index: number) => {
+                if (newTeams.includes(teamId)) {
+                  return {
+                    email: user.email,
+                    name: user.name,
+                    team_id: teamId,
+                    team_name: user.team_names[index]
+                  };
+                }
+                return null;
+              })
+              .filter((item: any) => item !== null)
+          );
+
           fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -963,20 +1384,35 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                 deadline: selectedMovement.deadline,
                 selected_teams: newTeams
               },
-              recipients: newUsersData,
+              recipients: expandedRecipients,
               email_type: 'created'
             })
           }).catch(e => console.error('Webhook erro:', e));
         }
       }
 
-      // Notificar todas as equipes sobre a atualização
       const { data: usersData } = await supabase
         .from('users')
-        .select('email, name, team_id, team_name')
-        .in('team_id', editSelectedTeams);
+        .select('email, name, team_ids, team_names')
+        .overlaps('team_ids', editSelectedTeams);
 
       if (usersData && usersData.length > 0) {
+        const expandedRecipients = usersData.flatMap((user: any) => 
+          user.team_ids
+            .map((teamId: string, index: number) => {
+              if (editSelectedTeams.includes(teamId)) {
+                return {
+                  email: user.email,
+                  name: user.name,
+                  team_id: teamId,
+                  team_name: user.team_names[index]
+                };
+              }
+              return null;
+            })
+            .filter((item: any) => item !== null)
+        );
+
         fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -990,7 +1426,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
               deadline: selectedMovement.deadline,
               selected_teams: editSelectedTeams
             },
-            recipients: usersData,
+            recipients: expandedRecipients,
             updated_by: currentUser?.name || '',
             email_type: 'updated'
           })
@@ -1210,7 +1646,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
         {selectedMovement.selected_teams.map((id: string) => {
           const team = TEAMS.find(t => t.id === id);
           const resp = selectedMovement.responses[id];
-          const isMine = id === currentUser?.team_id;
+          const isMine = id === activeTeamId;
           
           if (!isAdmin && !isMine) {
             return null;
@@ -1455,325 +1891,6 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function ChangePasswordModal({ onClose }: { onClose: () => void }) {
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const handleChange = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    if (newPassword.length < 6) {
-      setError('A nova senha deve ter pelo menos 6 caracteres');
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setError('As senhas não coincidem');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      alert('Senha alterada com sucesso!');
-      onClose();
-    } catch (err) {
-      setError('Erro ao alterar senha');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl p-6 max-w-md w-full">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-bold">Alterar Senha</h3>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
-        </div>
-        <form onSubmit={handleChange} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Senha Atual</label>
-            <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Nova Senha</label>
-            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" required minLength={6} disabled={loading} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Confirmar Nova Senha</label>
-            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
-          </div>
-          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">{error}</div>}
-          <div className="flex gap-2">
-            <button type="submit" disabled={loading} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300">
-              {loading ? 'Alterando...' : 'Alterar Senha'}
-            </button>
-            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function RegisterUserModal({ onClose }: { onClose: () => void }) {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    role: 'team_member' as UserRole,
-    team_id: '',
-    can_manage_demissoes: false,
-    can_manage_transferencias: false
-  });
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    if (!formData.name || !formData.email || !formData.password || !formData.team_id) {
-      setError('Preencha todos os campos obrigatórios');
-      return;
-    }
-
-    if (formData.password.length < 6) {
-      setError('A senha deve ter pelo menos 6 caracteres');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const selectedTeam = TEAMS.find(t => t.id === formData.team_id);
-      const { error } = await supabase.from('users').insert([{
-        name: formData.name,
-        email: formData.email.toLowerCase(),
-        password: formData.password,
-        role: formData.role,
-        can_manage_demissoes: formData.can_manage_demissoes,
-        can_manage_transferencias: formData.can_manage_transferencias,
-        team_id: formData.team_id,
-        team_name: selectedTeam?.name || ''
-      }]);
-
-      if (error) {
-        if (error.code === '23505') {
-          setError('Este email já está cadastrado');
-        } else {
-          throw error;
-        }
-        return;
-      }
-
-      alert('Usuário cadastrado com sucesso!');
-      onClose();
-    } catch (err) {
-      setError('Erro ao cadastrar usuário');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl p-6 max-w-2xl w-full my-8">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-bold">Cadastrar Novo Usuário</h3>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
-        </div>
-        <form onSubmit={handleRegister} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Nome Completo *</label>
-            <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">E-mail *</label>
-            <input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Senha *</label>
-            <input type="password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full border rounded-lg px-3 py-2" required minLength={6} placeholder="Mínimo 6 caracteres" disabled={loading} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Equipe *</label>
-            <select value={formData.team_id} onChange={(e) => setFormData({...formData, team_id: e.target.value})} className="w-full border rounded-lg px-3 py-2" required disabled={loading}>
-              <option value="">Selecione uma equipe</option>
-              {TEAMS.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </div>
-          <div className="border-t pt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-3">Tipo de Usuário *</label>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                <input type="radio" name="role" value="team_member" checked={formData.role === 'team_member'} onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole, can_manage_demissoes: false, can_manage_transferencias: false })} className="w-4 h-4" disabled={loading} />
-                <div>
-                  <p className="font-medium">Membro da Equipe</p>
-                  <p className="text-xs text-gray-600">Pode responder movimentações da sua equipe</p>
-                </div>
-              </label>
-              <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                <input type="radio" name="role" value="admin" checked={formData.role === 'admin'} onChange={(e) => setFormData({...formData, role: e.target.value as UserRole})} className="w-4 h-4" disabled={loading} />
-                <div>
-                  <p className="font-medium">Administrador</p>
-                  <p className="text-xs text-gray-600">Pode criar e gerenciar movimentações</p>
-                </div>
-              </label>
-            </div>
-          </div>
-          {formData.role === 'admin' && (
-            <div className="border-t pt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-3">Permissões do Administrador</label>
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                  <input type="checkbox" checked={formData.can_manage_demissoes} onChange={(e) => setFormData({...formData, can_manage_demissoes: e.target.checked})} className="w-4 h-4" disabled={loading} />
-                  <span className="text-sm">Pode gerenciar Demissões</span>
-                </label>
-                <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                  <input type="checkbox" checked={formData.can_manage_transferencias} onChange={(e) => setFormData({...formData, can_manage_transferencias: e.target.checked})} className="w-4 h-4" disabled={loading} />
-                  <span className="text-sm">Pode gerenciar Transferências, Alterações e Promoções</span>
-                </label>
-              </div>
-            </div>
-          )}
-          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">{error}</div>}
-          <div className="flex gap-2">
-            <button type="submit" disabled={loading} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300">
-              {loading ? 'Cadastrando...' : 'Cadastrar Usuário'}
-            </button>
-            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-const isPost20th = () => {
-  const today = new Date();
-  return today.getDate() > 20;
-};
-
-function NewMovementModal({ movementType, formData, setFormData, selectedTeams, setSelectedTeams, loading, onClose, onSubmit }: any) {
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-xl max-w-2xl w-full my-8 p-6">
-        <div className="flex justify-between mb-6">
-          <h2 className="text-xl font-bold">Nova {MOVEMENT_TYPES[movementType as MovementType].label}</h2>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
-        </div>
-        {isPost20th() && ['transferencia', 'alteracao', 'promocao'].includes(movementType) && (
-          <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6 rounded">
-            <AlertCircle className="w-5 h-5 text-red-600 inline mr-2" />
-            <span className="font-medium text-red-800">
-              Lembrete: Movimentações cadastradas após o dia 20 podem ser processadas no mês seguinte.
-            </span>
-          </div>
-        )}
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Colaborador *</label>
-            <input type="text" placeholder="Digite o nome completo" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, employeeName: e.target.value})} />
-          </div>
-
-          {movementType === 'demissao' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Data do Desligamento</label>
-                <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, dismissalDate: e.target.value})} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Empresa/Coligada</label>
-                <input type="text" placeholder="Nome da empresa" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, company: e.target.value})} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Setor</label>
-                <input type="text" placeholder="Setor do colaborador" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, sector: e.target.value})} />
-              </div>
-            </>
-          )}
-
-          {movementType !== 'demissao' && (
-            <>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Setor Atual</label>
-                  <input type="text" placeholder="Setor atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldSector: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Setor Destino</label>
-                  <input type="text" placeholder="Novo setor" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newSector: e.target.value})} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Função Atual</label>
-                  <input type="text" placeholder="Função atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldPosition: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Função Destino</label>
-                  <input type="text" placeholder="Nova função" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newPosition: e.target.value})} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Data da Mudança</label>
-                <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, changeDate: e.target.value})} />
-              </div>
-            </>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Data Limite para Respostas</label>
-            <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, deadline: e.target.value})} />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Observações Gerais</label>
-            <textarea placeholder="Digite observações adicionais..." className="w-full border rounded-lg px-3 py-2 h-24" onChange={(e) => setFormData({...formData, observation: e.target.value})} />
-          </div>
-
-          <div className="border-t pt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-3">Selecione as Equipes * ({selectedTeams.length} selecionadas)</label>
-            <div className="grid grid-cols-2 gap-2">
-              {TEAMS.map(t => (
-                <label key={t.id} className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer ${selectedTeams.includes(t.id) ? 'border-blue-500 bg-blue-50' : ''}`}>
-                  <input 
-                    type="checkbox" 
-                    checked={selectedTeams.includes(t.id)} 
-                    onChange={() => setSelectedTeams((prev: string[]) => prev.includes(t.id) ? prev.filter((id: string) => id !== t.id) : [...prev, t.id])} 
-                    className="w-4 h-4" 
-                  />
-                  <span className="text-sm">{t.name}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <button 
-            onClick={onSubmit} 
-            disabled={!formData.employeeName || selectedTeams.length === 0 || loading} 
-            className="w-full bg-blue-600 text-white py-2.5 rounded-lg disabled:bg-gray-300 flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Criando...
-              </>
-            ) : (
-              'Criar Movimentação'
-            )}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
