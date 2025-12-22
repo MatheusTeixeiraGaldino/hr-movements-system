@@ -480,7 +480,6 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
-
 // Substitua a função RegisterUserModal no seu App.tsx por esta versão corrigida
 
 function RegisterUserModal({ onClose }: { onClose: () => void }) {
@@ -517,7 +516,7 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
       );
 
       // CORREÇÃO: Usar o método correto do Supabase para inserir arrays
-      const { data, error: insertError } = await supabase
+      const { error: insertError } = await supabase
         .from('users')
         .insert({
           name: formData.name,
@@ -738,7 +737,6 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
-
 function DashboardView({ currentUser, movements, loading, loadMovements, setSelectedMovement, setView, activeTeamId }: any) {
   const [showNewMovement, setShowNewMovement] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
