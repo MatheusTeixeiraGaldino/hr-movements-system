@@ -481,6 +481,8 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// Substitua a função RegisterUserModal no seu App.tsx por esta versão corrigida
+
 function RegisterUserModal({ onClose }: { onClose: () => void }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -514,30 +516,39 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
         TEAMS.find(t => t.id === id)?.name || ''
       );
 
-      const { error } = await supabase.from('users').insert([{
-        name: formData.name,
-        email: formData.email.toLowerCase(),
-        password: formData.password,
-        role: formData.role,
-        can_manage_demissoes: formData.can_manage_demissoes,
-        can_manage_transferencias: formData.can_manage_transferencias,
-        team_ids: selectedTeamIds,
-        team_names: selectedTeamNames
-      }]);
+      // CORREÇÃO: Usar o método correto do Supabase para inserir arrays
+      const { data, error: insertError } = await supabase
+        .from('users')
+        .insert({
+          name: formData.name,
+          email: formData.email.toLowerCase(),
+          password: formData.password,
+          role: formData.role,
+          can_manage_demissoes: formData.can_manage_demissoes,
+          can_manage_transferencias: formData.can_manage_transferencias,
+          team_ids: selectedTeamIds,
+          team_names: selectedTeamNames
+        })
+        .select();
 
-      if (error) {
-        if (error.code === '23505') {
+      if (insertError) {
+        console.error('Erro ao inserir:', insertError);
+        
+        if (insertError.code === '23505') {
           setError('Este email já está cadastrado');
+        } else if (insertError.message) {
+          setError(`Erro: ${insertError.message}`);
         } else {
-          throw error;
+          setError('Erro ao cadastrar usuário');
         }
         return;
       }
 
       alert('Usuário cadastrado com sucesso!');
       onClose();
-    } catch (err) {
-      setError('Erro ao cadastrar usuário');
+    } catch (err: any) {
+      console.error('Erro geral:', err);
+      setError(`Erro ao cadastrar usuário: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -553,21 +564,47 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
         <form onSubmit={handleRegister} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Nome Completo *</label>
-            <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
+            <input 
+              type="text" 
+              value={formData.name} 
+              onChange={(e) => setFormData({...formData, name: e.target.value})} 
+              className="w-full border rounded-lg px-3 py-2" 
+              required 
+              disabled={loading} 
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">E-mail *</label>
-            <input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
+            <input 
+              type="email" 
+              value={formData.email} 
+              onChange={(e) => setFormData({...formData, email: e.target.value})} 
+              className="w-full border rounded-lg px-3 py-2" 
+              required 
+              disabled={loading} 
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Senha *</label>
-            <input type="password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full border rounded-lg px-3 py-2" required minLength={6} placeholder="Mínimo 6 caracteres" disabled={loading} />
+            <input 
+              type="password" 
+              value={formData.password} 
+              onChange={(e) => setFormData({...formData, password: e.target.value})} 
+              className="w-full border rounded-lg px-3 py-2" 
+              required 
+              minLength={6} 
+              placeholder="Mínimo 6 caracteres" 
+              disabled={loading} 
+            />
           </div>
           
           <div className="border-t pt-4">
             <label className="block text-sm font-medium text-gray-700 mb-3">
               Equipes * ({selectedTeamIds.length} selecionada{selectedTeamIds.length !== 1 ? 's' : ''})
             </label>
+            {selectedTeamIds.length === 0 && (
+              <p className="text-sm text-red-600 mb-2">⚠️ Selecione pelo menos uma equipe</p>
+            )}
             <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-lg p-3 bg-gray-50">
               {TEAMS.map(t => (
                 <label 
@@ -589,6 +626,7 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
                       );
                     }}
                     className="w-4 h-4" 
+                    disabled={loading}
                   />
                   <span className="text-sm">{t.name}</span>
                 </label>
@@ -605,7 +643,12 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
                   name="role" 
                   value="team_member" 
                   checked={formData.role === 'team_member'} 
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole, can_manage_demissoes: false, can_manage_transferencias: false })} 
+                  onChange={(e) => setFormData({ 
+                    ...formData, 
+                    role: e.target.value as UserRole, 
+                    can_manage_demissoes: false, 
+                    can_manage_transferencias: false 
+                  })} 
                   className="w-4 h-4" 
                   disabled={loading} 
                 />
@@ -660,24 +703,41 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">{error}</div>}
+          {error && (
+            <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
           
           <div className="flex gap-2">
             <button 
               type="submit" 
               disabled={loading || selectedTeamIds.length === 0} 
-              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
+              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 flex items-center justify-center gap-2"
             >
-              {loading ? 'Cadastrando...' : 'Cadastrar Usuário'}
+              {loading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Cadastrando...
+                </>
+              ) : (
+                'Cadastrar Usuário'
+              )}
             </button>
-            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
+            <button 
+              type="button" 
+              onClick={onClose} 
+              className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400"
+              disabled={loading}
+            >
+              Cancelar
+            </button>
           </div>
         </form>
       </div>
     </div>
   );
 }
-// Adicione estes componentes ao App.tsx após os componentes anteriores
 
 function DashboardView({ currentUser, movements, loading, loadMovements, setSelectedMovement, setView, activeTeamId }: any) {
   const [showNewMovement, setShowNewMovement] = useState(false);
