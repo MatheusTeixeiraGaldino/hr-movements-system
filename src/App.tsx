@@ -480,6 +480,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
+
 // Substitua a função RegisterUserModal no seu App.tsx por esta versão corrigida
 
 function RegisterUserModal({ onClose }: { onClose: () => void }) {
@@ -554,61 +555,64 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl p-6 max-w-2xl w-full my-8">
-        <div className="flex justify-between items-center mb-6">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4 sticky top-0 bg-white pb-3 border-b">
           <h3 className="text-lg font-bold">Cadastrar Novo Usuário</h3>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
+          <button onClick={onClose} className="text-gray-600 hover:text-gray-900 text-xl">✕</button>
         </div>
-        <form onSubmit={handleRegister} className="space-y-4">
+        <form onSubmit={handleRegister} className="space-y-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Nome Completo *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label>
             <input 
               type="text" 
               value={formData.name} 
               onChange={(e) => setFormData({...formData, name: e.target.value})} 
-              className="w-full border rounded-lg px-3 py-2" 
+              className="w-full border rounded-lg px-3 py-2 text-sm" 
               required 
-              disabled={loading} 
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">E-mail *</label>
-            <input 
-              type="email" 
-              value={formData.email} 
-              onChange={(e) => setFormData({...formData, email: e.target.value})} 
-              className="w-full border rounded-lg px-3 py-2" 
-              required 
-              disabled={loading} 
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Senha *</label>
-            <input 
-              type="password" 
-              value={formData.password} 
-              onChange={(e) => setFormData({...formData, password: e.target.value})} 
-              className="w-full border rounded-lg px-3 py-2" 
-              required 
-              minLength={6} 
-              placeholder="Mínimo 6 caracteres" 
               disabled={loading} 
             />
           </div>
           
-          <div className="border-t pt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">E-mail *</label>
+              <input 
+                type="email" 
+                value={formData.email} 
+                onChange={(e) => setFormData({...formData, email: e.target.value})} 
+                className="w-full border rounded-lg px-3 py-2 text-sm" 
+                required 
+                disabled={loading} 
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Senha *</label>
+              <input 
+                type="password" 
+                value={formData.password} 
+                onChange={(e) => setFormData({...formData, password: e.target.value})} 
+                className="w-full border rounded-lg px-3 py-2 text-sm" 
+                required 
+                minLength={6} 
+                placeholder="Mínimo 6 caracteres" 
+                disabled={loading} 
+              />
+            </div>
+          </div>
+          
+          <div className="border-t pt-3">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Equipes * ({selectedTeamIds.length} selecionada{selectedTeamIds.length !== 1 ? 's' : ''})
             </label>
             {selectedTeamIds.length === 0 && (
-              <p className="text-sm text-red-600 mb-2">⚠️ Selecione pelo menos uma equipe</p>
+              <p className="text-xs text-red-600 mb-2">⚠️ Selecione pelo menos uma equipe</p>
             )}
-            <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-lg p-3 bg-gray-50">
+            <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto border rounded-lg p-2 bg-gray-50">
               {TEAMS.map(t => (
                 <label 
                   key={t.id} 
-                  className={`flex items-center gap-2 p-2 border rounded cursor-pointer transition ${
+                  className={`flex items-center gap-2 p-2 border rounded cursor-pointer transition text-xs ${
                     selectedTeamIds.includes(t.id) 
                       ? 'border-blue-500 bg-blue-50' 
                       : 'border-gray-200 bg-white hover:border-gray-300'
@@ -624,19 +628,19 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
                           : [...prev, t.id]
                       );
                     }}
-                    className="w-4 h-4" 
+                    className="w-3 h-3" 
                     disabled={loading}
                   />
-                  <span className="text-sm">{t.name}</span>
+                  <span className="text-xs">{t.name}</span>
                 </label>
               ))}
             </div>
           </div>
 
-          <div className="border-t pt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-3">Tipo de Usuário *</label>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+          <div className="border-t pt-3">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Usuário *</label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex items-start gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
                 <input 
                   type="radio" 
                   name="role" 
@@ -648,37 +652,37 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
                     can_manage_demissoes: false, 
                     can_manage_transferencias: false 
                   })} 
-                  className="w-4 h-4" 
+                  className="w-4 h-4 mt-0.5" 
                   disabled={loading} 
                 />
                 <div>
-                  <p className="font-medium">Membro da Equipe</p>
-                  <p className="text-xs text-gray-600">Pode responder movimentações das suas equipes</p>
+                  <p className="font-medium text-sm">Membro da Equipe</p>
+                  <p className="text-xs text-gray-600">Responde movimentações</p>
                 </div>
               </label>
-              <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+              <label className="flex items-start gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
                 <input 
                   type="radio" 
                   name="role" 
                   value="admin" 
                   checked={formData.role === 'admin'} 
                   onChange={(e) => setFormData({...formData, role: e.target.value as UserRole})} 
-                  className="w-4 h-4" 
+                  className="w-4 h-4 mt-0.5" 
                   disabled={loading} 
                 />
                 <div>
-                  <p className="font-medium">Administrador</p>
-                  <p className="text-xs text-gray-600">Pode criar e gerenciar movimentações</p>
+                  <p className="font-medium text-sm">Administrador</p>
+                  <p className="text-xs text-gray-600">Cria e gerencia</p>
                 </div>
               </label>
             </div>
           </div>
 
           {formData.role === 'admin' && (
-            <div className="border-t pt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-3">Permissões do Administrador</label>
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+            <div className="border-t pt-3">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Permissões</label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
                   <input 
                     type="checkbox" 
                     checked={formData.can_manage_demissoes} 
@@ -686,9 +690,9 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
                     className="w-4 h-4" 
                     disabled={loading} 
                   />
-                  <span className="text-sm">Pode gerenciar Demissões</span>
+                  <span className="text-sm">Demissões</span>
                 </label>
-                <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
                   <input 
                     type="checkbox" 
                     checked={formData.can_manage_transferencias} 
@@ -696,27 +700,27 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
                     className="w-4 h-4" 
                     disabled={loading} 
                   />
-                  <span className="text-sm">Pode gerenciar Transferências, Alterações e Promoções</span>
+                  <span className="text-sm">Transferências/Alterações</span>
                 </label>
               </div>
             </div>
           )}
 
           {error && (
-            <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">
+            <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">
               {error}
             </div>
           )}
           
-          <div className="flex gap-2">
+          <div className="flex gap-2 pt-2 sticky bottom-0 bg-white border-t mt-3">
             <button 
               type="submit" 
               disabled={loading || selectedTeamIds.length === 0} 
-              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 flex items-center justify-center gap-2"
+              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 flex items-center justify-center gap-2 text-sm"
             >
               {loading ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                   Cadastrando...
                 </>
               ) : (
@@ -726,7 +730,7 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
             <button 
               type="button" 
               onClick={onClose} 
-              className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400"
+              className="px-6 py-2 bg-gray-300 rounded-lg hover:bg-gray-400 text-sm"
               disabled={loading}
             >
               Cancelar
@@ -737,6 +741,7 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
+
 function DashboardView({ currentUser, movements, loading, loadMovements, setSelectedMovement, setView, activeTeamId }: any) {
   const [showNewMovement, setShowNewMovement] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
