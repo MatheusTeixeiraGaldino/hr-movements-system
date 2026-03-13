@@ -1,1959 +1,1360 @@
-import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download } from 'lucide-react';
-import { supabase } from './lib/supabase';
+import { useState, useEffect } from 'react'
+import { createClient } from '@supabase/supabase-js'
+import {
+  Briefcase, LogOut, Users, Building2, Mail, Clock, CheckCircle,
+  Plus, AlertCircle, X, Trash2, FileText, Send, Eye,
+  BarChart3, ChevronRight, Shield, Edit, MessageSquare, Filter
+} from 'lucide-react'
 
-type UserRole = 'admin' | 'team_member';
-type MovementType = 'demissao' | 'transferencia' | 'alteracao' | 'promocao';
+// ─────────────────────────────────────────────
+// SUPABASE + CONSTANTES
+// ─────────────────────────────────────────────
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabase    = createClient(supabaseUrl, supabaseKey)
 
-interface Attachment {
-  name: string;
-  url: string;
-  size: number;
-  uploadedAt: string;
-}
+const WEBHOOK_URL = 'https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w'
+const SESSION_KEY = 'hr_session'
 
+// ─────────────────────────────────────────────
+// TIPOS
+// ─────────────────────────────────────────────
 interface User {
-  id: string;
-  name: string;
-  email: string;
-  password: string;
-  role: UserRole;
-  can_manage_demissoes: boolean;
-  can_manage_transferencias: boolean;
-  team_ids: string[];
-  team_names: string[];
+  id: string
+  email: string
+  name: string
+  role: string
+  can_manage_demissoes?: boolean
+  can_manage_transferencias?: boolean
+  team_id?: string
+  team_name?: string
+  team_ids?: string[]
+  team_names?: string[]
+  created_at?: string
 }
 
-interface Movement {
-  id: string;
-  type: MovementType;
-  employee_name: string;
-  selected_teams: string[];
-  status: 'pending' | 'in_progress' | 'completed';
-  responses: Record<string, { 
-    status: string; 
-    comment?: string; 
-    date?: string; 
-    checklist?: Record<string, boolean>;
-    attachments?: Attachment[];
-    history?: Array<{
-      user_name: string;
-      user_email: string;
-      action: 'created' | 'updated';
-      date: string;
-      timestamp: string;
-    }>;
-  }>;
-  created_at: string;
-  created_by: string;
-  details: Record<string, any>;
-  observation?: string | null;
-  deadline?: string | null;
+interface Team {
+  id: string
+  name: string
+  email: string
+  code: string
+  created_at: string
 }
 
-const TEAMS = [
-  { id: 'rh', name: 'Recursos Humanos' },
-  { id: 'ponto', name: 'Ponto' },
-  { id: 'transporte', name: 'Transporte' },
-  { id: 'ti', name: 'T.I' },
-  { id: 'comunicacao', name: 'Comunicação' },
-  { id: 'seguranca', name: 'Segurança do Trabalho' },
-  { id: 'ambulatorio', name: 'Ambulatório' },
-  { id: 'financeiro', name: 'Financeiro' },
-  { id: 'dp', name: 'DP' },
-  { id: 'treinamento', name: 'Treinamento e Desenvolvimento' }
-];
-
-const MOVEMENT_TYPES = {
-  demissao: { label: 'Demissão', icon: UserX },
-  transferencia: { label: 'Transferência', icon: Users },
-  alteracao: { label: 'Alteração Salarial', icon: TrendingUp },
-  promocao: { label: 'Promoção', icon: TrendingUp }
-};
-
-const CHECKLISTS: Record<MovementType, Record<string, string[]>> = {
-  demissao: {
-    rh: ['Requisição de desligamento', 'Entrevista de desligamento'],
-    ponto: ['Entrega espelho de ponto'],
-    transporte: ['Valores de multas', 'Baixa de carro responsável'],
-    ti: ['Baixa de usuário'],
-    seguranca: ['Entrega de EPIs', 'Sem acidente de trabalho', 'Não é membro da CIPA'],
-    ambulatorio: ['Valores farmácia', 'Baixa plano de saúde', 'Baixa plano odonto', 'Exame demissional', 'Valores plano de saúde'],
-    financeiro: ['Existe multas', 'Existe adiantamento', 'Valores a descontar'],
-    dp: ['Comissões recebidas', 'Aviso prévio assinado', 'Valores marmita'],
-    treinamento: ['Valores a devolver bolsa de estudos', 'Valores a devolver adiantamento treinamentos'],
-    comunicacao:['Retirar dos grupos de Whatsapp e comunicação']
-  },
-  transferencia: {
-    rh: ['Transferência temporária', 'Colaborador apto para a função'],
-    ponto: ['Análise alteração no ponto do colaborador'],
-    transporte: ['Colaborador apto a dirigir veículo da empresa'],
-    ti: ['Alteração de acessos colaborador'],
-    seguranca: ['Ordem de serviço assinada', 'Colaborador habilitado em NR'],
-    treinamento: ['Treinamentos obrigatórios'],
-    ambulatorio: ['ASO'],
-    dp: ['Transferência programada', 'Necessário criação de função ou seção']
-  },
-  alteracao: {
-    rh: ['Alteração temporária', 'Colaborador apto para a função'],
-    ponto: ['Análise alteração no ponto do colaborador'],
-    transporte: ['Colaborador apto a dirigir veículo da empresa'],
-    ti: ['Alteração de acessos colaborador'],
-    seguranca: ['Ordem de serviço assinada', 'Colaborador habilitado em NR'],
-    treinamento: ['Treinamentos obrigatórios'],
-    ambulatorio: ['ASO'],
-    dp: ['Alteração programada', 'Necessário criação de função ou seção']
-  },
-  promocao: {
-    rh: ['Colaborador apto para a função', 'Testes necessários para função', 'Promoção para liderança de equipe, fez treinamento de líderes'],
-    ponto: ['Análise alteração no ponto do colaborador'],
-    transporte: ['Colaborador apto a dirigir veículo da empresa'],
-    ti: ['Alteração de acessos colaborador'],
-    seguranca: ['Ordem de serviço assinada', 'Colaborador habilitado em NR'],
-    treinamento: ['Treinamentos obrigatórios'],
-    ambulatorio: ['ASO', 'Alteração plano de saúde'],
-    dp: ['Promoção programada', 'Necessário criação de função ou seção', 'Alteração seguro de vida'],
-    comunicacao:['Programado post de promoção']
-  }
-};
-
-async function uploadFile(file: File, movementId: string, teamId: string): Promise<Attachment | null> {
-  try {
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${movementId}/${teamId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-    
-    const { error } = await supabase.storage
-      .from('movement-attachments')
-      .upload(fileName, file);
-
-    if (error) throw error;
-
-    const { data: { publicUrl } } = supabase.storage
-      .from('movement-attachments')
-      .getPublicUrl(fileName);
-
-    return {
-      name: file.name,
-      url: publicUrl,
-      size: file.size,
-      uploadedAt: new Date().toISOString()
-    };
-  } catch (error) {
-    console.error('Erro ao fazer upload:', error);
-    return null;
-  }
+interface Setor {
+  id: string
+  nome: string
+  descricao?: string
+  ativo: boolean
+  created_at: string
 }
 
-async function deleteFile(url: string): Promise<boolean> {
-  try {
-    const path = url.split('/movement-attachments/')[1];
-    if (!path) return false;
-
-    const { error } = await supabase.storage
-      .from('movement-attachments')
-      .remove([path]);
-
-    return !error;
-  } catch (error) {
-    console.error('Erro ao deletar arquivo:', error);
-    return false;
-  }
+interface EmailSetor {
+  id: string
+  setor_id: string
+  nome: string
+  email: string
+  ativo: boolean
+  created_at: string
 }
 
-function AttachmentManager({ attachments, onAdd, onRemove, disabled }: { 
-  attachments: Attachment[]; 
-  onAdd: (file: File) => void; 
-  onRemove: (attachment: Attachment) => void;
-  disabled?: boolean;
-}) {
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        alert('O arquivo deve ter no máximo 10MB');
-        return;
-      }
-      onAdd(file);
-    }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <label className="block text-sm font-medium text-gray-700">Anexos</label>
-        {!disabled && (
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 text-sm"
-          >
-            <Upload className="w-4 h-4" />
-            Adicionar Arquivo
-          </button>
-        )}
-      </div>
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        onChange={handleFileSelect}
-        className="hidden"
-        accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif"
-        disabled={disabled}
-      />
-
-      {attachments.length > 0 && (
-        <div className="space-y-2">
-          {attachments.map((attachment, index) => (
-            <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <File className="w-5 h-5 text-gray-400 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{attachment.name}</p>
-                  <p className="text-xs text-gray-500">{formatFileSize(attachment.size)} • {new Date(attachment.uploadedAt).toLocaleString('pt-BR')}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="Baixar arquivo"><Download className="w-4 h-4" /></a>
-                {!disabled && <button type="button" onClick={() => onRemove(attachment)} className="p-1.5 text-red-600 hover:bg-red-50 rounded" title="Remover arquivo"><X className="w-4 h-4" /></button>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {attachments.length === 0 && (
-        <p className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg border-2 border-dashed">Nenhum anexo adicionado</p>
-      )}
-    </div>
-  );
+interface TeamResponse {
+  id: string
+  movement_id: string
+  team_id: string
+  status: string
+  comment?: string
+  responded_by?: string
+  responded_at?: string
+  created_at: string
+  teams?: { name: string; email: string }
 }
 
-function TeamSelector({ currentUser, activeTeamId, setActiveTeamId }: { 
-  currentUser: User; 
-  activeTeamId: string;
-  setActiveTeamId: (id: string) => void;
-}) {
-  if (currentUser.team_ids.length <= 1) return null;
-
-  return (
-    <div className="bg-white rounded-lg shadow p-4 mb-6">
-      <label className="block text-sm font-medium text-gray-700 mb-3">📋 Você está respondendo como equipe:</label>
-      <div className="flex flex-wrap gap-2">
-        {currentUser.team_ids.map((teamId, index) => (
-          <button key={teamId} onClick={() => setActiveTeamId(teamId)} className={`px-4 py-2 rounded-lg font-medium transition ${activeTeamId === teamId ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-            {currentUser.team_names[index]}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+// Movimentação unificada — campos da tabela movements + campos novos de setores
+interface Movimentacao {
+  id: string
+  // campos originais de movements
+  employee_name: string
+  type: string
+  selected_teams: string[]   // array de team_ids
+  status: string
+  responses?: any
+  details?: any
+  checklist?: any
+  observation?: string
+  created_by?: string
+  deadline?: string
+  created_at: string
+  // campos novos adicionados à movements
+  setores_ids?: string[]
+  // joins
+  team_responses?: TeamResponse[]
+  movimentacoes_setores?: { setor_id: string; setores: { nome: string } }[]
 }
 
+// ─────────────────────────────────────────────
+// DOMÍNIO
+// ─────────────────────────────────────────────
+const TIPO_LABELS: Record<string, string> = {
+  demissao:      'Demissão',
+  transferencia: 'Transferência',
+  alteracao:     'Alteração Salarial',
+  promocao:      'Promoção',
+  afastamento:   'Afastamento',
+  outros:        'Outros',
+  // compatibilidade com valores em inglês já existentes
+  dismissal:     'Demissão',
+  transfer:      'Transferência',
+  promotion:     'Promoção',
+  leave:         'Afastamento',
+  salary_change: 'Alteração Salarial',
+  other:         'Outros',
+}
+
+const TIPO_BADGE: Record<string, { color: string; border: string; bg: string }> = {
+  demissao:      { color: '#dc2626', border: '#fca5a5', bg: '#fef2f2' },
+  dismissal:     { color: '#dc2626', border: '#fca5a5', bg: '#fef2f2' },
+  transferencia: { color: '#2563eb', border: '#93c5fd', bg: '#eff6ff' },
+  transfer:      { color: '#2563eb', border: '#93c5fd', bg: '#eff6ff' },
+  alteracao:     { color: '#ca8a04', border: '#fde047', bg: '#fefce8' },
+  salary_change: { color: '#ca8a04', border: '#fde047', bg: '#fefce8' },
+  promocao:      { color: '#16a34a', border: '#86efac', bg: '#f0fdf4' },
+  promotion:     { color: '#16a34a', border: '#86efac', bg: '#f0fdf4' },
+  afastamento:   { color: '#9333ea', border: '#d8b4fe', bg: '#faf5ff' },
+  leave:         { color: '#9333ea', border: '#d8b4fe', bg: '#faf5ff' },
+  outros:        { color: '#4b5563', border: '#d1d5db', bg: '#f9fafb' },
+  other:         { color: '#4b5563', border: '#d1d5db', bg: '#f9fafb' },
+}
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; border: string; bg: string; icon: any }> = {
+  pendente:     { label: 'Pendente',     color: '#d97706', border: '#fcd34d', bg: '#fffbeb', icon: Clock       },
+  pending:      { label: 'Pendente',     color: '#d97706', border: '#fcd34d', bg: '#fffbeb', icon: Clock       },
+  em_andamento: { label: 'Em Andamento', color: '#2563eb', border: '#93c5fd', bg: '#eff6ff', icon: AlertCircle },
+  in_progress:  { label: 'Em Andamento', color: '#2563eb', border: '#93c5fd', bg: '#eff6ff', icon: AlertCircle },
+  concluido:    { label: 'Concluído',    color: '#16a34a', border: '#86efac', bg: '#f0fdf4', icon: CheckCircle },
+  completed:    { label: 'Concluído',    color: '#16a34a', border: '#86efac', bg: '#f0fdf4', icon: CheckCircle },
+  cancelado:    { label: 'Cancelado',    color: '#6b7280', border: '#d1d5db', bg: '#f9fafb', icon: X           },
+  cancelled:    { label: 'Cancelado',    color: '#6b7280', border: '#d1d5db', bg: '#f9fafb', icon: X           },
+}
+
+type View = 'dashboard' | 'movimentacoes' | 'setores' | 'usuarios'
+
+// ─────────────────────────────────────────────
+// ESTILOS
+// ─────────────────────────────────────────────
+const S = {
+  input: {
+    width: '100%', padding: '9px 12px', borderRadius: 9, fontSize: 13,
+    border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)',
+    outline: 'none', boxSizing: 'border-box' as const, transition: 'border-color 0.15s',
+    fontFamily: 'var(--font-body)',
+  } as React.CSSProperties,
+  label: {
+    display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text)',
+    marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: 0.6,
+  } as React.CSSProperties,
+  btnPrimary: {
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    padding: '9px 18px', borderRadius: 9, border: 'none',
+    background: 'var(--accent)', color: 'white',
+    fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-body)',
+  } as React.CSSProperties,
+  btnSecondary: {
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    padding: '9px 18px', borderRadius: 9, border: '1px solid var(--border)',
+    background: 'var(--surface)', color: 'var(--text)',
+    fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-body)',
+  } as React.CSSProperties,
+  iconBtn: {
+    background: 'none', border: 'none', cursor: 'pointer', padding: 6,
+    borderRadius: 7, color: 'var(--muted)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  } as React.CSSProperties,
+  overlay: {
+    position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+  } as React.CSSProperties,
+  modal: {
+    background: 'var(--surface)', borderRadius: 16, padding: 30,
+    width: '100%', maxHeight: '92vh', overflowY: 'auto' as const,
+    boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
+  } as React.CSSProperties,
+  card: {
+    background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24,
+  } as React.CSSProperties,
+  pageTitle:    { fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.4px' } as React.CSSProperties,
+  pageSubtitle: { color: 'var(--muted)', fontSize: 14, marginTop: 4 } as React.CSSProperties,
+}
+
+const focusAccent = (e: React.FocusEvent<any>) => { e.target.style.borderColor = 'var(--accent)' }
+const blurBorder  = (e: React.FocusEvent<any>) => { e.target.style.borderColor = 'var(--border)' }
+const getTipoLabel  = (t: string) => TIPO_LABELS[t]  || t
+const getTipoBadge  = (t: string) => TIPO_BADGE[t]   || TIPO_BADGE.outros
+const getStatusConf = (s: string) => STATUS_CONFIG[s] || STATUS_CONFIG.pendente
+
+// ─────────────────────────────────────────────
+// APP
+// ─────────────────────────────────────────────
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [movements, setMovements] = useState<Movement[]>([]);
-  const [view, setView] = useState('login');
-  const [selectedMovement, setSelectedMovement] = useState<Movement | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [activeTeamId, setActiveTeamId] = useState<string>('');
+  const [user,    setUser]    = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [view,    setView]    = useState<View>('dashboard')
 
   useEffect(() => {
-    if (currentUser) {
-      if (!activeTeamId && currentUser.team_ids.length > 0) {
-        setActiveTeamId(currentUser.team_ids[0]);
-      }
-      loadMovements();
+    const saved = localStorage.getItem(SESSION_KEY)
+    if (saved) {
+      try { setUser(JSON.parse(saved)); setView('dashboard') }
+      catch { localStorage.removeItem(SESSION_KEY) }
     }
-  }, [currentUser]);
+    setLoading(false)
+  }, [])
 
-  const loadMovements = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.from('movements').select('*').order('created_at', { ascending: false });
-      if (error) throw error;
-      setMovements(data || []);
-    } catch (error) {
-      console.error('Erro:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleLogin = async (email: string, password: string) => {
+    const { data, error } = await supabase
+      .from('users').select('*')
+      .eq('email', email.trim().toLowerCase()).eq('password', password).single()
+    if (error || !data) { alert('E-mail ou senha incorretos.'); return }
+    localStorage.setItem(SESSION_KEY, JSON.stringify(data))
+    setUser(data as User); setView('dashboard')
+  }
 
-  if (!currentUser) {
-    return <LoginComponent setCurrentUser={setCurrentUser} setView={setView} setActiveTeamId={setActiveTeamId} />;
+  const handleLogout = () => { localStorage.removeItem(SESSION_KEY); setUser(null) }
+
+  if (loading) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ width: 32, height: 32, border: '3px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
+        <p style={{ marginTop: 12, color: 'var(--muted)', fontSize: 14 }}>Carregando...</p>
+      </div>
+    </div>
+  )
+
+  if (!user) return <LoginScreen onLogin={handleLogin} />
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex' }}>
+      <Sidebar user={user} currentView={view} onNavigate={setView} onLogout={handleLogout} />
+      <main style={{ flex: 1, marginLeft: 252, padding: '36px 40px', minHeight: '100vh', animation: 'fadeIn 0.2s ease' }}>
+        {view === 'dashboard'     && <Dashboard user={user} onNavigate={setView} />}
+        {view === 'movimentacoes' && <GerenciarMovimentacoes user={user} />}
+        {view === 'setores'       && <GerenciarSetores user={user} />}
+        {view === 'usuarios'      && <GerenciarUsuarios user={user} />}
+      </main>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// LOGIN
+// ─────────────────────────────────────────────
+function LoginScreen({ onLogin }: { onLogin: (e: string, p: string) => void }) {
+  const [email, setEmail]       = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading]   = useState(false)
+
+  const submit = async () => {
+    if (!email || !password) { alert('Preencha e-mail e senha'); return }
+    setLoading(true); await onLogin(email, password); setLoading(false)
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <HeaderComponent currentUser={currentUser} setCurrentUser={setCurrentUser} setView={setView} activeTeamId={activeTeamId} />
-      <main className="max-w-7xl mx-auto px-4 py-6">
-        {view === 'dashboard' && (
-          <>
-            <TeamSelector currentUser={currentUser} activeTeamId={activeTeamId} setActiveTeamId={setActiveTeamId} />
-            <DashboardView currentUser={currentUser} movements={movements} loading={loading} loadMovements={loadMovements} setSelectedMovement={setSelectedMovement} setView={setView} activeTeamId={activeTeamId} />
-          </>
-        )}
-        {view === 'detail' && selectedMovement && (
-          <DetailView currentUser={currentUser} selectedMovement={selectedMovement} setView={setView} setSelectedMovement={setSelectedMovement} loadMovements={loadMovements} activeTeamId={activeTeamId} />
-        )}
-      </main>
-    </div>
-  );
-}
-
-function LoginComponent({ setCurrentUser, setView, setActiveTeamId }: any) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [loadingLogin, setLoadingLogin] = useState(false);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoadingLogin(true);
-    setError('');
-
-    try {
-      const { data, error } = await supabase.from('users').select('*').eq('email', email.toLowerCase()).eq('password', password).single();
-      if (error || !data) {
-        setError('Email ou senha incorretos');
-        return;
-      }
-      setCurrentUser(data);
-      if (data.team_ids && data.team_ids.length > 0) {
-        setActiveTeamId(data.team_ids[0]);
-      }
-      setView('dashboard');
-    } catch (err) {
-      setError('Erro ao fazer login');
-    } finally {
-      setLoadingLogin(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-            <Users className="w-8 h-8 text-blue-600" />
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+      <div style={{ ...S.card, width: '100%', maxWidth: 420, padding: '44px 40px' }}>
+        <div style={{ textAlign: 'center', marginBottom: 36 }}>
+          <div style={{ width: 54, height: 54, background: 'var(--accent)', borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
+            <Briefcase size={27} color="white" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Sistema de Movimentações</h1>
-          <p className="text-gray-600 mt-2">Gestão de Colaboradores</p>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 700, color: 'var(--text)' }}>RH Movimentações</h1>
+          <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 5 }}>Sistema de Movimentações Trabalhistas</p>
         </div>
-        <form onSubmit={handleLogin} className="space-y-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">E-mail</label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg" required disabled={loadingLogin} />
-            </div>
+            <label style={S.label}>E-mail</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="seu@email.com" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Senha</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-10 pr-12 py-2 border rounded-lg" required disabled={loadingLogin} />
-              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
-            </div>
+            <label style={S.label}>Senha</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              onKeyPress={e => e.key === 'Enter' && submit()}
+              placeholder="••••••••" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
           </div>
-          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4" />{error}</div>}
-          <button type="submit" disabled={loadingLogin} className="w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 disabled:bg-blue-400 flex items-center justify-center gap-2">
-            {loadingLogin ? <><Loader2 className="w-5 h-5 animate-spin" />Entrando...</> : 'Entrar'}
+          <button onClick={submit} disabled={loading}
+            style={{ ...S.btnPrimary, justifyContent: 'center', padding: '11px 18px', marginTop: 4, opacity: loading ? 0.75 : 1 }}>
+            {loading ? 'Entrando...' : 'Entrar'}
           </button>
-        </form>
+        </div>
       </div>
     </div>
-  );
+  )
 }
 
-function HeaderComponent({ currentUser, setCurrentUser, setView, activeTeamId }: any) {
-  const activeTeamName = currentUser.team_ids.map((id: string, index: number) => 
-    id === activeTeamId ? currentUser.team_names[index] : null
-  ).find((name: string | null) => name !== null);
+// ─────────────────────────────────────────────
+// SIDEBAR
+// ─────────────────────────────────────────────
+function Sidebar({ user, currentView, onNavigate, onLogout }: {
+  user: User; currentView: View; onNavigate: (v: View) => void; onLogout: () => void
+}) {
+  const isAdmin = user.role === 'admin'
+  const items = [
+    { id: 'dashboard',     label: 'Dashboard',        icon: BarChart3, show: true    },
+    { id: 'movimentacoes', label: 'Movimentações',     icon: Briefcase, show: true    },
+    { id: 'setores',       label: 'Setores & Emails',  icon: Mail,      show: isAdmin },
+    { id: 'usuarios',      label: 'Usuários',          icon: Shield,    show: isAdmin },
+  ].filter(i => i.show)
 
   return (
-    <header className="bg-white shadow">
-      <div className="max-w-7xl mx-auto px-4 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Users className="w-8 h-8 text-blue-600" />
-            <div>
-              <h1 className="text-2xl font-bold">Sistema de Movimentações</h1>
-              <p className="text-sm text-gray-600">Gestão de Colaboradores</p>
-            </div>
+    <aside style={{ position: 'fixed', top: 0, left: 0, width: 252, height: '100vh', background: 'var(--surface)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', zIndex: 100 }}>
+      <div style={{ padding: '22px 20px 20px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+          <div style={{ width: 36, height: 36, background: 'var(--accent)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Briefcase size={17} color="white" />
           </div>
-          <div className="flex items-center space-x-4">
-            <div className="text-right">
-              <p className="text-sm font-medium">{currentUser.name}</p>
-              <p className="text-xs text-gray-500">
-                {activeTeamName}
-                {currentUser.team_ids.length > 1 && ` (+${currentUser.team_ids.length - 1})`}
-              </p>
-            </div>
-            <button onClick={() => { setCurrentUser(null); setView('login'); }} className="text-gray-600 hover:text-gray-900">
-              <LogOut className="w-5 h-5" />
-            </button>
+          <div>
+            <p style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: 'var(--text)', lineHeight: 1.2 }}>RH Movimentações</p>
+            <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>Sistema Trabalhista</p>
           </div>
         </div>
       </div>
-    </header>
-  );
-}
-
-function ChangePasswordModal({ onClose }: { onClose: () => void }) {
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const handleChange = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    if (newPassword.length < 6) {
-      setError('A nova senha deve ter pelo menos 6 caracteres');
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setError('As senhas não coincidem');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      alert('Senha alterada com sucesso!');
-      onClose();
-    } catch (err) {
-      setError('Erro ao alterar senha');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl p-6 max-w-md w-full">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-bold">Alterar Senha</h3>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
-        </div>
-        <form onSubmit={handleChange} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Senha Atual</label>
-            <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Nova Senha</label>
-            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" required minLength={6} disabled={loading} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Confirmar Nova Senha</label>
-            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
-          </div>
-          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">{error}</div>}
-          <div className="flex gap-2">
-            <button type="submit" disabled={loading} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300">
-              {loading ? 'Alterando...' : 'Alterar Senha'}
+      <nav style={{ flex: 1, padding: '14px 10px', overflowY: 'auto' }}>
+        <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '0 10px 10px' }}>Menu</p>
+        {items.map(({ id, label, icon: Icon }) => {
+          const active = currentView === id
+          return (
+            <button key={id} onClick={() => onNavigate(id as View)} style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+              padding: '9px 12px', borderRadius: 9, border: 'none', cursor: 'pointer',
+              marginBottom: 2, textAlign: 'left', fontSize: 13,
+              fontWeight: active ? 700 : 400,
+              background: active ? 'var(--accent-light)' : 'transparent',
+              color: active ? 'var(--accent)' : 'var(--muted)',
+              transition: 'all 0.15s', fontFamily: 'var(--font-body)',
+            }}>
+              <Icon size={15} />
+              {label}
+              {active && <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block' }} />}
             </button>
-            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
-          </div>
-        </form>
+          )
+        })}
+      </nav>
+      <div style={{ padding: '12px 10px', borderTop: '1px solid var(--border)' }}>
+        <div style={{ padding: '6px 12px', marginBottom: 6 }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{user.name}</p>
+          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
+            {user.role === 'admin' ? 'Administrador' : user.role === 'viewer' ? 'Visualizador' : 'Usuário'}
+            {user.team_names && user.team_names.length > 0 && ` · ${user.team_names[0]}`}
+          </p>
+        </div>
+        <button onClick={onLogout} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 9, border: 'none', cursor: 'pointer', background: 'transparent', color: 'var(--muted)', fontSize: 13, fontFamily: 'var(--font-body)' }}>
+          <LogOut size={14} /> Sair
+        </button>
       </div>
-    </div>
-  );
+    </aside>
+  )
 }
 
-// Substitua a função RegisterUserModal no seu App.tsx por esta versão corrigida
+// ─────────────────────────────────────────────
+// DASHBOARD
+// ─────────────────────────────────────────────
+function Dashboard({ user, onNavigate }: { user: User; onNavigate: (v: View) => void }) {
+  const [stats, setStats] = useState({ total: 0, pendentes: 0, emAndamento: 0, concluidos: 0 })
 
-function RegisterUserModal({ onClose }: { onClose: () => void }) {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    role: 'team_member' as UserRole,
-    can_manage_demissoes: false,
-    can_manage_transferencias: false
-  });
-  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    if (!formData.name || !formData.email || !formData.password || selectedTeamIds.length === 0) {
-      setError('Preencha todos os campos obrigatórios');
-      return;
+  useEffect(() => {
+    // Se não for admin, filtra pelas equipes do usuário
+    let query = supabase.from('movements').select('status')
+    if (user.role !== 'admin' && user.team_ids && user.team_ids.length > 0) {
+      query = query.overlaps('selected_teams', user.team_ids)
     }
+    query.then(({ data }) => {
+      if (!data) return
+      setStats({
+        total:       data.length,
+        pendentes:   data.filter(m => ['pendente','pending'].includes(m.status)).length,
+        emAndamento: data.filter(m => ['em_andamento','in_progress'].includes(m.status)).length,
+        concluidos:  data.filter(m => ['concluido','completed'].includes(m.status)).length,
+      })
+    })
+  }, [])
 
-    if (formData.password.length < 6) {
-      setError('A senha deve ter pelo menos 6 caracteres');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const selectedTeamNames = selectedTeamIds.map(id => 
-        TEAMS.find(t => t.id === id)?.name || ''
-      );
-
-      // CORREÇÃO: Usar o método correto do Supabase para inserir arrays
-      const { error: insertError } = await supabase
-        .from('users')
-        .insert({
-          name: formData.name,
-          email: formData.email.toLowerCase(),
-          password: formData.password,
-          role: formData.role,
-          can_manage_demissoes: formData.can_manage_demissoes,
-          can_manage_transferencias: formData.can_manage_transferencias,
-          team_ids: selectedTeamIds,
-          team_names: selectedTeamNames
-        })
-        .select();
-
-      if (insertError) {
-        console.error('Erro ao inserir:', insertError);
-        
-        if (insertError.code === '23505') {
-          setError('Este email já está cadastrado');
-        } else if (insertError.message) {
-          setError(`Erro: ${insertError.message}`);
-        } else {
-          setError('Erro ao cadastrar usuário');
-        }
-        return;
-      }
-
-      alert('Usuário cadastrado com sucesso!');
-      onClose();
-    } catch (err: any) {
-      console.error('Erro geral:', err);
-      setError(`Erro ao cadastrar usuário: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const cards = [
+    { label: 'Total de Movimentações', value: stats.total,       icon: Briefcase,   color: '#6366f1', bg: '#eef2ff' },
+    { label: 'Pendentes',              value: stats.pendentes,   icon: Clock,       color: '#d97706', bg: '#fffbeb' },
+    { label: 'Em Andamento',           value: stats.emAndamento, icon: AlertCircle, color: '#2563eb', bg: '#eff6ff' },
+    { label: 'Concluídas',             value: stats.concluidos,  icon: CheckCircle, color: '#16a34a', bg: '#f0fdf4' },
+  ]
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-4 sticky top-0 bg-white pb-3 border-b">
-          <h3 className="text-lg font-bold">Cadastrar Novo Usuário</h3>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-900 text-xl">✕</button>
-        </div>
-        <form onSubmit={handleRegister} className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label>
-            <input 
-              type="text" 
-              value={formData.name} 
-              onChange={(e) => setFormData({...formData, name: e.target.value})} 
-              className="w-full border rounded-lg px-3 py-2 text-sm" 
-              required 
-              disabled={loading} 
-            />
-          </div>
-          
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">E-mail *</label>
-              <input 
-                type="email" 
-                value={formData.email} 
-                onChange={(e) => setFormData({...formData, email: e.target.value})} 
-                className="w-full border rounded-lg px-3 py-2 text-sm" 
-                required 
-                disabled={loading} 
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Senha *</label>
-              <input 
-                type="password" 
-                value={formData.password} 
-                onChange={(e) => setFormData({...formData, password: e.target.value})} 
-                className="w-full border rounded-lg px-3 py-2 text-sm" 
-                required 
-                minLength={6} 
-                placeholder="Mínimo 6 caracteres" 
-                disabled={loading} 
-              />
-            </div>
-          </div>
-          
-          <div className="border-t pt-3">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Equipes * ({selectedTeamIds.length} selecionada{selectedTeamIds.length !== 1 ? 's' : ''})
-            </label>
-            {selectedTeamIds.length === 0 && (
-              <p className="text-xs text-red-600 mb-2">⚠️ Selecione pelo menos uma equipe</p>
-            )}
-            <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto border rounded-lg p-2 bg-gray-50">
-              {TEAMS.map(t => (
-                <label 
-                  key={t.id} 
-                  className={`flex items-center gap-2 p-2 border rounded cursor-pointer transition text-xs ${
-                    selectedTeamIds.includes(t.id) 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                >
-                  <input 
-                    type="checkbox" 
-                    checked={selectedTeamIds.includes(t.id)} 
-                    onChange={() => {
-                      setSelectedTeamIds(prev => 
-                        prev.includes(t.id) 
-                          ? prev.filter(id => id !== t.id) 
-                          : [...prev, t.id]
-                      );
-                    }}
-                    className="w-3 h-3" 
-                    disabled={loading}
-                  />
-                  <span className="text-xs">{t.name}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="border-t pt-3">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Usuário *</label>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="flex items-start gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
-                <input 
-                  type="radio" 
-                  name="role" 
-                  value="team_member" 
-                  checked={formData.role === 'team_member'} 
-                  onChange={(e) => setFormData({ 
-                    ...formData, 
-                    role: e.target.value as UserRole, 
-                    can_manage_demissoes: false, 
-                    can_manage_transferencias: false 
-                  })} 
-                  className="w-4 h-4 mt-0.5" 
-                  disabled={loading} 
-                />
-                <div>
-                  <p className="font-medium text-sm">Membro da Equipe</p>
-                  <p className="text-xs text-gray-600">Responde movimentações</p>
-                </div>
-              </label>
-              <label className="flex items-start gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
-                <input 
-                  type="radio" 
-                  name="role" 
-                  value="admin" 
-                  checked={formData.role === 'admin'} 
-                  onChange={(e) => setFormData({...formData, role: e.target.value as UserRole})} 
-                  className="w-4 h-4 mt-0.5" 
-                  disabled={loading} 
-                />
-                <div>
-                  <p className="font-medium text-sm">Administrador</p>
-                  <p className="text-xs text-gray-600">Cria e gerencia</p>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          {formData.role === 'admin' && (
-            <div className="border-t pt-3">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Permissões</label>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
-                  <input 
-                    type="checkbox" 
-                    checked={formData.can_manage_demissoes} 
-                    onChange={(e) => setFormData({...formData, can_manage_demissoes: e.target.checked})} 
-                    className="w-4 h-4" 
-                    disabled={loading} 
-                  />
-                  <span className="text-sm">Demissões</span>
-                </label>
-                <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
-                  <input 
-                    type="checkbox" 
-                    checked={formData.can_manage_transferencias} 
-                    onChange={(e) => setFormData({...formData, can_manage_transferencias: e.target.checked})} 
-                    className="w-4 h-4" 
-                    disabled={loading} 
-                  />
-                  <span className="text-sm">Transferências/Alterações</span>
-                </label>
+    <div>
+      <div style={{ marginBottom: 32 }}>
+        <h2 style={S.pageTitle}>Olá, {user.name.split(' ')[0]} 👋</h2>
+        <p style={S.pageSubtitle}>
+          {user.role === 'admin' ? 'Visão geral de todas as movimentações' : `Movimentações das suas equipes`}
+        </p>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 28 }}>
+        {cards.map(({ label, value, icon: Icon, color, bg }, i) => (
+          <div key={i} style={S.card}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <p style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500, marginBottom: 10 }}>{label}</p>
+                <p style={{ fontSize: 34, fontWeight: 700, color: 'var(--text)', fontFamily: 'var(--font-display)', lineHeight: 1 }}>{value}</p>
+              </div>
+              <div style={{ width: 42, height: 42, borderRadius: 11, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon size={19} color={color} />
               </div>
             </div>
-          )}
-
-          {error && (
-            <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">
-              {error}
-            </div>
-          )}
-          
-          <div className="flex gap-2 pt-2 sticky bottom-0 bg-white border-t mt-3">
-            <button 
-              type="submit" 
-              disabled={loading || selectedTeamIds.length === 0} 
-              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 flex items-center justify-center gap-2 text-sm"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Cadastrando...
-                </>
-              ) : (
-                'Cadastrar Usuário'
-              )}
-            </button>
-            <button 
-              type="button" 
-              onClick={onClose} 
-              className="px-6 py-2 bg-gray-300 rounded-lg hover:bg-gray-400 text-sm"
-              disabled={loading}
-            >
-              Cancelar
-            </button>
           </div>
-        </form>
+        ))}
       </div>
+      {stats.pendentes > 0 && (
+        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <AlertCircle size={18} color="#d97706" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontWeight: 700, color: '#92400e', fontSize: 14 }}>
+              {stats.pendentes} movimentaç{stats.pendentes !== 1 ? 'ões' : 'ão'} pendente{stats.pendentes !== 1 ? 's' : ''}
+            </p>
+            <p style={{ fontSize: 12, color: '#b45309', marginTop: 2 }}>Requerem atenção ou atualização de status</p>
+          </div>
+          <button onClick={() => onNavigate('movimentacoes')}
+            style={{ background: '#d97706', color: 'white', border: 'none', borderRadius: 9, padding: '8px 18px', fontSize: 13, cursor: 'pointer', fontWeight: 700, flexShrink: 0, fontFamily: 'var(--font-body)' }}>
+            Ver Todas
+          </button>
+        </div>
+      )}
     </div>
-  );
+  )
 }
 
-function DashboardView({ currentUser, movements, loading, loadMovements, setSelectedMovement, setView, activeTeamId }: any) {
-  const [showNewMovement, setShowNewMovement] = useState(false);
-  const [showChangePassword, setShowChangePassword] = useState(false);
-  const [showRegisterUser, setShowRegisterUser] = useState(false);
-  const [movementType, setMovementType] = useState<MovementType | null>(null);
-  const [formData, setFormData] = useState<any>({});
-  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
-  const [loadingCreate, setLoadingCreate] = useState(false);
-  const [filterType, setFilterType] = useState<MovementType | 'all'>('all');
-  const [showCompleted, setShowCompleted] = useState(false);
+// ─────────────────────────────────────────────
+// MOVIMENTAÇÕES — usa tabela movements (existente)
+// ─────────────────────────────────────────────
+function GerenciarMovimentacoes({ user }: { user: User }) {
+  const [movs,         setMovs]         = useState<Movimentacao[]>([])
+  const [teams,        setTeams]        = useState<Team[]>([])
+  const [setores,      setSetores]      = useState<Setor[]>([])
+  const [showForm,     setShowForm]     = useState(false)
+  const [detalhe,      setDetalhe]      = useState<Movimentacao | null>(null)
+  const [filtroStatus, setFiltroStatus] = useState('todos')
+  const [filtroTipo,   setFiltroTipo]   = useState('todos')
+  const [enviando,     setEnviando]     = useState(false)
+  const [form, setForm] = useState({
+    employee_name: '', type: 'demissao', deadline: '',
+    observation: '', selected_teams: [] as string[],
+    setores_ids: [] as string[],
+    details: {} as any, checklist: [] as any[],
+  })
 
-  const isAdmin = currentUser?.role === 'admin';
-  const canCreateDemissao = isAdmin && currentUser?.can_manage_demissoes;
-  const canCreateTransferencia = isAdmin && currentUser?.can_manage_transferencias;
+  const isAdmin   = user.role === 'admin'
+  const canCreate = user.role === 'admin' || user.role === 'user'
 
-  const isOverdue = (deadline?: string | null) => {
-    if (!deadline) return false;
-    return new Date(deadline) < new Date();
-  };
+  useEffect(() => { loadAll() }, [])
 
-  const getProgress = (m: Movement) => {
-    const completed = m.selected_teams.filter(t => m.responses[t]?.status === 'completed').length;
-    return { completed, total: m.selected_teams.length, percentage: m.selected_teams.length > 0 ? (completed / m.selected_teams.length) * 100 : 0 };
-  };
+  const loadAll = async () => {
+    // Carrega teams, setores e movimentações em paralelo
+    const [{ data: t }, { data: s }] = await Promise.all([
+      supabase.from('teams').select('*').order('name'),
+      supabase.from('setores').select('*').eq('ativo', true).order('nome'),
+    ])
+    if (t) setTeams(t)
+    if (s) setSetores(s)
 
-  const handleCreate = async () => {
-    if (!formData.employeeName?.trim() || selectedTeams.length === 0) {
-      alert('Preencha os campos obrigatórios');
-      return;
+    // Movimentações — se não for admin, filtra pelas equipes do usuário
+    let q = supabase.from('movements')
+      .select('*, team_responses(*, teams(name, email)), movimentacoes_setores(setor_id, setores(nome))')
+      .order('created_at', { ascending: false })
+
+    if (user.role !== 'admin' && user.team_ids && user.team_ids.length > 0) {
+      q = q.overlaps('selected_teams', user.team_ids)
     }
 
-    setLoadingCreate(true);
+    const { data: m } = await q
+    if (m) setMovs(m as Movimentacao[])
+  }
+
+  const toggleItem = (arr: string[], id: string) =>
+    arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id]
+
+  const resetForm = () => {
+    setForm({ employee_name: '', type: 'demissao', deadline: '', observation: '', selected_teams: [], setores_ids: [], details: {}, checklist: [] })
+    setShowForm(false)
+  }
+
+  const salvar = async () => {
+    if (!form.employee_name.trim()) { alert('Informe o nome do colaborador'); return }
+    if (form.selected_teams.length === 0) { alert('Selecione pelo menos uma equipe'); return }
+
+    const { data: mov, error } = await supabase.from('movements').insert({
+      employee_name:  form.employee_name.trim(),
+      type:           form.type,
+      deadline:       form.deadline || null,
+      observation:    form.observation || null,
+      selected_teams: form.selected_teams,
+      setores_ids:    form.setores_ids,
+      status:         'pendente',
+      created_by:     user.id,
+      details:        form.details || {},
+      checklist:      form.checklist || [],
+      responses:      {},
+    }).select().single()
+
+    if (error || !mov) { alert('Erro ao salvar: ' + error?.message); return }
+
+    // Relação movement_teams
+    if (form.selected_teams.length > 0) {
+      await supabase.from('movement_teams').insert(
+        form.selected_teams.map(tid => ({ movement_id: mov.id, team_id: tid }))
+      )
+    }
+
+    // Relação movimentacoes_setores (para emails)
+    if (form.setores_ids.length > 0) {
+      await supabase.from('movimentacoes_setores').insert(
+        form.setores_ids.map(sid => ({ movimentacao_id: mov.id, setor_id: sid }))
+      )
+    }
+
+    // Enviar notificações via Make.com
+    setEnviando(true)
     try {
-      const responsesObj = selectedTeams.reduce((acc, teamId) => ({ ...acc, [teamId]: { status: 'pending', checklist: {}, attachments: [] } }), {});
-      
-      const detailsWithObservation = {
-        ...formData,
-        observation: formData.observation || ''
-      };
-      
-      const newMovement: any = {
-        type: movementType!,
-        employee_name: formData.employeeName,
-        selected_teams: selectedTeams,
-        status: 'pending' as const,
-        responses: responsesObj,
-        created_by: currentUser?.name || '',
-        details: detailsWithObservation
-      };
+      const { data: emailsData } = await supabase
+        .from('emails_setor').select('*, setores(nome)')
+        .in('setor_id', form.setores_ids).eq('ativo', true)
 
-      if (formData.deadline) {
-        newMovement.deadline = formData.deadline;
-      }
+      if (emailsData && emailsData.length > 0) {
+        const teamsNomes  = teams.filter(t => form.selected_teams.includes(t.id)).map(t => t.name)
+        const setoresNomes = setores.filter(s => form.setores_ids.includes(s.id)).map(s => s.nome)
+        const tipoLabel   = getTipoLabel(form.type)
+        const prazoFmt    = form.deadline ? new Date(form.deadline + 'T00:00:00').toLocaleDateString('pt-BR') : null
 
-      const { error } = await supabase.from('movements').insert([newMovement]);
-      if (error) throw error;
-
-      const { data: usersData } = await supabase
-        .from('users')
-        .select('email, name, team_ids, team_names')
-        .overlaps('team_ids', selectedTeams);
-
-      if (usersData && usersData.length > 0) {
-        const expandedRecipients = usersData.flatMap((user: any) => 
-          user.team_ids
-            .map((teamId: string, index: number) => {
-              if (selectedTeams.includes(teamId)) {
-                return {
-                  email: user.email,
-                  name: user.name,
-                  team_id: teamId,
-                  team_name: user.team_names[index]
-                };
-              }
-              return null;
-            })
-            .filter((item: any) => item !== null)
-        );
-
-        fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
+        await fetch(WEBHOOK_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'movement_created',
             movement: {
-              employee_name: formData.employeeName,
-              type: movementType!,
-              movimento_tipo: MOVEMENT_TYPES[movementType as MovementType].label,
-              created_by: currentUser?.name || '',
-              deadline: formData.deadline,
-              selected_teams: selectedTeams
+              id:             mov.id,
+              employee_name:  mov.employee_name,
+              type:           mov.type,
+              tipo_label:     tipoLabel,
+              // Título do email: "Demissão do colaborador João Silva"
+              email_subject:  `${tipoLabel} do colaborador ${mov.employee_name}`,
+              deadline:       mov.deadline,
+              deadline_fmt:   prazoFmt,
+              observation:    mov.observation,
+              status:         mov.status,
+              teams:          teamsNomes,
+              setores:        setoresNomes,
+              created_by:     user.name,
+              // Link para resposta — ajuste a URL conforme seu domínio
+              response_link:  `${window.location.origin}/responder/${mov.id}`,
             },
-            recipients: expandedRecipients,
-            email_type: 'created'
-          })
-        }).catch(e => console.error('Webhook erro:', e));
+            recipients: emailsData.map((e: any) => ({
+              email:      e.email,
+              name:       e.nome,
+              setor_name: e.setores?.nome,
+            })),
+            email_type: 'criada',
+          }),
+        })
       }
+    } catch (err) { console.error('Erro webhook:', err) }
+    setEnviando(false)
 
-      alert('Movimentação criada!');
-      await loadMovements();
-      setShowNewMovement(false);
-      setMovementType(null);
-      setFormData({});
-      setSelectedTeams([]);
-    } catch (err: any) {
-      alert(`Erro: ${err.message}`);
-    } finally {
-      setLoadingCreate(false);
+    resetForm(); loadAll()
+    alert('Movimentação criada e notificações enviadas!')
+  }
+
+  const atualizarStatus = async (id: string, status: string) => {
+    await supabase.from('movements').update({ status }).eq('id', id)
+    loadAll(); setDetalhe(d => d ? { ...d, status } : null)
+  }
+
+  const excluir = async (id: string) => {
+    if (!confirm('Excluir esta movimentação?')) return
+    await supabase.from('movement_teams').delete().eq('movement_id', id)
+    await supabase.from('team_responses').delete().eq('movement_id', id)
+    await supabase.from('movimentacoes_setores').delete().eq('movimentacao_id', id)
+    await supabase.from('movements').delete().eq('id', id)
+    loadAll(); setDetalhe(null)
+  }
+
+  const diasRestantes = (d?: string) => {
+    if (!d) return null
+    return Math.ceil((new Date(d + 'T00:00:00').getTime() - new Date().setHours(0,0,0,0)) / 86400000)
+  }
+
+  const filtradas = movs.filter(m => {
+    if (filtroStatus !== 'todos') {
+      const sc = getStatusConf(m.status)
+      if (filtroStatus === 'pendente'     && !['pendente','pending'].includes(m.status))       return false
+      if (filtroStatus === 'em_andamento' && !['em_andamento','in_progress'].includes(m.status)) return false
+      if (filtroStatus === 'concluido'    && !['concluido','completed'].includes(m.status))    return false
+      if (filtroStatus === 'cancelado'    && !['cancelado','cancelled'].includes(m.status))    return false
     }
-  };
-
-  const myMovs = movements.filter((m: Movement) => {
-    if (isAdmin) {
-      return m.created_by === currentUser?.name || m.selected_teams.some((t: string) => currentUser?.team_ids.includes(t));
-    }
-    return m.selected_teams.includes(activeTeamId);
-  });
-  
-  const pending = myMovs.filter((m: Movement) => {
-    if (m.created_by === currentUser?.name && !m.selected_teams.includes(activeTeamId)) {
-      return m.status !== 'completed';
-    }
-    return m.responses[activeTeamId]?.status === 'pending';
-  });
-  
-  const completed = myMovs.filter((m: Movement) => {
-    if (m.created_by === currentUser?.name && !m.selected_teams.includes(activeTeamId)) {
-      return m.status === 'completed';
-    }
-    return m.responses[activeTeamId]?.status === 'completed';
-  });
-
-  const getFilteredMovements = () => {
-    let filtered = showCompleted ? completed : pending;
-    
-    if (filterType !== 'all') {
-      filtered = filtered.filter((m: Movement) => m.type === filterType);
-    }
-    
-    return filtered;
-  };
-
-  const filteredMovements = getFilteredMovements();
-
-  const isDashboardReminderActive = () => {
-    const today = new Date();
-    const day = today.getDate();
-    return day >= 15 && day <= 20;
-  };
-
-  const getCountByType = (type: MovementType, includeCompleted: boolean = false) => {
-    const movs = includeCompleted ? myMovs : pending;
-    return movs.filter((m: Movement) => m.type === type).length;
-  };
-
-  const isPost20th = () => {
-    const today = new Date();
-    return today.getDate() > 20;
-  };
+    if (filtroTipo !== 'todos' && m.type !== filtroTipo) return false
+    return true
+  })
 
   return (
     <div>
-      {isDashboardReminderActive() && (
-        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded">
-          <AlertCircle className="w-5 h-5 text-blue-600 inline mr-2" />
-          <span className="font-medium text-blue-800">
-            Lembrete: Para garantir o processamento no mesmo mês, faça o cadastro das movimentações até o dia 20. Cadastros após essa data podem seguir para o mês seguinte.
-          </span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32 }}>
+        <div>
+          <h2 style={S.pageTitle}>Movimentações</h2>
+          <p style={S.pageSubtitle}>
+            {isAdmin ? 'Todas as movimentações trabalhistas' : 'Movimentações das suas equipes'}
+          </p>
         </div>
-      )}
-      {pending.length > 0 && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded">
-          <Clock className="w-5 h-5 text-yellow-600 inline mr-2" />
-          <span className="font-medium text-yellow-800">Você tem {pending.length} movimentação(ões) pendente(s) de parecer</span>
-        </div>
-      )}
-
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">Dashboard - {showCompleted ? 'Respondidas' : 'Pendentes'}</h2>
-          <div className="flex gap-2">
-            {isAdmin && <button onClick={() => setShowRegisterUser(true)} className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm"><UserPlus className="w-4 h-4" />Cadastrar</button>}
-            <button onClick={() => setShowChangePassword(true)} className="flex items-center gap-2 px-3 py-2 border rounded-lg text-sm"><Settings className="w-4 h-4" />Senha</button>
-          </div>
-        </div>
-
-        {(canCreateDemissao || canCreateTransferencia) && (
-          <div className="mb-6 pb-6 border-b">
-            <h3 className="font-semibold mb-3">Nova Movimentação</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {canCreateDemissao && (
-                <button onClick={() => { setShowNewMovement(true); setMovementType('demissao'); }} className="p-4 border-2 border-red-200 rounded-lg hover:bg-red-50">
-                  <UserX className="w-8 h-8 text-red-600 mx-auto mb-2" />
-                  <p className="text-sm font-medium">Demissão</p>
-                </button>
-              )}
-              {canCreateTransferencia && (
-                <>
-                  <button onClick={() => { setShowNewMovement(true); setMovementType('transferencia'); }} className="p-4 border-2 border-blue-200 rounded-lg hover:bg-blue-50">
-                    <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-                    <p className="text-sm font-medium">Transferência</p>
-                  </button>
-                  <button onClick={() => { setShowNewMovement(true); setMovementType('alteracao'); }} className="p-4 border-2 border-green-200 rounded-lg hover:bg-green-50">
-                    <TrendingUp className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                    <p className="text-sm font-medium">Alteração</p>
-                  </button>
-                  <button onClick={() => { setShowNewMovement(true); setMovementType('promocao'); }} className="p-4 border-2 border-purple-200 rounded-lg hover:bg-purple-50">
-                    <TrendingUp className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-                    <p className="text-sm font-medium">Promoção</p>
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => setShowCompleted(false)}
-            className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${
-              !showCompleted 
-                ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-400' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            ⏳ Pendentes ({pending.length})
-          </button>
-          <button
-            onClick={() => setShowCompleted(true)}
-            className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${
-              showCompleted 
-                ? 'bg-green-100 text-green-800 border-2 border-green-400' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            ✓ Respondidas ({completed.length})
-          </button>
-        </div>
-
-        <div className="mb-6">
-          <h3 className="font-semibold mb-3">Filtrar por Tipo</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <button
-              onClick={() => setFilterType('all')}
-              className={`p-3 border-2 rounded-lg transition ${
-                filterType === 'all'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <div className="text-center">
-                <p className="text-2xl font-bold">{showCompleted ? completed.length : pending.length}</p>
-                <p className="text-xs font-medium mt-1">Todas</p>
-              </div>
-            </button>
-            
-            <button
-              onClick={() => setFilterType('demissao')}
-              className={`p-3 border-2 rounded-lg transition ${
-                filterType === 'demissao'
-                  ? 'border-red-500 bg-red-50 text-red-700'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <div className="text-center">
-                <UserX className="w-6 h-6 mx-auto mb-1 text-red-600" />
-                <p className="text-xl font-bold">{getCountByType('demissao', showCompleted)}</p>
-                <p className="text-xs font-medium">Demissões</p>
-              </div>
-            </button>
-
-            <button
-              onClick={() => setFilterType('transferencia')}
-              className={`p-3 border-2 rounded-lg transition ${
-                filterType === 'transferencia'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <div className="text-center">
-                <Users className="w-6 h-6 mx-auto mb-1 text-blue-600" />
-                <p className="text-xl font-bold">{getCountByType('transferencia', showCompleted)}</p>
-                <p className="text-xs font-medium">Transferências</p>
-              </div>
-            </button>
-
-            <button
-              onClick={() => setFilterType('alteracao')}
-              className={`p-3 border-2 rounded-lg transition ${
-                filterType === 'alteracao'
-                  ? 'border-green-500 bg-green-50 text-green-700'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <div className="text-center">
-                <TrendingUp className="w-6 h-6 mx-auto mb-1 text-green-600" />
-                <p className="text-xl font-bold">{getCountByType('alteracao', showCompleted)}</p>
-                <p className="text-xs font-medium">Alterações</p>
-              </div>
-            </button>
-
-            <button
-              onClick={() => setFilterType('promocao')}
-              className={`p-3 border-2 rounded-lg transition ${
-                filterType === 'promocao'
-                  ? 'border-purple-500 bg-purple-50 text-purple-700'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <div className="text-center">
-                <TrendingUp className="w-6 h-6 mx-auto mb-1 text-purple-600" />
-                <p className="text-xl font-bold">{getCountByType('promocao', showCompleted)}</p>
-                <p className="text-xs font-medium">Promoções</p>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        <h3 className="font-semibold mb-3">
-          {filterType === 'all' 
-            ? `Todas as Movimentações ${showCompleted ? 'Respondidas' : 'Pendentes'}`
-            : `${MOVEMENT_TYPES[filterType as MovementType].label} ${showCompleted ? 'Respondidas' : 'Pendentes'}`
-          } ({filteredMovements.length})
-        </h3>
-        
-        {loading ? (
-          <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
-        ) : (
-          <div className="space-y-3">
-            {filteredMovements.map((m: Movement) => {
-              const Icon = MOVEMENT_TYPES[m.type as MovementType].icon;
-              const prog = getProgress(m);
-              const myResp = m.responses[activeTeamId];
-              const overdue = isOverdue(m.deadline);
-
-              return (
-                <div key={m.id} className={`border rounded-lg p-4 hover:bg-gray-50 cursor-pointer ${overdue && !showCompleted ? 'border-red-300 bg-red-50' : ''}`} onClick={() => { setSelectedMovement(m); setView('detail'); }}>
-                  <div className="flex justify-between mb-2">
-                    <div className="flex items-center gap-3">
-                      <Icon className="w-6 h-6" />
-                      <div>
-                        <h3 className="font-semibold">{m.employee_name}</h3>
-                        <p className="text-sm text-gray-600">{MOVEMENT_TYPES[m.type as MovementType].label}</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      {m.deadline && <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${overdue && !showCompleted ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}><Clock className="w-3 h-3" />{new Date(m.deadline).toLocaleDateString('pt-BR')}</span>}
-                      <span className={`text-xs px-2 py-1 rounded ${myResp?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{myResp?.status === 'completed' ? '✓' : '⏳'}</span>
-                    </div>
-                  </div>
-                  <div className="text-sm text-gray-600 mb-2">Progresso geral: {prog.completed}/{prog.total} equipes</div>
-                  <div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-blue-600 h-2 rounded-full" style={{ width: `${prog.percentage}%` }}></div></div>
-                </div>
-              );
-            })}
-            {filteredMovements.length === 0 && (
-              <div className="text-center py-12 bg-gray-50 rounded-lg">
-                <p className="text-gray-500 text-lg">
-                  {showCompleted 
-                    ? '🎉 Nenhuma movimentação respondida ainda'
-                    : '✅ Nenhuma movimentação pendente'
-                  }
-                </p>
-                <p className="text-gray-400 text-sm mt-2">
-                  {showCompleted 
-                    ? 'Quando você responder movimentações, elas aparecerão aqui'
-                    : 'Você está em dia com todas as suas tarefas!'
-                  }
-                </p>
-              </div>
-            )}
-          </div>
-        )}
+        {canCreate && <button onClick={() => setShowForm(true)} style={S.btnPrimary}><Plus size={14} /> Nova Movimentação</button>}
       </div>
 
-      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
-      {showRegisterUser && <RegisterUserModal onClose={() => setShowRegisterUser(false)} />}
-      {showNewMovement && movementType && (
-        <NewMovementModal
-          movementType={movementType}
-          formData={formData}
-          setFormData={setFormData}
-          selectedTeams={selectedTeams}
-          setSelectedTeams={setSelectedTeams}
-          loading={loadingCreate}
-          onClose={() => { setShowNewMovement(false); setMovementType(null); setFormData({}); setSelectedTeams([]); }}
-          onSubmit={handleCreate}
-          isPost20th={isPost20th}
+      {/* ── MODAL NOVA MOVIMENTAÇÃO ── */}
+      {showForm && (
+        <div style={S.overlay} onClick={e => e.target === e.currentTarget && resetForm()}>
+          <div style={{ ...S.modal, maxWidth: 640 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>Nova Movimentação</h3>
+              <button onClick={resetForm} style={S.iconBtn}><X size={19} /></button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Nome do colaborador */}
+              <div>
+                <label style={S.label}>Nome do Colaborador *</label>
+                <input value={form.employee_name} onChange={e => setForm({ ...form, employee_name: e.target.value })}
+                  placeholder="Nome completo do colaborador" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                {/* Tipo */}
+                <div>
+                  <label style={S.label}>Tipo de Movimentação *</label>
+                  <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}
+                    style={S.input} onFocus={focusAccent} onBlur={blurBorder}>
+                    <option value="demissao">Demissão</option>
+                    <option value="transferencia">Transferência</option>
+                    <option value="alteracao">Alteração Salarial</option>
+                    <option value="promocao">Promoção</option>
+                    <option value="afastamento">Afastamento</option>
+                    <option value="outros">Outros</option>
+                  </select>
+                </div>
+                {/* Prazo */}
+                <div>
+                  <label style={S.label}>Prazo de Resposta</label>
+                  <input type="date" value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })}
+                    style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+                </div>
+              </div>
+
+              {/* Observação */}
+              <div>
+                <label style={S.label}>Observações / Detalhes</label>
+                <textarea value={form.observation} onChange={e => setForm({ ...form, observation: e.target.value })}
+                  rows={3} placeholder="Informações adicionais sobre esta movimentação..."
+                  style={{ ...S.input, resize: 'vertical' }} onFocus={focusAccent} onBlur={blurBorder} />
+              </div>
+
+              {/* Equipes */}
+              <div>
+                <label style={S.label}>
+                  Equipes Envolvidas *{' '}
+                  <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>
+                    — as equipes que devem responder a esta movimentação
+                  </span>
+                </label>
+                {teams.length === 0 ? (
+                  <p style={{ fontSize: 13, color: 'var(--muted)', padding: 12, background: 'var(--bg)', borderRadius: 9, border: '1px solid var(--border)' }}>Nenhuma equipe cadastrada.</p>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+                    {teams.map(t => {
+                      const sel = form.selected_teams.includes(t.id)
+                      return (
+                        <button key={t.id} onClick={() => setForm(f => ({ ...f, selected_teams: toggleItem(f.selected_teams, t.id) }))}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${sel ? 'var(--accent)' : 'var(--border)'}`, background: sel ? 'var(--accent-light)' : 'var(--bg)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', fontFamily: 'var(--font-body)' }}>
+                          <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? 'var(--accent)' : '#d1d5db'}`, background: sel ? 'var(--accent)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            {sel && <CheckCircle size={11} color="white" />}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{ fontSize: 13, fontWeight: sel ? 700 : 400, color: sel ? 'var(--accent)' : 'var(--text)', lineHeight: 1.2 }}>{t.name}</p>
+                            {t.code && <p style={{ fontSize: 11, color: 'var(--muted)' }}>{t.code}</p>}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Setores para email */}
+              <div>
+                <label style={S.label}>
+                  Setores para Notificação por E-mail{' '}
+                  <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>
+                    — os e-mails de cada setor selecionado serão notificados via Make.com
+                  </span>
+                </label>
+                {setores.length === 0 ? (
+                  <div style={{ padding: 12, background: '#fef9c3', border: '1px solid #fde047', borderRadius: 9 }}>
+                    <p style={{ fontSize: 13, color: '#854d0e' }}>
+                      ⚠️ Nenhum setor cadastrado. Acesse <strong>Setores & Emails</strong> para criar setores.
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+                    {setores.map(s => {
+                      const sel = form.setores_ids.includes(s.id)
+                      return (
+                        <button key={s.id} onClick={() => setForm(f => ({ ...f, setores_ids: toggleItem(f.setores_ids, s.id) }))}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${sel ? '#16a34a' : 'var(--border)'}`, background: sel ? '#f0fdf4' : 'var(--bg)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', fontFamily: 'var(--font-body)' }}>
+                          <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? '#16a34a' : '#d1d5db'}`, background: sel ? '#16a34a' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            {sel && <Mail size={10} color="white" />}
+                          </div>
+                          <span style={{ fontSize: 13, fontWeight: sel ? 700 : 400, color: sel ? '#16a34a' : 'var(--text)' }}>{s.nome}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 24, justifyContent: 'flex-end' }}>
+              <button onClick={resetForm} style={S.btnSecondary}>Cancelar</button>
+              <button onClick={salvar} disabled={enviando} style={{ ...S.btnPrimary, opacity: enviando ? 0.75 : 1 }}>
+                {enviando ? 'Enviando...' : <><Send size={13} /> Criar & Notificar</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL DETALHE ── */}
+      {detalhe && (
+        <DetalheModal
+          mov={detalhe} teams={teams} isAdmin={isAdmin}
+          onClose={() => setDetalhe(null)}
+          onStatusChange={atualizarStatus}
+          onDelete={excluir}
         />
       )}
-    </div>
-  );
-}
 
-function NewMovementModal({ movementType, formData, setFormData, selectedTeams, setSelectedTeams, loading, onClose, onSubmit, isPost20th }: any) {
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-xl max-w-2xl w-full my-8 p-6">
-        <div className="flex justify-between mb-6">
-          <h2 className="text-xl font-bold">Nova {MOVEMENT_TYPES[movementType as MovementType].label}</h2>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
+      {/* ── FILTROS ── */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Filter size={13} color="var(--muted)" />
+          <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Filtros:</span>
         </div>
-        {isPost20th() && ['transferencia', 'alteracao', 'promocao'].includes(movementType) && (
-          <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6 rounded">
-            <AlertCircle className="w-5 h-5 text-red-600 inline mr-2" />
-            <span className="font-medium text-red-800">
-              Lembrete: Movimentações cadastradas após o dia 20 podem ser processadas no mês seguinte.
-            </span>
-          </div>
-        )}
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Colaborador *</label>
-            <input type="text" placeholder="Digite o nome completo" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, employeeName: e.target.value})} />
-          </div>
-
-          {movementType === 'demissao' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Data do Desligamento</label>
-                <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, dismissalDate: e.target.value})} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Empresa/Coligada</label>
-                <input type="text" placeholder="Nome da empresa" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, company: e.target.value})} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Setor</label>
-                <input type="text" placeholder="Setor do colaborador" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, sector: e.target.value})} />
-              </div>
-            </>
-          )}
-
-          {movementType !== 'demissao' && (
-            <>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Setor Atual</label>
-                  <input type="text" placeholder="Setor atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldSector: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Setor Destino</label>
-                  <input type="text" placeholder="Novo setor" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newSector: e.target.value})} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Função Atual</label>
-                  <input type="text" placeholder="Função atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldPosition: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Função Destino</label>
-                  <input type="text" placeholder="Nova função" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newPosition: e.target.value})} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Data da Mudança</label>
-                <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, changeDate: e.target.value})} />
-              </div>
-            </>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Data Limite para Respostas</label>
-            <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, deadline: e.target.value})} />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Observações Gerais</label>
-            <textarea placeholder="Digite observações adicionais..." className="w-full border rounded-lg px-3 py-2 h-24" onChange={(e) => setFormData({...formData, observation: e.target.value})} />
-          </div>
-
-          <div className="border-t pt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-3">Selecione as Equipes * ({selectedTeams.length} selecionadas)</label>
-            <div className="grid grid-cols-2 gap-2">
-              {TEAMS.map(t => (
-                <label key={t.id} className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer ${selectedTeams.includes(t.id) ? 'border-blue-500 bg-blue-50' : ''}`}>
-                  <input 
-                    type="checkbox" 
-                    checked={selectedTeams.includes(t.id)} 
-                    onChange={() => setSelectedTeams((prev: string[]) => prev.includes(t.id) ? prev.filter((id: string) => id !== t.id) : [...prev, t.id])} 
-                    className="w-4 h-4" 
-                  />
-                  <span className="text-sm">{t.name}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <button 
-            onClick={onSubmit} 
-            disabled={!formData.employeeName || selectedTeams.length === 0 || loading} 
-            className="w-full bg-blue-600 text-white py-2.5 rounded-lg disabled:bg-gray-300 flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Criando...
-              </>
-            ) : (
-              'Criar Movimentação'
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-// Adicione este componente final ao App.tsx
-
-function DetailView({ currentUser, selectedMovement, setView, setSelectedMovement, loadMovements, activeTeamId }: any) {
-  const [comment, setComment] = useState('');
-  const [loadingSub, setLoadingSub] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState(selectedMovement.details);
-  const [checklist, setChecklist] = useState<Record<string, boolean>>(
-    selectedMovement.responses[activeTeamId]?.checklist || {}
-  );
-  const [isEditingResponse, setIsEditingResponse] = useState(false);
-  const [showHistory, setShowHistory] = useState<string | null>(null);
-  const [attachments, setAttachments] = useState<Attachment[]>(
-    selectedMovement.responses[activeTeamId]?.attachments || []
-  );
-  const [uploadingFile, setUploadingFile] = useState(false);
-  const [editSelectedTeams, setEditSelectedTeams] = useState<string[]>(selectedMovement.selected_teams);
-
-  const isMyTeam = selectedMovement.selected_teams.includes(activeTeamId);
-  const myResp = activeTeamId ? selectedMovement.responses[activeTeamId] : null;
-  const hasResponded = myResp?.status === 'completed';
-  const isAdmin = currentUser?.role === 'admin';
-
-  const userTeamChecklist: string[] = CHECKLISTS[selectedMovement.type as MovementType]?.[activeTeamId || ''] || [];
-
-  const handleStartEdit = () => {
-    if (myResp) {
-      setComment(myResp.comment || '');
-      setChecklist(myResp.checklist || {});
-      setAttachments(myResp.attachments || []);
-      setIsEditingResponse(true);
-    }
-  };
-
-  const handleChecklistToggle = (item: string) => {
-    setChecklist(prev => ({
-      ...prev,
-      [item]: !prev[item]
-    }));
-  };
-
-  const handleAddAttachment = async (file: File) => {
-    setUploadingFile(true);
-    try {
-      const attachment = await uploadFile(file, selectedMovement.id, activeTeamId);
-      if (attachment) {
-        setAttachments(prev => [...prev, attachment]);
-      } else {
-        alert('Erro ao fazer upload do arquivo');
-      }
-    } catch (error) {
-      alert('Erro ao fazer upload do arquivo');
-    } finally {
-      setUploadingFile(false);
-    }
-  };
-
-  const handleRemoveAttachment = async (attachment: Attachment) => {
-    if (!confirm('Deseja remover este arquivo?')) return;
-    
-    const success = await deleteFile(attachment.url);
-    if (success) {
-      setAttachments(prev => prev.filter(a => a.url !== attachment.url));
-    } else {
-      alert('Erro ao remover arquivo');
-    }
-  };
-
-  const allChecklistCompleted = userTeamChecklist.length > 0 && userTeamChecklist.every(checkItem => checklist[checkItem]);
-
-  const handleSubmit = async () => {
-    if (!comment.trim()) {
-      alert('Por favor, adicione um comentário');
-      return;
-    }
-    
-    if (userTeamChecklist.length > 0 && !allChecklistCompleted) {
-      alert('Por favor, complete todos os itens do checklist antes de enviar');
-      return;
-    }
-
-    setLoadingSub(true);
-    try {
-      const now = new Date();
-      const action = hasResponded ? 'updated' : 'created';
-      
-      const existingHistory = myResp?.history || [];
-      const newHistoryEntry = {
-        user_name: currentUser.name,
-        user_email: currentUser.email,
-        action: action,
-        date: now.toISOString().split('T')[0],
-        timestamp: now.toISOString()
-      };
-      
-      const updated = { 
-        ...selectedMovement.responses, 
-        [activeTeamId!]: { 
-          status: 'completed', 
-          comment: comment.trim(), 
-          date: now.toISOString().split('T')[0],
-          checklist: checklist,
-          attachments: attachments,
-          history: [...existingHistory, newHistoryEntry]
-        } 
-      };
-      
-      const allDone = selectedMovement.selected_teams.every((id: string) => updated[id]?.status === 'completed');
-      const { error } = await supabase.from('movements').update({ 
-        responses: updated, 
-        status: allDone ? 'completed' : 'in_progress' 
-      }).eq('id', selectedMovement.id);
-      
-      if (error) throw error;
-      
-      alert(hasResponded ? 'Parecer atualizado com sucesso!' : 'Parecer enviado com sucesso!');
-      await loadMovements();
-      setView('dashboard');
-      setSelectedMovement(null);
-    } catch (err) {
-      alert('Erro ao enviar parecer');
-    } finally {
-      setLoadingSub(false);
-    }
-  };
-
-  const handleUpdate = async () => {
-    setLoadingSub(true);
-    try {
-      const updatedResponses = { ...selectedMovement.responses };
-      
-      editSelectedTeams.forEach(teamId => {
-        if (!updatedResponses[teamId]) {
-          updatedResponses[teamId] = {
-            status: 'pending',
-            checklist: {},
-            attachments: []
-          };
-        }
-      });
-      
-      Object.keys(updatedResponses).forEach(teamId => {
-        if (!editSelectedTeams.includes(teamId)) {
-          delete updatedResponses[teamId];
-        }
-      });
-
-      const allDone = editSelectedTeams.every(id => updatedResponses[id]?.status === 'completed');
-      
-      const { error } = await supabase.from('movements').update({ 
-        details: editData,
-        employee_name: editData.employeeName || selectedMovement.employee_name,
-        selected_teams: editSelectedTeams,
-        responses: updatedResponses,
-        status: allDone ? 'completed' : (Object.values(updatedResponses).some((r: any) => r.status === 'completed') ? 'in_progress' : 'pending')
-      }).eq('id', selectedMovement.id);
-      
-      if (error) throw error;
-
-      const newTeams = editSelectedTeams.filter(id => !selectedMovement.selected_teams.includes(id));
-      
-      if (newTeams.length > 0) {
-        const { data: newUsersData } = await supabase
-          .from('users')
-          .select('email, name, team_ids, team_names')
-          .overlaps('team_ids', newTeams);
-
-        if (newUsersData && newUsersData.length > 0) {
-          const expandedRecipients = newUsersData.flatMap((user: any) => 
-            user.team_ids
-              .map((teamId: string, index: number) => {
-                if (newTeams.includes(teamId)) {
-                  return {
-                    email: user.email,
-                    name: user.name,
-                    team_id: teamId,
-                    team_name: user.team_names[index]
-                  };
-                }
-                return null;
-              })
-              .filter((item: any) => item !== null)
-          );
-
-          fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'movement_created',
-              movement: {
-                employee_name: editData.employeeName || selectedMovement.employee_name,
-                type: selectedMovement.type,
-                movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label,
-                created_by: selectedMovement.created_by,
-                deadline: selectedMovement.deadline,
-                selected_teams: newTeams
-              },
-              recipients: expandedRecipients,
-              email_type: 'created'
-            })
-          }).catch(e => console.error('Webhook erro:', e));
-        }
-      }
-
-      const { data: usersData } = await supabase
-        .from('users')
-        .select('email, name, team_ids, team_names')
-        .overlaps('team_ids', editSelectedTeams);
-
-      if (usersData && usersData.length > 0) {
-        const expandedRecipients = usersData.flatMap((user: any) => 
-          user.team_ids
-            .map((teamId: string, index: number) => {
-              if (editSelectedTeams.includes(teamId)) {
-                return {
-                  email: user.email,
-                  name: user.name,
-                  team_id: teamId,
-                  team_name: user.team_names[index]
-                };
-              }
-              return null;
-            })
-            .filter((item: any) => item !== null)
-        );
-
-        fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'movement_updated',
-            movement: {
-              employee_name: editData.employeeName || selectedMovement.employee_name,
-              type: selectedMovement.type,
-              movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label,
-              created_by: selectedMovement.created_by,
-              deadline: selectedMovement.deadline,
-              selected_teams: editSelectedTeams
-            },
-            recipients: expandedRecipients,
-            updated_by: currentUser?.name || '',
-            email_type: 'updated'
-          })
-        }).catch(e => console.error('Webhook erro:', e));
-      }
-
-      alert('Movimentação atualizada!');
-      await loadMovements();
-      setIsEditing(false);
-    } catch (err) {
-      alert('Erro ao atualizar');
-    } finally {
-      setLoadingSub(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!confirm('Tem certeza que deseja excluir esta movimentação?')) return;
-    setLoadingSub(true);
-    try {
-      const { error } = await supabase.from('movements').delete().eq('id', selectedMovement.id);
-      if (error) throw error;
-      alert('Movimentação excluída!');
-      await loadMovements();
-      setView('dashboard');
-      setSelectedMovement(null);
-    } catch (err) {
-      alert('Erro ao excluir');
-    } finally {
-      setLoadingSub(false);
-    }
-  };
-
-  return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <div className="flex justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold">{selectedMovement.employee_name}</h2>
-          <p className="text-gray-600">{MOVEMENT_TYPES[selectedMovement.type as MovementType].label}</p>
-        </div>
-        <div className="flex gap-2">
-          {isAdmin && !isEditing && (
-            <>
-              <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Editar</button>
-              <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Excluir</button>
-            </>
-          )}
-          <button onClick={() => { setView('dashboard'); setSelectedMovement(null); }} className="text-gray-600 hover:text-gray-900">← Voltar</button>
-        </div>
+        <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} style={{ ...S.input, width: 'auto' }}>
+          <option value="todos">Todos os Status</option>
+          <option value="pendente">Pendente</option>
+          <option value="em_andamento">Em Andamento</option>
+          <option value="concluido">Concluído</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+        <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} style={{ ...S.input, width: 'auto' }}>
+          <option value="todos">Todos os Tipos</option>
+          <option value="demissao">Demissão</option>
+          <option value="transferencia">Transferência</option>
+          <option value="alteracao">Alteração Salarial</option>
+          <option value="promocao">Promoção</option>
+          <option value="afastamento">Afastamento</option>
+          <option value="outros">Outros</option>
+        </select>
+        <span style={{ fontSize: 13, color: 'var(--muted)' }}>
+          {filtradas.length} resultado{filtradas.length !== 1 ? 's' : ''}
+        </span>
       </div>
 
-      {isEditing ? (
-        <div className="bg-gray-50 rounded-lg p-4 mb-6 space-y-4">
-          <h3 className="font-semibold mb-3">Editar Informações</h3>
-          <div>
-            <label className="block text-sm font-medium mb-2">Nome do Colaborador</label>
-            <input type="text" value={editData.employeeName || selectedMovement.employee_name} onChange={(e) => setEditData({...editData, employeeName: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-          </div>
-          
-          {selectedMovement.type === 'demissao' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium mb-2">Data do Desligamento</label>
-                <input type="date" value={editData.dismissalDate || ''} onChange={(e) => setEditData({...editData, dismissalDate: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Empresa</label>
-                <input type="text" value={editData.company || ''} onChange={(e) => setEditData({...editData, company: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Setor</label>
-                <input type="text" value={editData.sector || ''} onChange={(e) => setEditData({...editData, sector: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-              </div>
-            </>
-          )}
+      {/* ── LISTA ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {filtradas.map(mov => {
+          const badge  = getTipoBadge(mov.type)
+          const sc     = getStatusConf(mov.status)
+          const Icon   = sc.icon
+          const dias   = diasRestantes(mov.deadline)
+          const vencido  = dias !== null && dias < 0
+          const urgente  = dias !== null && dias >= 0 && dias <= 3
 
-          {selectedMovement.type !== 'demissao' && (
-            <>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Setor Atual</label>
-                  <input type="text" value={editData.oldSector || ''} onChange={(e) => setEditData({...editData, oldSector: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Setor Destino</label>
-                  <input type="text" value={editData.newSector || ''} onChange={(e) => setEditData({...editData, newSector: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Função Atual</label>
-                  <input type="text" value={editData.oldPosition || ''} onChange={(e) => setEditData({...editData, oldPosition: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Função Destino</label>
-                  <input type="text" value={editData.newPosition || ''} onChange={(e) => setEditData({...editData, newPosition: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Data da Mudança</label>
-                <input type="date" value={editData.changeDate || ''} onChange={(e) => setEditData({...editData, changeDate: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-              </div>
-            </>
-          )}
+          // Equipes desta movimentação
+          const movTeams = teams.filter(t => (mov.selected_teams || []).includes(t.id))
 
-          <div className="border-t pt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Equipes Selecionadas ({editSelectedTeams.length} selecionadas)
-            </label>
-            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-3">
-              <p className="text-xs text-blue-800 mb-2">
-                ℹ️ <strong>Importante:</strong> Ao adicionar novas equipes, elas receberão notificação por email. 
-                Ao remover equipes, suas respostas serão perdidas.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
-              {TEAMS.map(t => {
-                const wasOriginallySelected = selectedMovement.selected_teams.includes(t.id);
-                const hasResponse = selectedMovement.responses[t.id]?.status === 'completed';
-                const isSelected = editSelectedTeams.includes(t.id);
-                
-                return (
-                  <label 
-                    key={t.id} 
-                    className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer transition ${
-                      isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                    } ${hasResponse && !isSelected ? 'opacity-50' : ''}`}
-                  >
-                    <input 
-                      type="checkbox" 
-                      checked={isSelected} 
-                      onChange={() => {
-                        if (hasResponse && isSelected) {
-                          if (!confirm(`A equipe "${t.name}" já respondeu esta movimentação. Tem certeza que deseja removê-la? A resposta será perdida.`)) {
-                            return;
-                          }
-                        }
-                        setEditSelectedTeams((prev: string[]) => 
-                          prev.includes(t.id) 
-                            ? prev.filter((id: string) => id !== t.id) 
-                            : [...prev, t.id]
-                        );
-                      }}
-                      className="w-4 h-4" 
-                    />
-                    <div className="flex-1">
-                      <span className="text-sm">{t.name}</span>
-                      {hasResponse && (
-                        <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">✓ Respondida</span>
-                      )}
-                      {!wasOriginallySelected && isSelected && (
-                        <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">Nova</span>
-                      )}
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="flex gap-2 pt-4">
-            <button onClick={handleUpdate} disabled={loadingSub || editSelectedTeams.length === 0} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300">
-              {loadingSub ? 'Salvando...' : 'Salvar'}
-            </button>
-            <button onClick={() => { setIsEditing(false); setEditSelectedTeams(selectedMovement.selected_teams); }} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
-          </div>
-        </div>
-      ) : (
-        <div className="bg-gray-50 rounded-lg p-4 mb-6">
-          <h3 className="font-semibold mb-3">Informações da Movimentação</h3>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <span className="text-gray-600 font-medium">Criado por:</span>
-              <p className="text-gray-900">{selectedMovement.created_by}</p>
-            </div>
-            <div>
-              <span className="text-gray-600 font-medium">Data de criação:</span>
-              <p className="text-gray-900">{new Date(selectedMovement.created_at).toLocaleDateString('pt-BR')}</p>
-            </div>
-            {selectedMovement.deadline && (
-              <div>
-                <span className="text-gray-600 font-medium">Prazo limite:</span>
-                <p className="text-gray-900">{new Date(selectedMovement.deadline).toLocaleDateString('pt-BR')}</p>
-              </div>
-            )}
-            {Object.entries(selectedMovement.details).map(([key, value]) => {
-              const labels: any = {
-                dismissalDate: 'Data do Desligamento',
-                company: 'Empresa',
-                sector: 'Setor',
-                oldSector: 'Setor Atual',
-                newSector: 'Setor Destino',
-                oldPosition: 'Função Atual',
-                newPosition: 'Função Destino',
-                changeDate: 'Data da Mudança'
-              };
-              if (key === 'observation') return null;
-              return (
-                <div key={key}>
-                  <span className="text-gray-600 font-medium">{labels[key] || key}:</span>
-                  <p className="text-gray-900">{typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/) ? new Date(value).toLocaleDateString('pt-BR') : String(value)}</p>
-                </div>
-              );
-            })}
-          </div>
-          {(selectedMovement.details?.observation || selectedMovement.observation) && (
-            <div className="mt-4 pt-4 border-t">
-              <span className="text-gray-600 font-medium">Observações:</span>
-              <p className="text-sm text-gray-700 mt-2 bg-white p-3 rounded border">{selectedMovement.details?.observation || selectedMovement.observation}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      <h3 className="font-semibold mb-3">Pareceres das Equipes</h3>
-      <div className="space-y-3 mb-6">
-        {selectedMovement.selected_teams.map((id: string) => {
-          const team = TEAMS.find(t => t.id === id);
-          const resp = selectedMovement.responses[id];
-          const isMine = id === activeTeamId;
-          
-          if (!isAdmin && !isMine) {
-            return null;
-          }
-          
           return (
-            <div key={id} className={`border rounded-lg p-4 ${isMine ? 'border-blue-500 bg-blue-50' : ''}`}>
-              <div className="flex justify-between mb-2">
-                <span className="font-medium">{team?.name} {isMine && '(Sua Equipe)'}</span>
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs px-2 py-1 rounded ${resp?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                    {resp?.status === 'completed' ? '✓ Respondido' : '⏳ Pendente'}
+            <div key={mov.id} onClick={() => setDetalhe(mov)} style={{
+              background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
+              padding: '14px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14,
+              transition: 'all 0.15s',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.boxShadow = '0 2px 10px rgba(37,99,235,0.08)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}>
+              <div style={{ width: 40, height: 40, borderRadius: 11, background: badge.bg, border: `1px solid ${badge.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <FileText size={16} color={badge.color} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                  <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{mov.employee_name}</p>
+                  <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, fontWeight: 700, border: `1px solid ${badge.border}`, background: badge.bg, color: badge.color }}>
+                    {getTipoLabel(mov.type)}
                   </span>
-                  {resp?.history && resp.history.length > 0 && (
-                    <button
-                      onClick={() => setShowHistory(showHistory === id ? null : id)}
-                      className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded flex items-center gap-1"
-                    >
-                      <Clock className="w-3 h-3" />
-                      Histórico
-                    </button>
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                    {movTeams.map(t => t.name).join(' · ')}
+                  </span>
+                  {mov.deadline && dias !== null && (
+                    <span style={{ fontSize: 12, fontWeight: vencido || urgente ? 700 : 400, color: vencido ? '#ef4444' : urgente ? '#f59e0b' : 'var(--muted)' }}>
+                      {vencido ? `⚠️ Vencido há ${Math.abs(dias)}d` : dias === 0 ? '🔴 Vence hoje' : `📅 ${dias}d`}
+                    </span>
+                  )}
+                  {/* Contador de respostas */}
+                  {(mov.team_responses || []).length > 0 && (
+                    <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: 'var(--muted)' }}>
+                      <MessageSquare size={11} /> {mov.team_responses?.length} resposta{mov.team_responses?.length !== 1 ? 's' : ''}
+                    </span>
                   )}
                 </div>
               </div>
-              
-              {showHistory === id && resp?.history && (
-                <div className="mb-3 bg-gray-50 border rounded p-3">
-                  <p className="text-xs font-semibold text-gray-600 mb-2">Histórico de Alterações:</p>
-                  <div className="space-y-2">
-                    {resp.history.map((entry: any, idx: number) => (
-                      <div key={idx} className="text-xs bg-white p-2 rounded border">
-                        <div className="flex justify-between">
-                          <span className="font-medium text-gray-900">{entry.user_name}</span>
-                          <span className="text-gray-500">{new Date(entry.timestamp).toLocaleString('pt-BR')}</span>
-                        </div>
-                        <div className="text-gray-600 mt-1">
-                          <span className={`inline-block px-2 py-0.5 rounded ${entry.action === 'created' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
-                            {entry.action === 'created' ? 'Criou o parecer' : 'Atualizou o parecer'}
-                          </span>
-                          <span className="ml-2">({entry.user_email})</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
-              {resp?.checklist && Object.keys(resp.checklist).length > 0 && (
-                <div className="mt-3 bg-white p-3 rounded border">
-                  <p className="text-xs font-semibold text-gray-600 mb-2">Checklist:</p>
-                  <div className="space-y-1">
-                    {Object.entries(resp.checklist).map(([item, checked]: [string, any]) => (
-                      <div key={item} className="flex items-center gap-2 text-sm">
-                        {checked ? <CheckSquare className="w-4 h-4 text-green-600" /> : <Square className="w-4 h-4 text-gray-400" />}
-                        <span className={checked ? 'text-gray-900' : 'text-gray-500'}>{item}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {resp?.attachments && resp.attachments.length > 0 && (
-                <div className="mt-3 bg-white p-3 rounded border">
-                  <p className="text-xs font-semibold text-gray-600 mb-2">Anexos ({resp.attachments.length}):</p>
-                  <AttachmentManager
-                    attachments={resp.attachments}
-                    onAdd={() => {}}
-                    onRemove={() => {}}
-                    disabled={true}
-                  />
-                </div>
-              )}
-              
-              {resp?.comment && (
-                <div className="mt-2">
-                  <p className="text-sm bg-white p-3 rounded border">{resp.comment}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Respondido em {new Date(resp.date!).toLocaleDateString('pt-BR')}
-                    {resp.history && resp.history.length > 1 && ' (editado)'}
-                  </p>
-                </div>
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 20, border: `1px solid ${sc.border}`, background: sc.bg, flexShrink: 0 }}>
+                <Icon size={11} color={sc.color} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: sc.color }}>{sc.label}</span>
+              </div>
+              <Eye size={14} color="var(--muted)" style={{ flexShrink: 0 }} />
             </div>
-          );
+          )
         })}
+
+        {filtradas.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '64px 0', color: 'var(--muted)' }}>
+            <Briefcase size={46} style={{ margin: '0 auto 12px', opacity: 0.18 }} />
+            <p style={{ fontSize: 15, fontWeight: 600 }}>Nenhuma movimentação encontrada</p>
+            <p style={{ fontSize: 13, marginTop: 4 }}>Tente ajustar os filtros ou crie uma nova movimentação</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// MODAL DE DETALHE
+// ─────────────────────────────────────────────
+function DetalheModal({ mov, teams, isAdmin, onClose, onStatusChange, onDelete }: {
+  mov: Movimentacao; teams: Team[]; isAdmin: boolean
+  onClose: () => void
+  onStatusChange: (id: string, s: string) => void
+  onDelete: (id: string) => void
+}) {
+  const badge      = getTipoBadge(mov.type)
+  const sc         = getStatusConf(mov.status)
+  const movTeams   = teams.filter(t => (mov.selected_teams || []).includes(t.id))
+  const prazoFmt   = mov.deadline ? new Date(mov.deadline + 'T00:00:00').toLocaleDateString('pt-BR') : 'Sem prazo'
+  const criadoFmt  = new Date(mov.created_at).toLocaleDateString('pt-BR')
+
+  return (
+    <div style={S.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ ...S.modal, maxWidth: 560 }}>
+        {/* Cabeçalho */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 }}>
+          <div>
+            <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 700, border: `1px solid ${badge.border}`, background: badge.bg, color: badge.color }}>
+              {getTipoLabel(mov.type)}
+            </span>
+            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: 'var(--text)', marginTop: 8 }}>
+              {mov.employee_name}
+            </h3>
+          </div>
+          <button onClick={onClose} style={S.iconBtn}><X size={19} /></button>
+        </div>
+
+        {/* Grid de info */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+          {([
+            ['Status',     sc.label],
+            ['Prazo',      prazoFmt],
+            ['Registrado', criadoFmt],
+            ['Criado por', mov.created_by || '—'],
+          ] as [string,string][]).map(([k, v]) => (
+            <div key={k} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px' }}>
+              <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>{k}</p>
+              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{v}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Observação */}
+        {mov.observation && (
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+            <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Observações</p>
+            <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{mov.observation}</p>
+          </div>
+        )}
+
+        {/* Details (jsonb) */}
+        {mov.details && Object.keys(mov.details).length > 0 && (
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+            <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>Detalhes</p>
+            {Object.entries(mov.details).map(([k, v]) => (
+              <p key={k} style={{ fontSize: 12, color: 'var(--text)', marginBottom: 3 }}>
+                <span style={{ fontWeight: 700 }}>{k}:</span> {String(v)}
+              </p>
+            ))}
+          </div>
+        )}
+
+        {/* Equipes envolvidas */}
+        <div style={{ marginBottom: 14 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Equipes Envolvidas</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {movTeams.map(t => (
+              <span key={t.id} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, background: 'var(--accent-light)', color: 'var(--accent)', fontWeight: 700, border: '1px solid var(--accent-border)' }}>
+                {t.name}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Respostas das equipes */}
+        {(mov.team_responses || []).length > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Respostas das Equipes</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {(mov.team_responses || []).map(r => {
+                const rsc = getStatusConf(r.status)
+                const RIcon = rsc.icon
+                return (
+                  <div key={r.id} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: r.comment ? 6 : 0 }}>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{r.teams?.name || '—'}</p>
+                      <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20, border: `1px solid ${rsc.border}`, background: rsc.bg, color: rsc.color, fontWeight: 700 }}>
+                        <RIcon size={10} /> {rsc.label}
+                      </span>
+                    </div>
+                    {r.comment && <p style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>{r.comment}</p>}
+                    {r.responded_at && (
+                      <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                        {new Date(r.responded_at).toLocaleDateString('pt-BR')}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Setores notificados */}
+        {(mov.movimentacoes_setores || []).length > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Setores Notificados por E-mail</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {(mov.movimentacoes_setores || []).map(ms => (
+                <span key={ms.setor_id} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, background: '#f0fdf4', color: '#16a34a', fontWeight: 700, border: '1px solid #86efac' }}>
+                  <Mail size={10} style={{ marginRight: 4, display: 'inline' }} />{ms.setores?.nome}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Alterar status */}
+        {isAdmin && (
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Alterar Status</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+              {[
+                { key: 'pendente', label: 'Pendente' },
+                { key: 'em_andamento', label: 'Em Andamento' },
+                { key: 'concluido', label: 'Concluído' },
+                { key: 'cancelado', label: 'Cancelado' },
+              ].map(({ key, label }) => {
+                const cfg    = getStatusConf(key)
+                const Icon   = cfg.icon
+                const active = mov.status === key || (key === 'pendente' && mov.status === 'pending') || (key === 'em_andamento' && mov.status === 'in_progress') || (key === 'concluido' && mov.status === 'completed') || (key === 'cancelado' && mov.status === 'cancelled')
+                return (
+                  <button key={key} onClick={() => onStatusChange(mov.id, key)} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 9,
+                    border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                    background: active ? 'var(--accent-light)' : 'var(--surface)',
+                    color: active ? 'var(--accent)' : 'var(--text)',
+                    cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 400, fontFamily: 'var(--font-body)',
+                  }}>
+                    <Icon size={12} /> {label}
+                  </button>
+                )
+              })}
+            </div>
+            <button onClick={() => onDelete(mov.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: 9, padding: '7px 14px', cursor: 'pointer', fontSize: 12, fontFamily: 'var(--font-body)' }}>
+              <Trash2 size={12} /> Excluir Movimentação
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// SETORES & EMAILS
+// ─────────────────────────────────────────────
+function GerenciarSetores({ user }: { user: User }) {
+  const [setores,       setSetores]       = useState<Setor[]>([])
+  const [emails,        setEmails]        = useState<any[]>([])
+  const [expandido,     setExpandido]     = useState<string | null>(null)
+  const [showFormSetor, setShowFormSetor] = useState(false)
+  const [showFormEmail, setShowFormEmail] = useState<string | null>(null)
+  const [editando,      setEditando]      = useState<Setor | null>(null)
+  const [formSetor,     setFormSetor]     = useState({ nome: '', descricao: '' })
+  const [formEmail,     setFormEmail]     = useState({ nome: '', email: '' })
+  const isAdmin = user.role === 'admin'
+
+  useEffect(() => { loadAll() }, [])
+
+  const loadAll = async () => {
+    const [{ data: s }, { data: e }] = await Promise.all([
+      supabase.from('setores').select('*').order('nome'),
+      supabase.from('emails_setor').select('*').order('nome'),
+    ])
+    if (s) setSetores(s)
+    if (e) setEmails(e)
+  }
+
+  const salvarSetor = async () => {
+    if (!formSetor.nome.trim()) { alert('Informe o nome do setor'); return }
+    if (editando) {
+      await supabase.from('setores').update({ nome: formSetor.nome.trim(), descricao: formSetor.descricao }).eq('id', editando.id)
+    } else {
+      await supabase.from('setores').insert({ nome: formSetor.nome.trim(), descricao: formSetor.descricao, ativo: true })
+    }
+    setShowFormSetor(false); setEditando(null); loadAll()
+  }
+
+  const excluirSetor = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (emails.some(em => em.setor_id === id)) { alert('Remova todos os emails antes de excluir.'); return }
+    if (!confirm('Excluir este setor?')) return
+    await supabase.from('setores').delete().eq('id', id); loadAll()
+  }
+
+  const salvarEmail = async (setorId: string) => {
+    if (!formEmail.nome.trim() || !formEmail.email.trim()) { alert('Preencha nome e email'); return }
+    if (!/\S+@\S+\.\S+/.test(formEmail.email)) { alert('E-mail inválido'); return }
+    await supabase.from('emails_setor').insert({ setor_id: setorId, nome: formEmail.nome.trim(), email: formEmail.email.trim().toLowerCase(), ativo: true })
+    setFormEmail({ nome: '', email: '' }); setShowFormEmail(null); loadAll()
+  }
+
+  const excluirEmail = async (id: string) => {
+    if (!confirm('Remover este email?')) return
+    await supabase.from('emails_setor').delete().eq('id', id); loadAll()
+  }
+
+  const toggleEmail = async (id: string, ativo: boolean) => {
+    await supabase.from('emails_setor').update({ ativo: !ativo }).eq('id', id); loadAll()
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32 }}>
+        <div>
+          <h2 style={S.pageTitle}>Setores & Emails</h2>
+          <p style={S.pageSubtitle}>Gerencie setores e os e-mails que recebem notificações de movimentações</p>
+        </div>
+        {isAdmin && <button onClick={() => { setEditando(null); setFormSetor({ nome: '', descricao: '' }); setShowFormSetor(true) }} style={S.btnPrimary}><Plus size={14} /> Novo Setor</button>}
       </div>
 
-      {isMyTeam && !hasResponded && (
-        <div className="border-t pt-6">
-          {userTeamChecklist.length > 0 && (
-            <div className="mb-6">
-              <h3 className="font-semibold mb-3 flex items-center gap-2">
-                <CheckSquare className="w-5 h-5" />
-                Checklist de Verificação
-              </h3>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
-                {userTeamChecklist.map((checkItem: string) => (
-                  <label key={checkItem} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
-                    <input
-                      type="checkbox"
-                      checked={checklist[checkItem] || false}
-                      onChange={() => handleChecklistToggle(checkItem)}
-                      className="mt-1 w-5 h-5 rounded border-gray-300"
-                    />
-                    <span className="text-sm flex-1">{checkItem}</span>
-                  </label>
-                ))}
-                <div className="mt-4 pt-3 border-t border-blue-200">
-                  <p className="text-xs text-gray-600">
-                    {userTeamChecklist.filter((itm: string) => checklist[itm]).length} de {userTeamChecklist.length} itens concluídos
-                  </p>
+      {showFormSetor && (
+        <div style={{ ...S.card, marginBottom: 20 }}>
+          <h3 style={{ fontWeight: 700, color: 'var(--text)', marginBottom: 18, fontSize: 15 }}>{editando ? 'Editar Setor' : 'Novo Setor'}</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 }}>
+            <div>
+              <label style={S.label}>Nome *</label>
+              <input value={formSetor.nome} onChange={e => setFormSetor({ ...formSetor, nome: e.target.value })}
+                placeholder="Ex: Recursos Humanos" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+            </div>
+            <div>
+              <label style={S.label}>Descrição</label>
+              <input value={formSetor.descricao} onChange={e => setFormSetor({ ...formSetor, descricao: e.target.value })}
+                placeholder="Opcional" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => { setShowFormSetor(false); setEditando(null) }} style={S.btnSecondary}>Cancelar</button>
+            <button onClick={salvarSetor} style={S.btnPrimary}>Salvar</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {setores.map(setor => {
+          const emailsSetor = emails.filter(e => e.setor_id === setor.id)
+          const exp = expandido === setor.id
+          return (
+            <div key={setor.id} style={{ background: 'var(--surface)', border: `1px solid ${exp ? 'var(--accent-border)' : 'var(--border)'}`, borderRadius: 14, overflow: 'hidden', transition: 'border-color 0.2s' }}>
+              <div style={{ padding: '15px 20px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
+                onClick={() => setExpandido(exp ? null : setor.id)}>
+                <div style={{ width: 40, height: 40, background: 'var(--accent-light)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Building2 size={18} color="var(--accent)" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontWeight: 700, color: 'var(--text)', fontSize: 14 }}>{setor.nome}</p>
+                  {setor.descricao && <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>{setor.descricao}</p>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 12, padding: '3px 11px', borderRadius: 20, fontWeight: emailsSetor.length > 0 ? 700 : 400, color: emailsSetor.length > 0 ? 'var(--accent)' : 'var(--muted)', background: emailsSetor.length > 0 ? 'var(--accent-light)' : 'var(--bg)', border: `1px solid ${emailsSetor.length > 0 ? 'var(--accent-border)' : 'var(--border)'}` }}>
+                    {emailsSetor.length} email{emailsSetor.length !== 1 ? 's' : ''}
+                  </span>
+                  {isAdmin && (
+                    <>
+                      <button onClick={e => { e.stopPropagation(); setEditando(setor); setFormSetor({ nome: setor.nome, descricao: setor.descricao || '' }); setShowFormSetor(true) }} style={S.iconBtn}><Edit size={13} /></button>
+                      <button onClick={e => excluirSetor(setor.id, e)} style={{ ...S.iconBtn, color: '#ef4444' }}><Trash2 size={13} /></button>
+                    </>
+                  )}
+                  <ChevronRight size={15} color="var(--muted)" style={{ transform: exp ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
                 </div>
               </div>
-            </div>
-          )}
 
-          <div className="mb-6">
-            <AttachmentManager
-              attachments={attachments}
-              onAdd={handleAddAttachment}
-              onRemove={handleRemoveAttachment}
-              disabled={uploadingFile}
-            />
-            {uploadingFile && (
-              <div className="flex items-center gap-2 text-sm text-blue-600 mt-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Fazendo upload do arquivo...
-              </div>
-            )}
-          </div>
-          
-          <h3 className="font-semibold mb-3">Adicionar Parecer</h3>
-          <textarea 
-            value={comment} 
-            onChange={(e) => setComment(e.target.value)} 
-            placeholder="Digite seu parecer sobre esta movimentação..." 
-            className="w-full border rounded-lg p-3 h-32" 
-            disabled={loadingSub} 
-          />
-          <button 
-            onClick={handleSubmit} 
-            disabled={!comment.trim() || loadingSub || uploadingFile || (userTeamChecklist.length > 0 && !allChecklistCompleted)} 
-            className="mt-3 bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2"
-          >
-            {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Enviando...</> : 'Enviar Parecer'}
-          </button>
-          {userTeamChecklist.length > 0 && !allChecklistCompleted && (
-            <p className="text-sm text-red-600 mt-2">Complete todos os itens do checklist antes de enviar</p>
-          )}
-        </div>
-      )}
-
-      {isMyTeam && hasResponded && !isEditingResponse && (
-        <div className="border-t pt-6 space-y-3">
-          <div className="bg-green-50 p-4 rounded flex items-center justify-between">
-            <span className="text-green-800 font-medium">✓ Você já respondeu esta movimentação</span>
-            <button
-              onClick={handleStartEdit}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-            >
-              Editar Parecer
-            </button>
-          </div>
-        </div>
-      )}
-
-      {isMyTeam && hasResponded && isEditingResponse && (
-        <div className="border-t pt-6">
-          {userTeamChecklist.length > 0 && (
-            <div className="mb-6">
-              <h3 className="font-semibold mb-3 flex items-center gap-2">
-                <CheckSquare className="w-5 h-5" />
-                Checklist de Verificação
-              </h3>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
-                {userTeamChecklist.map((checkItem: string) => (
-                  <label key={checkItem} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
-                    <input
-                      type="checkbox"
-                      checked={checklist[checkItem] || false}
-                      onChange={() => handleChecklistToggle(checkItem)}
-                      className="mt-1 w-5 h-5 rounded border-gray-300"
-                    />
-                    <span className="text-sm flex-1">{checkItem}</span>
-                  </label>
-                ))}
-                <div className="mt-4 pt-3 border-t border-blue-200">
-                  <p className="text-xs text-gray-600">
-                    {userTeamChecklist.filter((itm: string) => checklist[itm]).length} de {userTeamChecklist.length} itens concluídos
-                  </p>
+              {exp && (
+                <div style={{ borderTop: '1px solid var(--border)', padding: '16px 20px', background: 'var(--bg)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>E-mails para notificação</p>
+                    {isAdmin && (
+                      <button onClick={() => setShowFormEmail(showFormEmail === setor.id ? null : setor.id)}
+                        style={{ ...S.btnPrimary, padding: '5px 12px', fontSize: 12 }}>
+                        <Plus size={12} /> Adicionar
+                      </button>
+                    )}
+                  </div>
+                  {showFormEmail === setor.id && (
+                    <div style={{ ...S.card, marginBottom: 12, padding: 16 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                        <div>
+                          <label style={S.label}>Nome *</label>
+                          <input value={formEmail.nome} onChange={e => setFormEmail({ ...formEmail, nome: e.target.value })}
+                            placeholder="Nome do responsável" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+                        </div>
+                        <div>
+                          <label style={S.label}>E-mail *</label>
+                          <input type="email" value={formEmail.email} onChange={e => setFormEmail({ ...formEmail, email: e.target.value })}
+                            placeholder="email@empresa.com" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => { setShowFormEmail(null); setFormEmail({ nome: '', email: '' }) }} style={S.btnSecondary}>Cancelar</button>
+                        <button onClick={() => salvarEmail(setor.id)} style={S.btnPrimary}>Adicionar</button>
+                      </div>
+                    </div>
+                  )}
+                  {emailsSetor.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--muted)' }}>
+                      <Mail size={24} style={{ margin: '0 auto 8px', opacity: 0.25 }} />
+                      <p style={{ fontSize: 13 }}>Nenhum e-mail cadastrado</p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {emailsSetor.map((em: any) => (
+                        <div key={em.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)' }}>
+                          <div style={{ width: 33, height: 33, borderRadius: '50%', background: em.ativo ? 'var(--accent-light)' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <Mail size={13} color={em.ativo ? 'var(--accent)' : '#9ca3af'} />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{em.nome}</p>
+                            <p style={{ fontSize: 12, color: 'var(--muted)' }}>{em.email}</p>
+                          </div>
+                          <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 20, border: '1px solid', flexShrink: 0, ...(em.ativo ? { color: '#16a34a', borderColor: '#86efac', background: '#f0fdf4' } : { color: '#6b7280', borderColor: '#d1d5db', background: '#f9fafb' }) }}>
+                            {em.ativo ? 'Ativo' : 'Inativo'}
+                          </span>
+                          {isAdmin && (
+                            <div style={{ display: 'flex', gap: 2 }}>
+                              <button onClick={() => toggleEmail(em.id, em.ativo)} style={S.iconBtn}>{em.ativo ? <X size={13} /> : <CheckCircle size={13} />}</button>
+                              <button onClick={() => excluirEmail(em.id)} style={{ ...S.iconBtn, color: '#ef4444' }}><Trash2 size={13} /></button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
             </div>
-          )}
-
-          <div className="mb-6">
-            <AttachmentManager
-              attachments={attachments}
-              onAdd={handleAddAttachment}
-              onRemove={handleRemoveAttachment}
-              disabled={uploadingFile}
-            />
-            {uploadingFile && (
-              <div className="flex items-center gap-2 text-sm text-blue-600 mt-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Fazendo upload do arquivo...
-              </div>
-            )}
+          )
+        })}
+        {setores.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '64px 0', color: 'var(--muted)' }}>
+            <Building2 size={46} style={{ margin: '0 auto 12px', opacity: 0.18 }} />
+            <p style={{ fontSize: 15, fontWeight: 600 }}>Nenhum setor cadastrado</p>
           </div>
-          
-          <h3 className="font-semibold mb-3">Editar Parecer</h3>
-          <textarea 
-            value={comment} 
-            onChange={(e) => setComment(e.target.value)} 
-            placeholder="Digite seu parecer sobre esta movimentação..." 
-            className="w-full border rounded-lg p-3 h-32" 
-            disabled={loadingSub} 
-          />
-          <div className="flex gap-2 mt-3">
-            <button 
-              onClick={handleSubmit} 
-              disabled={!comment.trim() || loadingSub || uploadingFile || (userTeamChecklist.length > 0 && !allChecklistCompleted)} 
-              className="bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2"
-            >
-              {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Salvando...</> : 'Salvar Alterações'}
-            </button>
-            <button
-              onClick={() => {
-                setIsEditingResponse(false);
-                setComment('');
-                setChecklist(myResp?.checklist || {});
-                setAttachments(myResp?.attachments || []);
-              }}
-              className="px-6 py-2.5 bg-gray-300 rounded-lg hover:bg-gray-400"
-              disabled={loadingSub}
-            >
-              Cancelar
-            </button>
-          </div>
-          {userTeamChecklist.length > 0 && !allChecklistCompleted && (
-            <p className="text-sm text-red-600 mt-2">Complete todos os itens do checklist antes de salvar</p>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </div>
-  );
+  )
+}
+
+// ─────────────────────────────────────────────
+// USUÁRIOS — com seleção de equipes
+// ─────────────────────────────────────────────
+function GerenciarUsuarios({ user }: { user: User }) {
+  const [usuarios, setUsuarios]     = useState<User[]>([])
+  const [teams,    setTeams]        = useState<Team[]>([])
+  const [editando, setEditando]     = useState<User | null>(null)
+  const [formUser, setFormUser]     = useState({ role: 'user', team_ids: [] as string[], team_names: [] as string[] })
+
+  useEffect(() => {
+    Promise.all([
+      supabase.from('users').select('id,email,name,role,team_id,team_name,team_ids,team_names,created_at').order('created_at', { ascending: false }),
+      supabase.from('teams').select('*').order('name'),
+    ]).then(([{ data: u }, { data: t }]) => {
+      if (u) setUsuarios(u as User[])
+      if (t) setTeams(t)
+    })
+  }, [])
+
+  const abrirEditar = (u: User) => {
+    setEditando(u)
+    setFormUser({
+      role:       u.role,
+      team_ids:   u.team_ids || [],
+      team_names: u.team_names || [],
+    })
+  }
+
+  const toggleTeam = (teamId: string, teamName: string) => {
+    setFormUser(f => {
+      const sel = f.team_ids.includes(teamId)
+      return {
+        ...f,
+        team_ids:   sel ? f.team_ids.filter(id => id !== teamId)     : [...f.team_ids, teamId],
+        team_names: sel ? f.team_names.filter(n => n !== teamName)   : [...f.team_names, teamName],
+      }
+    })
+  }
+
+  const salvarUsuario = async () => {
+    if (!editando) return
+    const { error } = await supabase.from('users').update({
+      role:       formUser.role,
+      team_ids:   formUser.team_ids,
+      team_names: formUser.team_names,
+      // compatibilidade com campos legados
+      team_id:    formUser.team_ids[0]   || null,
+      team_name:  formUser.team_names[0] || null,
+    }).eq('id', editando.id)
+
+    if (error) { alert('Erro ao salvar: ' + error.message); return }
+    setUsuarios(prev => prev.map(u => u.id === editando.id ? { ...u, ...formUser } : u))
+    setEditando(null)
+  }
+
+  return (
+    <div>
+      <h2 style={{ ...S.pageTitle, marginBottom: 6 }}>Usuários</h2>
+      <p style={{ ...S.pageSubtitle, marginBottom: 32 }}>Gerencie usuários, funções e equipes</p>
+
+      {/* Modal edição */}
+      {editando && (
+        <div style={S.overlay} onClick={e => e.target === e.currentTarget && setEditando(null)}>
+          <div style={{ ...S.modal, maxWidth: 480 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+              <div>
+                <p style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Editar Usuário</p>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: 'var(--text)', marginTop: 2 }}>{editando.name}</h3>
+              </div>
+              <button onClick={() => setEditando(null)} style={S.iconBtn}><X size={18} /></button>
+            </div>
+
+            {/* Role */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={S.label}>Nível de Acesso</label>
+              <select value={formUser.role} onChange={e => setFormUser({ ...formUser, role: e.target.value })}
+                style={S.input} onFocus={focusAccent} onBlur={blurBorder}>
+                <option value="admin">Admin — acesso total</option>
+                <option value="user">Usuário — cria e vê movimentações</option>
+                <option value="viewer">Visualizador — apenas visualiza</option>
+              </select>
+            </div>
+
+            {/* Equipes */}
+            <div>
+              <label style={S.label}>
+                Equipes do Usuário{' '}
+                <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>
+                  — o usuário verá as movimentações dessas equipes
+                </span>
+              </label>
+              {teams.length === 0 ? (
+                <p style={{ fontSize: 13, color: 'var(--muted)' }}>Nenhuma equipe cadastrada no banco.</p>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+                  {teams.map(t => {
+                    const sel = formUser.team_ids.includes(t.id)
+                    return (
+                      <button key={t.id} onClick={() => toggleTeam(t.id, t.name)} style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+                        borderRadius: 10, border: `2px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
+                        background: sel ? 'var(--accent-light)' : 'var(--bg)',
+                        cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', fontFamily: 'var(--font-body)',
+                      }}>
+                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? 'var(--accent)' : '#d1d5db'}`, background: sel ? 'var(--accent)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {sel && <CheckCircle size={11} color="white" />}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <p style={{ fontSize: 13, fontWeight: sel ? 700 : 400, color: sel ? 'var(--accent)' : 'var(--text)', lineHeight: 1.2 }}>{t.name}</p>
+                          {t.code && <p style={{ fontSize: 11, color: 'var(--muted)' }}>{t.code}</p>}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 24, justifyContent: 'flex-end' }}>
+              <button onClick={() => setEditando(null)} style={S.btnSecondary}>Cancelar</button>
+              <button onClick={salvarUsuario} style={S.btnPrimary}>Salvar Alterações</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lista */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {usuarios.map(u => (
+          <div key={u.id} style={{ ...S.card, display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px' }}>
+            <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--accent-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Users size={16} color="var(--accent)" />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{u.name}</p>
+              <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>{u.email}</p>
+              {/* Equipes do usuário */}
+              {u.team_names && u.team_names.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
+                  {u.team_names.map((tn, i) => (
+                    <span key={i} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: 'var(--accent-light)', color: 'var(--accent)', border: '1px solid var(--accent-border)', fontWeight: 600 }}>
+                      {tn}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <span style={{
+              fontSize: 12, padding: '4px 12px', borderRadius: 20, fontWeight: 700,
+              ...(u.role === 'admin'
+                ? { background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5' }
+                : u.role === 'viewer'
+                  ? { background: '#f9fafb', color: '#6b7280', border: '1px solid #d1d5db' }
+                  : { background: 'var(--accent-light)', color: 'var(--accent)', border: '1px solid var(--accent-border)' })
+            }}>
+              {u.role === 'admin' ? 'Admin' : u.role === 'viewer' ? 'Visualizador' : 'Usuário'}
+            </span>
+            {u.id !== user.id && (
+              <button onClick={() => abrirEditar(u)} style={{ ...S.iconBtn, color: 'var(--accent)' }}><Edit size={15} /></button>
+            )}
+          </div>
+        ))}
+        {usuarios.length === 0 && (
+          <p style={{ textAlign: 'center', color: 'var(--muted)', padding: '40px 0', fontSize: 14 }}>Nenhum usuário encontrado</p>
+        )}
+      </div>
+    </div>
+  )
 }
