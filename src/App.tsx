@@ -777,10 +777,11 @@ function GerenciarMovimentacoes({ user }: { user: User }) {
       {/* ── MODAL DETALHE ── */}
       {detalhe && (
         <DetalheModal
-          mov={detalhe} teams={teams} isAdmin={isAdmin}
+          mov={detalhe} teams={teams} setores={setores} isAdmin={isAdmin}
           onClose={() => setDetalhe(null)}
           onStatusChange={atualizarStatus}
           onDelete={excluir}
+          onSave={() => { loadAll(); setDetalhe(null) }}
         />
       )}
 
@@ -881,157 +882,357 @@ function GerenciarMovimentacoes({ user }: { user: User }) {
 }
 
 // ─────────────────────────────────────────────
-// MODAL DE DETALHE
+// MODAL DE DETALHE — com edição e pareceres completos
 // ─────────────────────────────────────────────
-function DetalheModal({ mov, teams, isAdmin, onClose, onStatusChange, onDelete }: {
-  mov: Movimentacao; teams: Team[]; isAdmin: boolean
+function DetalheModal({ mov, teams, setores, isAdmin, onClose, onStatusChange, onDelete, onSave }: {
+  mov: Movimentacao; teams: Team[]; setores: Setor[]; isAdmin: boolean
   onClose: () => void
   onStatusChange: (id: string, s: string) => void
   onDelete: (id: string) => void
+  onSave: () => void
 }) {
-  const badge      = getTipoBadge(mov.type)
-  const sc         = getStatusConf(mov.status)
-  const movTeams   = teams.filter(t => (mov.selected_teams || []).includes(t.id))
-  const prazoFmt   = mov.deadline ? new Date(mov.deadline + 'T00:00:00').toLocaleDateString('pt-BR') : 'Sem prazo'
-  const criadoFmt  = new Date(mov.created_at).toLocaleDateString('pt-BR')
+  const [editando,      setEditando]      = useState(false)
+  const [respostas,     setRespostas]     = useState<TeamResponse[]>([])
+  const [loadingResp,   setLoadingResp]   = useState(true)
+  const [formEdit, setFormEdit] = useState({
+    employee_name:  mov.employee_name,
+    type:           mov.type,
+    deadline:       mov.deadline || '',
+    observation:    mov.observation || '',
+    selected_teams: mov.selected_teams || [],
+    setores_ids:    mov.setores_ids || [],
+  })
+
+  const badge     = getTipoBadge(formEdit.type)
+  const sc        = getStatusConf(mov.status)
+  const movTeams  = teams.filter(t => (formEdit.selected_teams).includes(t.id))
+  const prazoFmt  = formEdit.deadline ? new Date(formEdit.deadline + 'T00:00:00').toLocaleDateString('pt-BR') : 'Sem prazo'
+  const criadoFmt = new Date(mov.created_at).toLocaleDateString('pt-BR')
+
+  // Carrega respostas frescas do banco ao abrir o modal
+  useEffect(() => {
+    setLoadingResp(true)
+    supabase
+      .from('team_responses')
+      .select('*')
+      .eq('movement_id', mov.id)
+      .then(({ data }) => {
+        setRespostas(data || [])
+        setLoadingResp(false)
+      })
+  }, [mov.id])
+
+  const toggleItem = (arr: string[], id: string) =>
+    arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id]
+
+  const salvarEdicao = async () => {
+    if (!formEdit.employee_name.trim()) { alert('Informe o nome do colaborador'); return }
+    if (formEdit.selected_teams.length === 0) { alert('Selecione pelo menos uma equipe'); return }
+
+    const { error } = await supabase.from('movements').update({
+      employee_name:  formEdit.employee_name.trim(),
+      type:           formEdit.type,
+      deadline:       formEdit.deadline || null,
+      observation:    formEdit.observation || null,
+      selected_teams: formEdit.selected_teams,
+      setores_ids:    formEdit.setores_ids,
+    }).eq('id', mov.id)
+
+    if (error) { alert('Erro ao salvar: ' + error.message); return }
+
+    // Atualiza movement_teams
+    await supabase.from('movement_teams').delete().eq('movement_id', mov.id)
+    if (formEdit.selected_teams.length > 0) {
+      await supabase.from('movement_teams').insert(
+        formEdit.selected_teams.map(tid => ({ movement_id: mov.id, team_id: tid }))
+      )
+    }
+
+    setEditando(false)
+    onSave()
+  }
+
+  // Mapeia team_id → nome da equipe
+  const teamName = (tid: string) => teams.find(t => t.id === tid)?.name || tid
 
   return (
     <div style={S.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ ...S.modal, maxWidth: 560 }}>
-        {/* Cabeçalho */}
+      <div style={{ ...S.modal, maxWidth: 620 }}>
+
+        {/* ── Cabeçalho ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 }}>
           <div>
             <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 700, border: `1px solid ${badge.border}`, background: badge.bg, color: badge.color }}>
-              {getTipoLabel(mov.type)}
+              {getTipoLabel(formEdit.type)}
             </span>
-            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: 'var(--text)', marginTop: 8 }}>
-              {mov.employee_name}
-            </h3>
+            {editando ? (
+              <input value={formEdit.employee_name} onChange={e => setFormEdit({ ...formEdit, employee_name: e.target.value })}
+                style={{ ...S.input, fontSize: 20, fontWeight: 700, marginTop: 8, fontFamily: 'var(--font-display)' }}
+                onFocus={focusAccent} onBlur={blurBorder} />
+            ) : (
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: 'var(--text)', marginTop: 8 }}>
+                {formEdit.employee_name}
+              </h3>
+            )}
           </div>
-          <button onClick={onClose} style={S.iconBtn}><X size={19} /></button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {isAdmin && !editando && (
+              <button onClick={() => setEditando(true)} style={{ ...S.btnSecondary, padding: '7px 14px' }}>
+                <Edit size={13} /> Editar
+              </button>
+            )}
+            <button onClick={onClose} style={S.iconBtn}><X size={19} /></button>
+          </div>
         </div>
 
-        {/* Grid de info */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
-          {([
-            ['Status',     sc.label],
-            ['Prazo',      prazoFmt],
-            ['Registrado', criadoFmt],
-            ['Criado por', mov.created_by || '—'],
-          ] as [string,string][]).map(([k, v]) => (
-            <div key={k} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px' }}>
-              <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>{k}</p>
-              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{v}</p>
+        {/* ── MODO EDIÇÃO ── */}
+        {editando ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div>
+                <label style={S.label}>Tipo de Movimentação</label>
+                <select value={formEdit.type} onChange={e => setFormEdit({ ...formEdit, type: e.target.value })}
+                  style={S.input} onFocus={focusAccent} onBlur={blurBorder}>
+                  <option value="demissao">Demissão</option>
+                  <option value="transferencia">Transferência</option>
+                  <option value="alteracao">Alteração Salarial</option>
+                  <option value="promocao">Promoção</option>
+                  <option value="afastamento">Afastamento</option>
+                  <option value="outros">Outros</option>
+                </select>
+              </div>
+              <div>
+                <label style={S.label}>Prazo de Resposta</label>
+                <input type="date" value={formEdit.deadline} onChange={e => setFormEdit({ ...formEdit, deadline: e.target.value })}
+                  style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+              </div>
             </div>
-          ))}
-        </div>
-
-        {/* Observação */}
-        {mov.observation && (
-          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
-            <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Observações</p>
-            <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{mov.observation}</p>
-          </div>
-        )}
-
-        {/* Details (jsonb) */}
-        {mov.details && Object.keys(mov.details).length > 0 && (
-          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
-            <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>Detalhes</p>
-            {Object.entries(mov.details).map(([k, v]) => (
-              <p key={k} style={{ fontSize: 12, color: 'var(--text)', marginBottom: 3 }}>
-                <span style={{ fontWeight: 700 }}>{k}:</span> {String(v)}
-              </p>
-            ))}
-          </div>
-        )}
-
-        {/* Equipes envolvidas */}
-        <div style={{ marginBottom: 14 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Equipes Envolvidas</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {movTeams.map(t => (
-              <span key={t.id} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, background: 'var(--accent-light)', color: 'var(--accent)', fontWeight: 700, border: '1px solid var(--accent-border)' }}>
-                {t.name}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Respostas das equipes */}
-        {(mov.team_responses || []).length > 0 && (
-          <div style={{ marginBottom: 18 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Respostas das Equipes</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {(mov.team_responses || []).map(r => {
-                const rsc = getStatusConf(r.status)
-                const RIcon = rsc.icon
-                return (
-                  <div key={r.id} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: r.comment ? 6 : 0 }}>
-                      <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{r.teams?.name || '—'}</p>
-                      <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20, border: `1px solid ${rsc.border}`, background: rsc.bg, color: rsc.color, fontWeight: 700 }}>
-                        <RIcon size={10} /> {rsc.label}
-                      </span>
-                    </div>
-                    {r.comment && <p style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>{r.comment}</p>}
-                    {r.responded_at && (
-                      <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-                        {new Date(r.responded_at).toLocaleDateString('pt-BR')}
-                      </p>
-                    )}
-                  </div>
-                )
-              })}
+            <div>
+              <label style={S.label}>Observações</label>
+              <textarea value={formEdit.observation} onChange={e => setFormEdit({ ...formEdit, observation: e.target.value })}
+                rows={3} style={{ ...S.input, resize: 'vertical' }} onFocus={focusAccent} onBlur={blurBorder} />
+            </div>
+            {/* Equipes */}
+            <div>
+              <label style={S.label}>Equipes Envolvidas</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+                {teams.map(t => {
+                  const sel = formEdit.selected_teams.includes(t.id)
+                  return (
+                    <button key={t.id} onClick={() => setFormEdit(f => ({ ...f, selected_teams: toggleItem(f.selected_teams, t.id) }))}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${sel ? 'var(--accent)' : 'var(--border)'}`, background: sel ? 'var(--accent-light)' : 'var(--bg)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', fontFamily: 'var(--font-body)' }}>
+                      <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? 'var(--accent)' : '#d1d5db'}`, background: sel ? 'var(--accent)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {sel && <CheckCircle size={11} color="white" />}
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: sel ? 700 : 400, color: sel ? 'var(--accent)' : 'var(--text)' }}>{t.name}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            {/* Setores */}
+            {setores.length > 0 && (
+              <div>
+                <label style={S.label}>Setores para Notificação</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+                  {setores.map(s => {
+                    const sel = formEdit.setores_ids.includes(s.id)
+                    return (
+                      <button key={s.id} onClick={() => setFormEdit(f => ({ ...f, setores_ids: toggleItem(f.setores_ids, s.id) }))}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${sel ? '#16a34a' : 'var(--border)'}`, background: sel ? '#f0fdf4' : 'var(--bg)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', fontFamily: 'var(--font-body)' }}>
+                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? '#16a34a' : '#d1d5db'}`, background: sel ? '#16a34a' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {sel && <CheckCircle size={11} color="white" />}
+                        </div>
+                        <span style={{ fontSize: 13, fontWeight: sel ? 700 : 400, color: sel ? '#16a34a' : 'var(--text)' }}>{s.nome}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+              <button onClick={() => setEditando(false)} style={S.btnSecondary}>Cancelar</button>
+              <button onClick={salvarEdicao} style={S.btnPrimary}><CheckCircle size={13} /> Salvar Alterações</button>
             </div>
           </div>
-        )}
+        ) : (
+          <>
+            {/* ── MODO VISUALIZAÇÃO ── */}
 
-        {/* Setores notificados */}
-        {(mov.movimentacoes_setores || []).length > 0 && (
-          <div style={{ marginBottom: 18 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Setores Notificados por E-mail</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {(mov.movimentacoes_setores || []).map(ms => (
-                <span key={ms.setor_id} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, background: '#f0fdf4', color: '#16a34a', fontWeight: 700, border: '1px solid #86efac' }}>
-                  <Mail size={10} style={{ marginRight: 4, display: 'inline' }} />{ms.setores?.nome}
-                </span>
+            {/* Grid de info */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+              {([
+                ['Status',     sc.label],
+                ['Prazo',      prazoFmt],
+                ['Registrado', criadoFmt],
+                ['Criado por', mov.created_by || '—'],
+              ] as [string,string][]).map(([k, v]) => (
+                <div key={k} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px' }}>
+                  <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>{k}</p>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{v}</p>
+                </div>
               ))}
             </div>
-          </div>
-        )}
 
-        {/* Alterar status */}
-        {isAdmin && (
-          <div>
-            <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Alterar Status</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
-              {[
-                { key: 'pendente', label: 'Pendente' },
-                { key: 'em_andamento', label: 'Em Andamento' },
-                { key: 'concluido', label: 'Concluído' },
-                { key: 'cancelado', label: 'Cancelado' },
-              ].map(({ key, label }) => {
-                const cfg    = getStatusConf(key)
-                const Icon   = cfg.icon
-                const active = mov.status === key || (key === 'pendente' && mov.status === 'pending') || (key === 'em_andamento' && mov.status === 'in_progress') || (key === 'concluido' && mov.status === 'completed') || (key === 'cancelado' && mov.status === 'cancelled')
-                return (
-                  <button key={key} onClick={() => onStatusChange(mov.id, key)} style={{
-                    display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 9,
-                    border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-                    background: active ? 'var(--accent-light)' : 'var(--surface)',
-                    color: active ? 'var(--accent)' : 'var(--text)',
-                    cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 400, fontFamily: 'var(--font-body)',
-                  }}>
-                    <Icon size={12} /> {label}
-                  </button>
-                )
-              })}
+            {/* Observação */}
+            {formEdit.observation && (
+              <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+                <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Observações</p>
+                <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{formEdit.observation}</p>
+              </div>
+            )}
+
+            {/* Details jsonb */}
+            {mov.details && Object.keys(mov.details).length > 0 && (
+              <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+                <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>Detalhes</p>
+                {Object.entries(mov.details).map(([k, v]) => (
+                  <p key={k} style={{ fontSize: 12, color: 'var(--text)', marginBottom: 3 }}>
+                    <span style={{ fontWeight: 700 }}>{k}:</span> {String(v)}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {/* Equipes envolvidas */}
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Equipes Envolvidas</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {movTeams.length > 0 ? movTeams.map(t => (
+                  <span key={t.id} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, background: 'var(--accent-light)', color: 'var(--accent)', fontWeight: 700, border: '1px solid var(--accent-border)' }}>
+                    {t.name}
+                  </span>
+                )) : (
+                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>Nenhuma equipe vinculada</span>
+                )}
+              </div>
             </div>
-            <button onClick={() => onDelete(mov.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: 9, padding: '7px 14px', cursor: 'pointer', fontSize: 12, fontFamily: 'var(--font-body)' }}>
-              <Trash2 size={12} /> Excluir Movimentação
-            </button>
-          </div>
+
+            {/* ── PARECERES / RESPOSTAS DAS EQUIPES ── */}
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Pareceres das Equipes
+              </p>
+              {loadingResp ? (
+                <p style={{ fontSize: 13, color: 'var(--muted)', padding: 12 }}>Carregando pareceres...</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {/* Para cada equipe vinculada, mostra o status da resposta */}
+                  {formEdit.selected_teams.map(tid => {
+                    const equipe   = teams.find(t => t.id === tid)
+                    const resposta = respostas.find(r => r.team_id === tid)
+                    const rsc      = resposta ? getStatusConf(resposta.status) : null
+                    const RIcon    = rsc?.icon
+
+                    return (
+                      <div key={tid} style={{ background: 'var(--bg)', border: `1px solid ${resposta ? (rsc?.border || 'var(--border)') : 'var(--border)'}`, borderRadius: 10, padding: '12px 16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 8, background: resposta ? (rsc?.bg || '#f3f4f6') : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              {RIcon ? <RIcon size={14} color={rsc?.color} /> : <Clock size={14} color="#9ca3af" />}
+                            </div>
+                            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{equipe?.name || teamName(tid)}</p>
+                          </div>
+                          {resposta && rsc ? (
+                            <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20, border: `1px solid ${rsc.border}`, background: rsc.bg, color: rsc.color, fontWeight: 700 }}>
+                              {RIcon && <RIcon size={10} />} {rsc.label}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#9ca3af', fontWeight: 600 }}>
+                              Aguardando
+                            </span>
+                          )}
+                        </div>
+                        {resposta?.comment && (
+                          <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--surface)', borderRadius: 8, borderLeft: `3px solid ${rsc?.color || '#d1d5db'}` }}>
+                            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 3, fontWeight: 600 }}>Parecer:</p>
+                            <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{resposta.comment}</p>
+                          </div>
+                        )}
+                        {resposta?.responded_at && (
+                          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+                            Respondido em {new Date(resposta.responded_at).toLocaleDateString('pt-BR')} às {new Date(resposta.responded_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+
+                  {/* Respostas de equipes que não estão mais no selected_teams */}
+                  {respostas.filter(r => !formEdit.selected_teams.includes(r.team_id)).map(r => {
+                    const rsc   = getStatusConf(r.status)
+                    const RIcon = rsc.icon
+                    return (
+                      <div key={r.id} style={{ background: 'var(--bg)', border: `1px solid ${rsc.border}`, borderRadius: 10, padding: '12px 16px', opacity: 0.7 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{teamName(r.team_id)} <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>(equipe removida)</span></p>
+                          <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20, border: `1px solid ${rsc.border}`, background: rsc.bg, color: rsc.color, fontWeight: 700 }}>
+                            <RIcon size={10} /> {rsc.label}
+                          </span>
+                        </div>
+                        {r.comment && <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6, lineHeight: 1.5 }}>{r.comment}</p>}
+                      </div>
+                    )
+                  })}
+
+                  {formEdit.selected_teams.length === 0 && respostas.length === 0 && (
+                    <p style={{ fontSize: 13, color: 'var(--muted)', padding: '10px 0' }}>Nenhuma equipe vinculada a esta movimentação.</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Setores notificados */}
+            {(mov.movimentacoes_setores || []).length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Setores Notificados</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {(mov.movimentacoes_setores || []).map(ms => (
+                    <span key={ms.setor_id} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, background: '#f0fdf4', color: '#16a34a', fontWeight: 700, border: '1px solid #86efac' }}>
+                      {ms.setores?.nome}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Alterar status + excluir */}
+            {isAdmin && (
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Alterar Status</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                  {[
+                    { key: 'pendente',     label: 'Pendente'     },
+                    { key: 'em_andamento', label: 'Em Andamento' },
+                    { key: 'concluido',    label: 'Concluído'    },
+                    { key: 'cancelado',    label: 'Cancelado'    },
+                  ].map(({ key, label }) => {
+                    const cfg  = getStatusConf(key)
+                    const Icon = cfg.icon
+                    const active = mov.status === key
+                      || (key === 'pendente'     && mov.status === 'pending')
+                      || (key === 'em_andamento' && mov.status === 'in_progress')
+                      || (key === 'concluido'    && mov.status === 'completed')
+                      || (key === 'cancelado'    && mov.status === 'cancelled')
+                    return (
+                      <button key={key} onClick={() => onStatusChange(mov.id, key)} style={{
+                        display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 9,
+                        border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                        background: active ? 'var(--accent-light)' : 'var(--surface)',
+                        color: active ? 'var(--accent)' : 'var(--text)',
+                        cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 400, fontFamily: 'var(--font-body)',
+                      }}>
+                        <Icon size={12} /> {label}
+                      </button>
+                    )
+                  })}
+                </div>
+                <button onClick={() => onDelete(mov.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: 9, padding: '7px 14px', cursor: 'pointer', fontSize: 12, fontFamily: 'var(--font-body)' }}>
+                  <Trash2 size={12} /> Excluir Movimentação
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
