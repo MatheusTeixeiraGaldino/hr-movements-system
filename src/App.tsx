@@ -445,7 +445,7 @@ function GerenciarMovimentacoes({ user }: { user: User }) {
   useEffect(() => { loadAll() }, [])
 
   const loadAll = async () => {
-    // Carrega teams, setores e movimentações em paralelo
+    // Carrega teams e setores
     const [{ data: t }, { data: s }] = await Promise.all([
       supabase.from('teams').select('*').order('name'),
       supabase.from('setores').select('*').eq('ativo', true).order('nome'),
@@ -453,17 +453,42 @@ function GerenciarMovimentacoes({ user }: { user: User }) {
     if (t) setTeams(t)
     if (s) setSetores(s)
 
-    // Movimentações — se não for admin, filtra pelas equipes do usuário
-    let q = supabase.from('movements')
-      .select('*, team_responses(*, teams(name, email)), movimentacoes_setores(setor_id, setores(nome))')
+    // Busca todas as movimentações sem filtro de array (compatibilidade com dados antigos)
+    const { data: m, error: mErr } = await supabase
+      .from('movements')
+      .select('*, team_responses(*, teams(name, email))')
       .order('created_at', { ascending: false })
 
-    if (user.role !== 'admin' && user.team_ids && user.team_ids.length > 0) {
-      q = q.overlaps('selected_teams', user.team_ids)
-    }
+    if (mErr) { console.error('Erro ao carregar movimentações:', mErr); return }
+    if (!m) return
 
-    const { data: m } = await q
-    if (m) setMovs(m as Movimentacao[])
+    // Tenta carregar vínculos de setores separadamente (movimentações antigas não têm)
+    let setoresMap: Record<string, any[]> = {}
+    try {
+      const { data: ms } = await supabase
+        .from('movimentacoes_setores')
+        .select('movimentacao_id, setor_id, setores(nome)')
+      if (ms) {
+        ms.forEach((row: any) => {
+          if (!setoresMap[row.movimentacao_id]) setoresMap[row.movimentacao_id] = []
+          setoresMap[row.movimentacao_id].push(row)
+        })
+      }
+    } catch (_) { /* tabela ainda não existe, ignora */ }
+
+    const movsFinal = m.map(mov => ({
+      ...mov,
+      movimentacoes_setores: setoresMap[mov.id] || [],
+    }))
+
+    // Filtra no cliente por equipe se não for admin
+    if (user.role !== 'admin' && user.team_ids && user.team_ids.length > 0) {
+      setMovs(movsFinal.filter(mov =>
+        (mov.selected_teams || []).some((tid: string) => (user.team_ids as string[]).includes(tid))
+      ) as Movimentacao[])
+    } else {
+      setMovs(movsFinal as Movimentacao[])
+    }
   }
 
   const toggleItem = (arr: string[], id: string) =>
