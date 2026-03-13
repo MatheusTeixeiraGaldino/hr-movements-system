@@ -49,14 +49,7 @@ interface Setor {
   created_at: string
 }
 
-interface EmailSetor {
-  id: string
-  setor_id: string
-  nome: string
-  email: string
-  ativo: boolean
-  created_at: string
-}
+
 
 interface TeamResponse {
   id: string
@@ -587,7 +580,6 @@ function GerenciarMovimentacoes({ user }: { user: User }) {
 
   const filtradas = movs.filter(m => {
     if (filtroStatus !== 'todos') {
-      const sc = getStatusConf(m.status)
       if (filtroStatus === 'pendente'     && !['pendente','pending'].includes(m.status))       return false
       if (filtroStatus === 'em_andamento' && !['em_andamento','in_progress'].includes(m.status)) return false
       if (filtroStatus === 'concluido'    && !['concluido','completed'].includes(m.status))    return false
