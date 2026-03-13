@@ -445,7 +445,7 @@ function GerenciarMovimentacoes({ user }: { user: User }) {
   useEffect(() => { loadAll() }, [])
 
   const loadAll = async () => {
-    // Carrega teams e setores
+    // 1. Carrega teams e setores
     const [{ data: t }, { data: s }] = await Promise.all([
       supabase.from('teams').select('*').order('name'),
       supabase.from('setores').select('*').eq('ativo', true).order('nome'),
@@ -453,37 +453,64 @@ function GerenciarMovimentacoes({ user }: { user: User }) {
     if (t) setTeams(t)
     if (s) setSetores(s)
 
-    // Busca todas as movimentações sem filtro de array (compatibilidade com dados antigos)
+    // 2. Busca movimentações — select simples, sem joins para máxima compatibilidade
     const { data: m, error: mErr } = await supabase
       .from('movements')
-      .select('*, team_responses(*, teams(name, email))')
+      .select('*')
       .order('created_at', { ascending: false })
 
-    if (mErr) { console.error('Erro ao carregar movimentações:', mErr); return }
-    if (!m) return
+    if (mErr) {
+      console.error('Erro movements:', mErr)
+      alert('Erro ao carregar movimentações: ' + mErr.message)
+      return
+    }
+    if (!m || m.length === 0) {
+      setMovs([])
+      return
+    }
 
-    // Tenta carregar vínculos de setores separadamente (movimentações antigas não têm)
+    const ids = m.map((x: any) => x.id)
+
+    // 3. Carrega team_responses separadamente
+    let responsesMap: Record<string, any[]> = {}
+    try {
+      const { data: tr } = await supabase
+        .from('team_responses')
+        .select('*, teams(name, email)')
+        .in('movement_id', ids)
+      if (tr) {
+        tr.forEach((r: any) => {
+          if (!responsesMap[r.movement_id]) responsesMap[r.movement_id] = []
+          responsesMap[r.movement_id].push(r)
+        })
+      }
+    } catch (_) {}
+
+    // 4. Carrega movimentacoes_setores separadamente
     let setoresMap: Record<string, any[]> = {}
     try {
       const { data: ms } = await supabase
         .from('movimentacoes_setores')
         .select('movimentacao_id, setor_id, setores(nome)')
+        .in('movimentacao_id', ids)
       if (ms) {
         ms.forEach((row: any) => {
           if (!setoresMap[row.movimentacao_id]) setoresMap[row.movimentacao_id] = []
           setoresMap[row.movimentacao_id].push(row)
         })
       }
-    } catch (_) { /* tabela ainda não existe, ignora */ }
+    } catch (_) {}
 
-    const movsFinal = m.map(mov => ({
+    // 5. Monta resultado final
+    const movsFinal = m.map((mov: any) => ({
       ...mov,
-      movimentacoes_setores: setoresMap[mov.id] || [],
+      team_responses:       responsesMap[mov.id] || [],
+      movimentacoes_setores: setoresMap[mov.id]  || [],
     }))
 
-    // Filtra no cliente por equipe se não for admin
+    // 6. Filtra por equipe no cliente se não for admin
     if (user.role !== 'admin' && user.team_ids && user.team_ids.length > 0) {
-      setMovs(movsFinal.filter(mov =>
+      setMovs(movsFinal.filter((mov: any) =>
         (mov.selected_teams || []).some((tid: string) => (user.team_ids as string[]).includes(tid))
       ) as Movimentacao[])
     } else {
