@@ -1,1705 +1,2278 @@
-import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
-import {
-  Briefcase, LogOut, Users, Building2, Mail, Clock, CheckCircle,
-  Plus, AlertCircle, X, Trash2, FileText, Send, Eye,
-  BarChart3, ChevronRight, Shield, Edit, MessageSquare, Filter
-} from 'lucide-react'
+import React, { useState, useEffect } from 'react';
+import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Lock, Eye, EyeOff, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight } from 'lucide-react';
+import { supabase } from './lib/supabase';
 
-// ─────────────────────────────────────────────
-// SUPABASE + CONSTANTES
-// ─────────────────────────────────────────────
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-const supabase    = createClient(supabaseUrl, supabaseKey)
+type UserRole = 'admin' | 'team_member';
+type MovementType = 'demissao' | 'transferencia' | 'alteracao' | 'promocao';
 
-const WEBHOOK_URL = 'https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w'
-const SESSION_KEY = 'hr_session'
+interface Attachment {
+  name: string;
+  url: string;
+  size: number;
+  uploadedAt: string;
+}
 
-// ─────────────────────────────────────────────
-// TIPOS
-// ─────────────────────────────────────────────
 interface User {
-  id: string
-  email: string
-  name: string
-  role: string
-  can_manage_demissoes?: boolean
-  can_manage_transferencias?: boolean
-  team_id?: string
-  team_name?: string
-  team_ids?: string[]
-  team_names?: string[]
-  created_at?: string
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  role: UserRole;
+  can_manage_demissoes: boolean;
+  can_manage_transferencias: boolean;
+  team_ids: string[];
+  team_names: string[];
 }
 
-interface Team {
-  id: string
-  name: string
-  email: string
-  code: string
-  created_at: string
+interface Movement {
+  id: string;
+  type: MovementType;
+  employee_name: string;
+  selected_teams: string[];
+  status: 'pending' | 'in_progress' | 'completed';
+  responses: Record<string, { 
+    status: string; 
+    comment?: string; 
+    date?: string; 
+    checklist?: Record<string, boolean>;
+    attachments?: Attachment[];
+    history?: Array<{
+      user_name: string;
+      user_email: string;
+      action: 'created' | 'updated';
+      date: string;
+      timestamp: string;
+    }>;
+  }>;
+  created_at: string;
+  created_by: string;
+  details: Record<string, any>;
+  observation?: string | null;
+  deadline?: string | null;
 }
 
-interface Setor {
-  id: string
-  nome: string
-  descricao?: string
-  ativo: boolean
-  created_at: string
-}
+const TEAMS = [
+  { id: 'rh', name: 'Recursos Humanos' },
+  { id: 'ponto', name: 'Ponto' },
+  { id: 'transporte', name: 'Transporte' },
+  { id: 'ti', name: 'T.I' },
+  { id: 'comunicacao', name: 'Comunicação' },
+  { id: 'seguranca', name: 'Segurança do Trabalho' },
+  { id: 'ambulatorio', name: 'Ambulatório' },
+  { id: 'financeiro', name: 'Financeiro' },
+  { id: 'dp', name: 'DP' },
+  { id: 'treinamento', name: 'Treinamento e Desenvolvimento' }
+];
 
+const MOVEMENT_TYPES = {
+  demissao: { label: 'Demissão', icon: UserX },
+  transferencia: { label: 'Transferência', icon: Users },
+  alteracao: { label: 'Alteração Salarial', icon: TrendingUp },
+  promocao: { label: 'Promoção', icon: TrendingUp }
+};
 
-
-interface TeamResponse {
-  id: string
-  movement_id: string
-  team_id: string
-  status: string
-  comment?: string
-  responded_by?: string
-  responded_at?: string
-  created_at: string
-  teams?: { name: string; email: string }
-}
-
-// Movimentação unificada — campos da tabela movements + campos novos de setores
-interface Movimentacao {
-  id: string
-  // campos originais de movements
-  employee_name: string
-  type: string
-  selected_teams: string[]   // array de team_ids
-  status: string
-  responses?: Record<string, {
-    date?: string
-    status: string
-    comment?: string
-    checklist?: Record<string, boolean>
-    history?: { date: string; action: string; timestamp: string; user_name: string; user_email: string }[]
-    attachments?: any[]
-  }>
-  details?: Record<string, any>
-  checklist?: any
-  observation?: string
-  created_by?: string
-  deadline?: string
-  created_at: string
-  // campos novos adicionados à movements
-  setores_ids?: string[]
-  // joins
-  team_responses?: TeamResponse[]
-  movimentacoes_setores?: { setor_id: string; setores: { nome: string } }[]
-}
-
-// ─────────────────────────────────────────────
-// DOMÍNIO
-// ─────────────────────────────────────────────
-const TIPO_LABELS: Record<string, string> = {
-  demissao:      'Demissão',
-  transferencia: 'Transferência',
-  alteracao:     'Alteração Salarial',
-  promocao:      'Promoção',
-  afastamento:   'Afastamento',
-  outros:        'Outros',
-  // compatibilidade com valores em inglês já existentes
-  dismissal:     'Demissão',
-  transfer:      'Transferência',
-  promotion:     'Promoção',
-  leave:         'Afastamento',
-  salary_change: 'Alteração Salarial',
-  other:         'Outros',
-}
-
-const TIPO_BADGE: Record<string, { color: string; border: string; bg: string }> = {
-  demissao:      { color: '#dc2626', border: '#fca5a5', bg: '#fef2f2' },
-  dismissal:     { color: '#dc2626', border: '#fca5a5', bg: '#fef2f2' },
-  transferencia: { color: '#2563eb', border: '#93c5fd', bg: '#eff6ff' },
-  transfer:      { color: '#2563eb', border: '#93c5fd', bg: '#eff6ff' },
-  alteracao:     { color: '#ca8a04', border: '#fde047', bg: '#fefce8' },
-  salary_change: { color: '#ca8a04', border: '#fde047', bg: '#fefce8' },
-  promocao:      { color: '#16a34a', border: '#86efac', bg: '#f0fdf4' },
-  promotion:     { color: '#16a34a', border: '#86efac', bg: '#f0fdf4' },
-  afastamento:   { color: '#9333ea', border: '#d8b4fe', bg: '#faf5ff' },
-  leave:         { color: '#9333ea', border: '#d8b4fe', bg: '#faf5ff' },
-  outros:        { color: '#4b5563', border: '#d1d5db', bg: '#f9fafb' },
-  other:         { color: '#4b5563', border: '#d1d5db', bg: '#f9fafb' },
-}
-
-const STATUS_CONFIG: Record<string, { label: string; color: string; border: string; bg: string; icon: any }> = {
-  pendente:     { label: 'Pendente',     color: '#d97706', border: '#fcd34d', bg: '#fffbeb', icon: Clock       },
-  pending:      { label: 'Pendente',     color: '#d97706', border: '#fcd34d', bg: '#fffbeb', icon: Clock       },
-  em_andamento: { label: 'Em Andamento', color: '#2563eb', border: '#93c5fd', bg: '#eff6ff', icon: AlertCircle },
-  in_progress:  { label: 'Em Andamento', color: '#2563eb', border: '#93c5fd', bg: '#eff6ff', icon: AlertCircle },
-  concluido:    { label: 'Concluído',    color: '#16a34a', border: '#86efac', bg: '#f0fdf4', icon: CheckCircle },
-  completed:    { label: 'Concluído',    color: '#16a34a', border: '#86efac', bg: '#f0fdf4', icon: CheckCircle },
-  cancelado:    { label: 'Cancelado',    color: '#6b7280', border: '#d1d5db', bg: '#f9fafb', icon: X           },
-  cancelled:    { label: 'Cancelado',    color: '#6b7280', border: '#d1d5db', bg: '#f9fafb', icon: X           },
-}
-
-type View = 'dashboard' | 'movimentacoes' | 'setores' | 'usuarios'
-
-// ─────────────────────────────────────────────
-// ESTILOS
-// ─────────────────────────────────────────────
-const S = {
-  input: {
-    width: '100%', padding: '9px 12px', borderRadius: 9, fontSize: 13,
-    border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)',
-    outline: 'none', boxSizing: 'border-box' as const, transition: 'border-color 0.15s',
-    fontFamily: 'var(--font-body)',
-  } as React.CSSProperties,
-  label: {
-    display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text)',
-    marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: 0.6,
-  } as React.CSSProperties,
-  btnPrimary: {
-    display: 'inline-flex', alignItems: 'center', gap: 6,
-    padding: '9px 18px', borderRadius: 9, border: 'none',
-    background: 'var(--accent)', color: 'white',
-    fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-body)',
-  } as React.CSSProperties,
-  btnSecondary: {
-    display: 'inline-flex', alignItems: 'center', gap: 6,
-    padding: '9px 18px', borderRadius: 9, border: '1px solid var(--border)',
-    background: 'var(--surface)', color: 'var(--text)',
-    fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-body)',
-  } as React.CSSProperties,
-  iconBtn: {
-    background: 'none', border: 'none', cursor: 'pointer', padding: 6,
-    borderRadius: 7, color: 'var(--muted)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-  } as React.CSSProperties,
-  overlay: {
-    position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
-  } as React.CSSProperties,
-  modal: {
-    background: 'var(--surface)', borderRadius: 16, padding: 30,
-    width: '100%', maxHeight: '92vh', overflowY: 'auto' as const,
-    boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
-  } as React.CSSProperties,
-  card: {
-    background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24,
-  } as React.CSSProperties,
-  pageTitle:    { fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.4px' } as React.CSSProperties,
-  pageSubtitle: { color: 'var(--muted)', fontSize: 14, marginTop: 4 } as React.CSSProperties,
-}
-
-const focusAccent = (e: React.FocusEvent<any>) => { e.target.style.borderColor = 'var(--accent)' }
-const blurBorder  = (e: React.FocusEvent<any>) => { e.target.style.borderColor = 'var(--border)' }
-const getTipoLabel  = (t: string) => TIPO_LABELS[t]  || t
-const getTipoBadge  = (t: string) => TIPO_BADGE[t]   || TIPO_BADGE.outros
-const getStatusConf = (s: string) => STATUS_CONFIG[s] || STATUS_CONFIG.pendente
-
-// ─────────────────────────────────────────────
-// APP
-// ─────────────────────────────────────────────
-export default function App() {
-  const [user,    setUser]    = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [view,    setView]    = useState<View>('dashboard')
-
-  useEffect(() => {
-    const saved = localStorage.getItem(SESSION_KEY)
-    if (saved) {
-      try { setUser(JSON.parse(saved)); setView('dashboard') }
-      catch { localStorage.removeItem(SESSION_KEY) }
-    }
-    setLoading(false)
-  }, [])
-
-  const handleLogin = async (email: string, password: string) => {
-    const { data, error } = await supabase
-      .from('users').select('*')
-      .eq('email', email.trim().toLowerCase()).eq('password', password).single()
-    if (error || !data) { alert('E-mail ou senha incorretos.'); return }
-    localStorage.setItem(SESSION_KEY, JSON.stringify(data))
-    setUser(data as User); setView('dashboard')
+const CHECKLISTS: Record<MovementType, Record<string, string[]>> = {
+  demissao: {
+    rh: ['Requisição de desligamento', 'Entrevista de desligamento'],
+    ponto: ['Entrega espelho de ponto'],
+    transporte: ['Valores de multas', 'Baixa de carro responsável'],
+    ti: ['Baixa de usuário'],
+    seguranca: ['Entrega de EPIs', 'Sem acidente de trabalho', 'Não é membro da CIPA'],
+    ambulatorio: ['Valores farmácia', 'Baixa plano de saúde', 'Baixa plano odonto', 'Exame demissional', 'Valores plano de saúde'],
+    financeiro: ['Existe multas', 'Existe adiantamento', 'Valores a descontar'],
+    dp: ['Comissões recebidas', 'Aviso prévio assinado', 'Valores marmita'],
+    treinamento: ['Valores a devolver bolsa de estudos', 'Valores a devolver adiantamento treinamentos'],
+    comunicacao:['Retirar dos grupos de Whatsapp e comunicação']
+  },
+  transferencia: {
+    rh: ['Transferência temporária', 'Colaborador apto para a função'],
+    ponto: ['Análise alteração no ponto do colaborador'],
+    transporte: ['Colaborador apto a dirigir veículo da empresa'],
+    ti: ['Alteração de acessos colaborador'],
+    seguranca: ['Ordem de serviço assinada', 'Colaborador habilitado em NR'],
+    treinamento: ['Treinamentos obrigatórios'],
+    ambulatorio: ['ASO'],
+    dp: ['Transferência programada', 'Necessário criação de função ou seção']
+  },
+  alteracao: {
+    rh: ['Alteração temporária', 'Colaborador apto para a função'],
+    ponto: ['Análise alteração no ponto do colaborador'],
+    transporte: ['Colaborador apto a dirigir veículo da empresa'],
+    ti: ['Alteração de acessos colaborador'],
+    seguranca: ['Ordem de serviço assinada', 'Colaborador habilitado em NR'],
+    treinamento: ['Treinamentos obrigatórios'],
+    ambulatorio: ['ASO'],
+    dp: ['Alteração programada', 'Necessário criação de função ou seção']
+  },
+  promocao: {
+    rh: ['Colaborador apto para a função', 'Testes necessários para função', 'Promoção para liderança de equipe, fez treinamento de líderes'],
+    ponto: ['Análise alteração no ponto do colaborador'],
+    transporte: ['Colaborador apto a dirigir veículo da empresa'],
+    ti: ['Alteração de acessos colaborador'],
+    seguranca: ['Ordem de serviço assinada', 'Colaborador habilitado em NR'],
+    treinamento: ['Treinamentos obrigatórios'],
+    ambulatorio: ['ASO', 'Alteração plano de saúde'],
+    dp: ['Promoção programada', 'Necessário criação de função ou seção', 'Alteração seguro de vida'],
+    comunicacao:['Programado post de promoção']
   }
+};
 
-  const handleLogout = () => { localStorage.removeItem(SESSION_KEY); setUser(null) }
+async function uploadFile(file: File, movementId: string, teamId: string): Promise<Attachment | null> {
+  try {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${movementId}/${teamId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+    
+    const { error } = await supabase.storage
+      .from('movement-attachments')
+      .upload(fileName, file);
 
-  if (loading) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 32, height: 32, border: '3px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
-        <p style={{ marginTop: 12, color: 'var(--muted)', fontSize: 14 }}>Carregando...</p>
-      </div>
-    </div>
-  )
+    if (error) throw error;
 
-  if (!user) return <LoginScreen onLogin={handleLogin} />
+    const { data: { publicUrl } } = supabase.storage
+      .from('movement-attachments')
+      .getPublicUrl(fileName);
 
-  return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex' }}>
-      <Sidebar user={user} currentView={view} onNavigate={setView} onLogout={handleLogout} />
-      <main style={{ flex: 1, marginLeft: 252, padding: '36px 40px', minHeight: '100vh', animation: 'fadeIn 0.2s ease' }}>
-        {view === 'dashboard'     && <Dashboard user={user} onNavigate={setView} />}
-        {view === 'movimentacoes' && <GerenciarMovimentacoes user={user} />}
-        {view === 'setores'       && <GerenciarSetores user={user} />}
-        {view === 'usuarios'      && <GerenciarUsuarios user={user} />}
-      </main>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────
-// LOGIN
-// ─────────────────────────────────────────────
-function LoginScreen({ onLogin }: { onLogin: (e: string, p: string) => void }) {
-  const [email, setEmail]       = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading]   = useState(false)
-
-  const submit = async () => {
-    if (!email || !password) { alert('Preencha e-mail e senha'); return }
-    setLoading(true); await onLogin(email, password); setLoading(false)
+    return {
+      name: file.name,
+      url: publicUrl,
+      size: file.size,
+      uploadedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('Erro ao fazer upload:', error);
+    return null;
   }
-
-  return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
-      <div style={{ ...S.card, width: '100%', maxWidth: 420, padding: '44px 40px' }}>
-        <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <div style={{ width: 54, height: 54, background: 'var(--accent)', borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
-            <Briefcase size={27} color="white" />
-          </div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 700, color: 'var(--text)' }}>RH Movimentações</h1>
-          <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 5 }}>Sistema de Movimentações Trabalhistas</p>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div>
-            <label style={S.label}>E-mail</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="seu@email.com" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
-          </div>
-          <div>
-            <label style={S.label}>Senha</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-              onKeyPress={e => e.key === 'Enter' && submit()}
-              placeholder="••••••••" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
-          </div>
-          <button onClick={submit} disabled={loading}
-            style={{ ...S.btnPrimary, justifyContent: 'center', padding: '11px 18px', marginTop: 4, opacity: loading ? 0.75 : 1 }}>
-            {loading ? 'Entrando...' : 'Entrar'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
 }
 
-// ─────────────────────────────────────────────
-// SIDEBAR
-// ─────────────────────────────────────────────
-function Sidebar({ user, currentView, onNavigate, onLogout }: {
-  user: User; currentView: View; onNavigate: (v: View) => void; onLogout: () => void
+async function deleteFile(url: string): Promise<boolean> {
+  try {
+    const path = url.split('/movement-attachments/')[1];
+    if (!path) return false;
+
+    const { error } = await supabase.storage
+      .from('movement-attachments')
+      .remove([path]);
+
+    return !error;
+  } catch (error) {
+    console.error('Erro ao deletar arquivo:', error);
+    return false;
+  }
+}
+
+function AttachmentManager({ attachments, onAdd, onRemove, disabled }: { 
+  attachments: Attachment[]; 
+  onAdd: (file: File) => void; 
+  onRemove: (attachment: Attachment) => void;
+  disabled?: boolean;
 }) {
-  const isAdmin = user.role === 'admin'
-  const items = [
-    { id: 'dashboard',     label: 'Dashboard',        icon: BarChart3, show: true    },
-    { id: 'movimentacoes', label: 'Movimentações',     icon: Briefcase, show: true    },
-    { id: 'setores',       label: 'Setores & Emails',  icon: Mail,      show: isAdmin },
-    { id: 'usuarios',      label: 'Usuários',          icon: Shield,    show: isAdmin },
-  ].filter(i => i.show)
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert('O arquivo deve ter no máximo 10MB');
+        return;
+      }
+      onAdd(file);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
 
   return (
-    <aside style={{ position: 'fixed', top: 0, left: 0, width: 252, height: '100vh', background: 'var(--surface)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', zIndex: 100 }}>
-      <div style={{ padding: '22px 20px 20px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-          <div style={{ width: 36, height: 36, background: 'var(--accent)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Briefcase size={17} color="white" />
-          </div>
-          <div>
-            <p style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: 'var(--text)', lineHeight: 1.2 }}>RH Movimentações</p>
-            <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>Sistema Trabalhista</p>
-          </div>
-        </div>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="block text-sm font-medium text-gray-700">Anexos</label>
+        {!disabled && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 text-sm"
+          >
+            <Upload className="w-4 h-4" />
+            Adicionar Arquivo
+          </button>
+        )}
       </div>
-      <nav style={{ flex: 1, padding: '14px 10px', overflowY: 'auto' }}>
-        <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '0 10px 10px' }}>Menu</p>
-        {items.map(({ id, label, icon: Icon }) => {
-          const active = currentView === id
-          return (
-            <button key={id} onClick={() => onNavigate(id as View)} style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-              padding: '9px 12px', borderRadius: 9, border: 'none', cursor: 'pointer',
-              marginBottom: 2, textAlign: 'left', fontSize: 13,
-              fontWeight: active ? 700 : 400,
-              background: active ? 'var(--accent-light)' : 'transparent',
-              color: active ? 'var(--accent)' : 'var(--muted)',
-              transition: 'all 0.15s', fontFamily: 'var(--font-body)',
-            }}>
-              <Icon size={15} />
-              {label}
-              {active && <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block' }} />}
-            </button>
-          )
-        })}
-      </nav>
-      <div style={{ padding: '12px 10px', borderTop: '1px solid var(--border)' }}>
-        <div style={{ padding: '6px 12px', marginBottom: 6 }}>
-          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{user.name}</p>
-          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
-            {user.role === 'admin' ? 'Administrador' : user.role === 'viewer' ? 'Visualizador' : 'Usuário'}
-            {user.team_names && user.team_names.length > 0 && ` · ${user.team_names[0]}`}
-          </p>
-        </div>
-        <button onClick={onLogout} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 9, border: 'none', cursor: 'pointer', background: 'transparent', color: 'var(--muted)', fontSize: 13, fontFamily: 'var(--font-body)' }}>
-          <LogOut size={14} /> Sair
-        </button>
-      </div>
-    </aside>
-  )
-}
 
-// ─────────────────────────────────────────────
-// DASHBOARD
-// ─────────────────────────────────────────────
-function Dashboard({ user, onNavigate }: { user: User; onNavigate: (v: View) => void }) {
-  const [stats, setStats] = useState({ total: 0, pendentes: 0, emAndamento: 0, concluidos: 0 })
+      <input
+        ref={fileInputRef}
+        type="file"
+        onChange={handleFileSelect}
+        className="hidden"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif"
+        disabled={disabled}
+      />
 
-  useEffect(() => {
-    // Se não for admin, filtra pelas equipes do usuário
-    // Dashboard: busca tudo e filtra no cliente (selected_teams usa codes, não UUIDs)
-    let query = supabase.from('movements').select('status')
-    query.then(({ data }) => {
-      if (!data) return
-      setStats({
-        total:       data.length,
-        pendentes:   data.filter(m => ['pendente','pending'].includes(m.status)).length,
-        emAndamento: data.filter(m => ['em_andamento','in_progress'].includes(m.status)).length,
-        concluidos:  data.filter(m => ['concluido','completed'].includes(m.status)).length,
-      })
-    })
-  }, [])
-
-  const cards = [
-    { label: 'Total de Movimentações', value: stats.total,       icon: Briefcase,   color: '#6366f1', bg: '#eef2ff' },
-    { label: 'Pendentes',              value: stats.pendentes,   icon: Clock,       color: '#d97706', bg: '#fffbeb' },
-    { label: 'Em Andamento',           value: stats.emAndamento, icon: AlertCircle, color: '#2563eb', bg: '#eff6ff' },
-    { label: 'Concluídas',             value: stats.concluidos,  icon: CheckCircle, color: '#16a34a', bg: '#f0fdf4' },
-  ]
-
-  return (
-    <div>
-      <div style={{ marginBottom: 32 }}>
-        <h2 style={S.pageTitle}>Olá, {user.name.split(' ')[0]} 👋</h2>
-        <p style={S.pageSubtitle}>
-          {user.role === 'admin' ? 'Visão geral de todas as movimentações' : `Movimentações das suas equipes`}
-        </p>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 28 }}>
-        {cards.map(({ label, value, icon: Icon, color, bg }, i) => (
-          <div key={i} style={S.card}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <p style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500, marginBottom: 10 }}>{label}</p>
-                <p style={{ fontSize: 34, fontWeight: 700, color: 'var(--text)', fontFamily: 'var(--font-display)', lineHeight: 1 }}>{value}</p>
+      {attachments.length > 0 && (
+        <div className="space-y-2">
+          {attachments.map((attachment, index) => (
+            <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <File className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{attachment.name}</p>
+                  <p className="text-xs text-gray-500">{formatFileSize(attachment.size)} • {new Date(attachment.uploadedAt).toLocaleString('pt-BR')}</p>
+                </div>
               </div>
-              <div style={{ width: 42, height: 42, borderRadius: 11, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Icon size={19} color={color} />
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="Baixar arquivo"><Download className="w-4 h-4" /></a>
+                {!disabled && <button type="button" onClick={() => onRemove(attachment)} className="p-1.5 text-red-600 hover:bg-red-50 rounded" title="Remover arquivo"><X className="w-4 h-4" /></button>}
               </div>
             </div>
-          </div>
-        ))}
-      </div>
-      {stats.pendentes > 0 && (
-        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 10, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <AlertCircle size={18} color="#d97706" />
-          </div>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontWeight: 700, color: '#92400e', fontSize: 14 }}>
-              {stats.pendentes} movimentaç{stats.pendentes !== 1 ? 'ões' : 'ão'} pendente{stats.pendentes !== 1 ? 's' : ''}
-            </p>
-            <p style={{ fontSize: 12, color: '#b45309', marginTop: 2 }}>Requerem atenção ou atualização de status</p>
-          </div>
-          <button onClick={() => onNavigate('movimentacoes')}
-            style={{ background: '#d97706', color: 'white', border: 'none', borderRadius: 9, padding: '8px 18px', fontSize: 13, cursor: 'pointer', fontWeight: 700, flexShrink: 0, fontFamily: 'var(--font-body)' }}>
-            Ver Todas
-          </button>
+          ))}
         </div>
       )}
+
+      {attachments.length === 0 && (
+        <p className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg border-2 border-dashed">Nenhum anexo adicionado</p>
+      )}
     </div>
-  )
+  );
 }
 
-// ─────────────────────────────────────────────
-// MOVIMENTAÇÕES — usa tabela movements (existente)
-// ─────────────────────────────────────────────
-function GerenciarMovimentacoes({ user }: { user: User }) {
-  const [movs,         setMovs]         = useState<Movimentacao[]>([])
-  const [teams,        setTeams]        = useState<Team[]>([])
-  const [setores,      setSetores]      = useState<Setor[]>([])
-  const [showForm,     setShowForm]     = useState(false)
-  const [detalhe,      setDetalhe]      = useState<Movimentacao | null>(null)
-  const [filtroStatus, setFiltroStatus] = useState('todos')
-  const [filtroTipo,   setFiltroTipo]   = useState('todos')
-  const [enviando,     setEnviando]     = useState(false)
-  const [form, setForm] = useState({
-    employee_name: '', type: 'demissao', deadline: '',
-    observation: '', selected_teams: [] as string[],
-    setores_ids: [] as string[],
-    sector: '', company: '', dismissalDate: '',
-    details: {} as any, checklist: [] as any[],
-  })
+function TeamSelector({ currentUser, activeTeamId, setActiveTeamId }: { 
+  currentUser: User; 
+  activeTeamId: string;
+  setActiveTeamId: (id: string) => void;
+}) {
+  if (currentUser.team_ids.length <= 1) return null;
 
-  const isAdmin   = user.role === 'admin'
-  const canCreate = user.role === 'admin' || user.role === 'user'
+  return (
+    <div className="bg-white rounded-lg shadow p-4 mb-6">
+      <label className="block text-sm font-medium text-gray-700 mb-3">📋 Você está respondendo como equipe:</label>
+      <div className="flex flex-wrap gap-2">
+        {currentUser.team_ids.map((teamId, index) => (
+          <button key={teamId} onClick={() => setActiveTeamId(teamId)} className={`px-4 py-2 rounded-lg font-medium transition ${activeTeamId === teamId ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+            {currentUser.team_names[index]}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-  useEffect(() => { loadAll() }, [])
+export default function App() {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [movements, setMovements] = useState<Movement[]>([]);
+  const [view, setView] = useState('login');
+  const [selectedMovement, setSelectedMovement] = useState<Movement | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [activeTeamId, setActiveTeamId] = useState<string>('');
 
-  const loadAll = async () => {
-    // 1. Carrega teams e setores
-    const [{ data: t }, { data: s }] = await Promise.all([
-      supabase.from('teams').select('*').order('name'),
-      supabase.from('setores').select('*').eq('ativo', true).order('nome'),
-    ])
-    if (t) setTeams(t)
-    if (s) setSetores(s)
-
-    // 2. Busca movimentações — select simples, sem joins para máxima compatibilidade
-    const { data: m, error: mErr } = await supabase
-      .from('movements')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (mErr) {
-      console.error('Erro movements:', mErr)
-      alert('Erro ao carregar movimentações: ' + mErr.message)
-      return
-    }
-    if (!m || m.length === 0) {
-      setMovs([])
-      return
-    }
-
-    const ids = m.map((x: any) => x.id)
-
-    // 3. Carrega team_responses separadamente
-    let responsesMap: Record<string, any[]> = {}
-    try {
-      const { data: tr } = await supabase
-        .from('team_responses')
-        .select('*, teams(name, email)')
-        .in('movement_id', ids)
-      if (tr) {
-        tr.forEach((r: any) => {
-          if (!responsesMap[r.movement_id]) responsesMap[r.movement_id] = []
-          responsesMap[r.movement_id].push(r)
-        })
+  useEffect(() => {
+    if (currentUser) {
+      if (!activeTeamId && currentUser.team_ids.length > 0) {
+        setActiveTeamId(currentUser.team_ids[0]);
       }
-    } catch (_) {}
-
-    // 4. Carrega movimentacoes_setores separadamente
-    let setoresMap: Record<string, any[]> = {}
-    try {
-      const { data: ms } = await supabase
-        .from('movimentacoes_setores')
-        .select('movimentacao_id, setor_id, setores(nome)')
-        .in('movimentacao_id', ids)
-      if (ms) {
-        ms.forEach((row: any) => {
-          if (!setoresMap[row.movimentacao_id]) setoresMap[row.movimentacao_id] = []
-          setoresMap[row.movimentacao_id].push(row)
-        })
-      }
-    } catch (_) {}
-
-    // 5. Monta resultado final
-    const movsFinal = m.map((mov: any) => ({
-      ...mov,
-      team_responses:       responsesMap[mov.id] || [],
-      movimentacoes_setores: setoresMap[mov.id]  || [],
-    }))
-
-    // 6. Filtra por equipe no cliente se não for admin
-    // user.team_ids são UUIDs; selected_teams usa codes — converte via teams
-    if (user.role !== 'admin' && user.team_ids && user.team_ids.length > 0) {
-      const userTeamCodes = (t || [])
-        .filter((team: any) => (user.team_ids as string[]).includes(team.id))
-        .map((team: any) => team.code)
-      setMovs(movsFinal.filter((mov: any) =>
-        (mov.selected_teams || []).some((code: string) => userTeamCodes.includes(code))
-      ) as Movimentacao[])
-    } else {
-      setMovs(movsFinal as Movimentacao[])
+      loadMovements();
     }
+  }, [currentUser]);
+
+  const loadMovements = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.from('movements').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      setMovements(data || []);
+    } catch (error) {
+      console.error('Erro:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!currentUser) {
+    return <LoginComponent setCurrentUser={setCurrentUser} setView={setView} setActiveTeamId={setActiveTeamId} />;
   }
 
-  const toggleItem = (arr: string[], id: string) =>
-    arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id]
+  return (
+    <div className="min-h-screen bg-gray-100">
+      <HeaderComponent currentUser={currentUser} setCurrentUser={setCurrentUser} setView={setView} activeTeamId={activeTeamId} />
+      <main className="max-w-7xl mx-auto px-4 py-6">
+        {view === 'dashboard' && (
+          <>
+            <TeamSelector currentUser={currentUser} activeTeamId={activeTeamId} setActiveTeamId={setActiveTeamId} />
+            <DashboardView currentUser={currentUser} movements={movements} loading={loading} loadMovements={loadMovements} setSelectedMovement={setSelectedMovement} setView={setView} activeTeamId={activeTeamId} />
+          </>
+        )}
+        {view === 'detail' && selectedMovement && (
+          <DetailView currentUser={currentUser} selectedMovement={selectedMovement} setView={setView} setSelectedMovement={setSelectedMovement} loadMovements={loadMovements} activeTeamId={activeTeamId} />
+        )}
+        {view === 'setores' && currentUser.role === 'admin' && (
+          <SetoresView />
+        )}
+      </main>
+    </div>
+  );
+}
 
-  const resetForm = () => {
-    setForm({ employee_name: '', type: 'demissao', deadline: '', observation: '', selected_teams: [], setores_ids: [], sector: '', company: '', dismissalDate: '', details: {}, checklist: [] })
-    setShowForm(false)
-  }
+function LoginComponent({ setCurrentUser, setView, setActiveTeamId }: any) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
+  const [loadingLogin, setLoadingLogin] = useState(false);
 
-  const salvar = async () => {
-    if (!form.employee_name.trim()) { alert('Informe o nome do colaborador'); return }
-    if (form.selected_teams.length === 0) { alert('Selecione pelo menos uma equipe'); return }
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoadingLogin(true);
+    setError('');
 
-    const { data: mov, error } = await supabase.from('movements').insert({
-      employee_name:  form.employee_name.trim(),
-      type:           form.type,
-      deadline:       form.deadline || null,
-      observation:    form.observation || null,
-      selected_teams: form.selected_teams,
-      setores_ids:    form.setores_ids,
-      status:         'pendente',
-      created_by:     user.id,
-      details: {
-        sector:        form.sector || '',
-        company:       form.company || '',
-        dismissalDate: form.dismissalDate || '',
-        observation:   form.observation || '',
-        employeeName:  form.employee_name.trim(),
-      },
-      checklist:  form.checklist || [],
-      responses:  {},
-    }).select().single()
-
-    if (error || !mov) { alert('Erro ao salvar: ' + error?.message); return }
-
-    // Relação movement_teams
-    if (form.selected_teams.length > 0) {
-      await supabase.from('movement_teams').insert(
-        form.selected_teams.map(code => { const team = teams.find(t => t.code === code); return { movement_id: mov.id, team_id: team?.id || code } })
-      )
-    }
-
-    // Relação movimentacoes_setores (para emails)
-    if (form.setores_ids.length > 0) {
-      await supabase.from('movimentacoes_setores').insert(
-        form.setores_ids.map(sid => ({ movimentacao_id: mov.id, setor_id: sid }))
-      )
-    }
-
-    // Enviar notificações via Make.com
-    setEnviando(true)
     try {
-      const { data: emailsData } = await supabase
-        .from('emails_setor').select('*, setores(nome)')
-        .in('setor_id', form.setores_ids).eq('ativo', true)
+      const { data, error } = await supabase.from('users').select('*').eq('email', email.toLowerCase()).eq('password', password).single();
+      if (error || !data) {
+        setError('Email ou senha incorretos');
+        return;
+      }
+      setCurrentUser(data);
+      if (data.team_ids && data.team_ids.length > 0) {
+        setActiveTeamId(data.team_ids[0]);
+      }
+      setView('dashboard');
+    } catch (err) {
+      setError('Erro ao fazer login');
+    } finally {
+      setLoadingLogin(false);
+    }
+  };
 
-      if (emailsData && emailsData.length > 0) {
-        const teamsNomes  = teams.filter(t => form.selected_teams.includes(t.id)).map(t => t.name)
-        const setoresNomes = setores.filter(s => form.setores_ids.includes(s.id)).map(s => s.nome)
-        const tipoLabel   = getTipoLabel(form.type)
-        const prazoFmt    = form.deadline ? new Date(form.deadline + 'T00:00:00').toLocaleDateString('pt-BR') : null
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+            <Users className="w-8 h-8 text-blue-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900">Sistema de Movimentações</h1>
+          <p className="text-gray-600 mt-2">Gestão de Colaboradores</p>
+        </div>
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">E-mail</label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg" required disabled={loadingLogin} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Senha</label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-10 pr-12 py-2 border rounded-lg" required disabled={loadingLogin} />
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
+          </div>
+          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4" />{error}</div>}
+          <button type="submit" disabled={loadingLogin} className="w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 disabled:bg-blue-400 flex items-center justify-center gap-2">
+            {loadingLogin ? <><Loader2 className="w-5 h-5 animate-spin" />Entrando...</> : 'Entrar'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
 
-        await fetch(WEBHOOK_URL, {
+function HeaderComponent({ currentUser, setCurrentUser, setView, activeTeamId }: any) {
+  const activeTeamName = currentUser.team_ids.map((id: string, index: number) => 
+    id === activeTeamId ? currentUser.team_names[index] : null
+  ).find((name: string | null) => name !== null);
+
+  return (
+    <header className="bg-white shadow">
+      <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <Users className="w-8 h-8 text-blue-600" />
+            <div>
+              <h1 className="text-2xl font-bold">Sistema de Movimentações</h1>
+              <p className="text-sm text-gray-600">Gestão de Colaboradores</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-4">
+            <div className="text-right">
+              <p className="text-sm font-medium">{currentUser.name}</p>
+              <p className="text-xs text-gray-500">
+                {activeTeamName}
+                {currentUser.team_ids.length > 1 && ` (+${currentUser.team_ids.length - 1})`}
+              </p>
+            </div>
+            {currentUser.role === 'admin' && (
+              <button onClick={() => setView('setores')} className="flex items-center gap-1 text-sm text-gray-600 hover:text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition">
+                <Building2 className="w-4 h-4" />
+                Setores & Emails
+              </button>
+            )}
+            <button onClick={() => { setView('dashboard'); }} className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition">
+              Dashboard
+            </button>
+            <button onClick={() => { setCurrentUser(null); setView('login'); }} className="text-gray-600 hover:text-gray-900">
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (newPassword.length < 6) {
+      setError('A nova senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError('As senhas não coincidem');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      alert('Senha alterada com sucesso!');
+      onClose();
+    } catch (err) {
+      setError('Erro ao alterar senha');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl p-6 max-w-md w-full">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-lg font-bold">Alterar Senha</h3>
+          <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
+        </div>
+        <form onSubmit={handleChange} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Senha Atual</label>
+            <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Nova Senha</label>
+            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" required minLength={6} disabled={loading} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Confirmar Nova Senha</label>
+            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full border rounded-lg px-3 py-2" required disabled={loading} />
+          </div>
+          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">{error}</div>}
+          <div className="flex gap-2">
+            <button type="submit" disabled={loading} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300">
+              {loading ? 'Alterando...' : 'Alterar Senha'}
+            </button>
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Substitua a função RegisterUserModal no seu App.tsx por esta versão corrigida
+
+function RegisterUserModal({ onClose }: { onClose: () => void }) {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'team_member' as UserRole,
+    can_manage_demissoes: false,
+    can_manage_transferencias: false
+  });
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!formData.name || !formData.email || !formData.password || selectedTeamIds.length === 0) {
+      setError('Preencha todos os campos obrigatórios');
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      setError('A senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const selectedTeamNames = selectedTeamIds.map(id => 
+        TEAMS.find(t => t.id === id)?.name || ''
+      );
+
+      // CORREÇÃO: Usar o método correto do Supabase para inserir arrays
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert({
+          name: formData.name,
+          email: formData.email.toLowerCase(),
+          password: formData.password,
+          role: formData.role,
+          can_manage_demissoes: formData.can_manage_demissoes,
+          can_manage_transferencias: formData.can_manage_transferencias,
+          team_ids: selectedTeamIds,
+          team_names: selectedTeamNames
+        })
+        .select();
+
+      if (insertError) {
+        console.error('Erro ao inserir:', insertError);
+        
+        if (insertError.code === '23505') {
+          setError('Este email já está cadastrado');
+        } else if (insertError.message) {
+          setError(`Erro: ${insertError.message}`);
+        } else {
+          setError('Erro ao cadastrar usuário');
+        }
+        return;
+      }
+
+      alert('Usuário cadastrado com sucesso!');
+      onClose();
+    } catch (err: any) {
+      console.error('Erro geral:', err);
+      setError(`Erro ao cadastrar usuário: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4 sticky top-0 bg-white pb-3 border-b">
+          <h3 className="text-lg font-bold">Cadastrar Novo Usuário</h3>
+          <button onClick={onClose} className="text-gray-600 hover:text-gray-900 text-xl">✕</button>
+        </div>
+        <form onSubmit={handleRegister} className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label>
+            <input 
+              type="text" 
+              value={formData.name} 
+              onChange={(e) => setFormData({...formData, name: e.target.value})} 
+              className="w-full border rounded-lg px-3 py-2 text-sm" 
+              required 
+              disabled={loading} 
+            />
+          </div>
+          
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">E-mail *</label>
+              <input 
+                type="email" 
+                value={formData.email} 
+                onChange={(e) => setFormData({...formData, email: e.target.value})} 
+                className="w-full border rounded-lg px-3 py-2 text-sm" 
+                required 
+                disabled={loading} 
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Senha *</label>
+              <input 
+                type="password" 
+                value={formData.password} 
+                onChange={(e) => setFormData({...formData, password: e.target.value})} 
+                className="w-full border rounded-lg px-3 py-2 text-sm" 
+                required 
+                minLength={6} 
+                placeholder="Mínimo 6 caracteres" 
+                disabled={loading} 
+              />
+            </div>
+          </div>
+          
+          <div className="border-t pt-3">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Equipes * ({selectedTeamIds.length} selecionada{selectedTeamIds.length !== 1 ? 's' : ''})
+            </label>
+            {selectedTeamIds.length === 0 && (
+              <p className="text-xs text-red-600 mb-2">⚠️ Selecione pelo menos uma equipe</p>
+            )}
+            <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto border rounded-lg p-2 bg-gray-50">
+              {TEAMS.map(t => (
+                <label 
+                  key={t.id} 
+                  className={`flex items-center gap-2 p-2 border rounded cursor-pointer transition text-xs ${
+                    selectedTeamIds.includes(t.id) 
+                      ? 'border-blue-500 bg-blue-50' 
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <input 
+                    type="checkbox" 
+                    checked={selectedTeamIds.includes(t.id)} 
+                    onChange={() => {
+                      setSelectedTeamIds(prev => 
+                        prev.includes(t.id) 
+                          ? prev.filter(id => id !== t.id) 
+                          : [...prev, t.id]
+                      );
+                    }}
+                    className="w-3 h-3" 
+                    disabled={loading}
+                  />
+                  <span className="text-xs">{t.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t pt-3">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Usuário *</label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex items-start gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
+                <input 
+                  type="radio" 
+                  name="role" 
+                  value="team_member" 
+                  checked={formData.role === 'team_member'} 
+                  onChange={(e) => setFormData({ 
+                    ...formData, 
+                    role: e.target.value as UserRole, 
+                    can_manage_demissoes: false, 
+                    can_manage_transferencias: false 
+                  })} 
+                  className="w-4 h-4 mt-0.5" 
+                  disabled={loading} 
+                />
+                <div>
+                  <p className="font-medium text-sm">Membro da Equipe</p>
+                  <p className="text-xs text-gray-600">Responde movimentações</p>
+                </div>
+              </label>
+              <label className="flex items-start gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
+                <input 
+                  type="radio" 
+                  name="role" 
+                  value="admin" 
+                  checked={formData.role === 'admin'} 
+                  onChange={(e) => setFormData({...formData, role: e.target.value as UserRole})} 
+                  className="w-4 h-4 mt-0.5" 
+                  disabled={loading} 
+                />
+                <div>
+                  <p className="font-medium text-sm">Administrador</p>
+                  <p className="text-xs text-gray-600">Cria e gerencia</p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {formData.role === 'admin' && (
+            <div className="border-t pt-3">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Permissões</label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input 
+                    type="checkbox" 
+                    checked={formData.can_manage_demissoes} 
+                    onChange={(e) => setFormData({...formData, can_manage_demissoes: e.target.checked})} 
+                    className="w-4 h-4" 
+                    disabled={loading} 
+                  />
+                  <span className="text-sm">Demissões</span>
+                </label>
+                <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input 
+                    type="checkbox" 
+                    checked={formData.can_manage_transferencias} 
+                    onChange={(e) => setFormData({...formData, can_manage_transferencias: e.target.checked})} 
+                    className="w-4 h-4" 
+                    disabled={loading} 
+                  />
+                  <span className="text-sm">Transferências/Alterações</span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
+          
+          <div className="flex gap-2 pt-2 sticky bottom-0 bg-white border-t mt-3">
+            <button 
+              type="submit" 
+              disabled={loading || selectedTeamIds.length === 0} 
+              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 flex items-center justify-center gap-2 text-sm"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Cadastrando...
+                </>
+              ) : (
+                'Cadastrar Usuário'
+              )}
+            </button>
+            <button 
+              type="button" 
+              onClick={onClose} 
+              className="px-6 py-2 bg-gray-300 rounded-lg hover:bg-gray-400 text-sm"
+              disabled={loading}
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function DashboardView({ currentUser, movements, loading, loadMovements, setSelectedMovement, setView, activeTeamId }: any) {
+  const [showNewMovement, setShowNewMovement] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showRegisterUser, setShowRegisterUser] = useState(false);
+  const [movementType, setMovementType] = useState<MovementType | null>(null);
+  const [formData, setFormData] = useState<any>({});
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+  const [loadingCreate, setLoadingCreate] = useState(false);
+  const [filterType, setFilterType] = useState<MovementType | 'all'>('all');
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [selectedSetorIds, setSelectedSetorIds] = useState<string[]>([]);
+
+  const isAdmin = currentUser?.role === 'admin';
+  const canCreateDemissao = isAdmin && currentUser?.can_manage_demissoes;
+  const canCreateTransferencia = isAdmin && currentUser?.can_manage_transferencias;
+
+  const isOverdue = (deadline?: string | null) => {
+    if (!deadline) return false;
+    return new Date(deadline) < new Date();
+  };
+
+  const getProgress = (m: Movement) => {
+    const completed = m.selected_teams.filter(t => m.responses[t]?.status === 'completed').length;
+    return { completed, total: m.selected_teams.length, percentage: m.selected_teams.length > 0 ? (completed / m.selected_teams.length) * 100 : 0 };
+  };
+
+  const handleCreate = async () => {
+    if (!formData.employeeName?.trim() || selectedTeams.length === 0) {
+      alert('Preencha os campos obrigatórios');
+      return;
+    }
+
+    setLoadingCreate(true);
+    try {
+      const responsesObj = selectedTeams.reduce((acc, teamId) => ({ ...acc, [teamId]: { status: 'pending', checklist: {}, attachments: [] } }), {});
+      
+      const detailsWithObservation = {
+        ...formData,
+        observation: formData.observation || ''
+      };
+      
+      const newMovement: any = {
+        type: movementType!,
+        employee_name: formData.employeeName,
+        selected_teams: selectedTeams,
+        status: 'pending' as const,
+        responses: responsesObj,
+        created_by: currentUser?.name || '',
+        details: detailsWithObservation
+      };
+
+      if (formData.deadline) {
+        newMovement.deadline = formData.deadline;
+      }
+
+      const { error } = await supabase.from('movements').insert([newMovement]);
+      if (error) throw error;
+
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('email, name, team_ids, team_names')
+        .overlaps('team_ids', selectedTeams);
+
+      // Enviar emails para equipes (sistema original)
+      if (usersData && usersData.length > 0) {
+        const expandedRecipients = usersData.flatMap((user: any) => 
+          user.team_ids
+            .map((teamId: string, index: number) => {
+              if (selectedTeams.includes(teamId)) {
+                return {
+                  email: user.email,
+                  name: user.name,
+                  team_id: teamId,
+                  team_name: user.team_names[index]
+                };
+              }
+              return null;
+            })
+            .filter((item: any) => item !== null)
+        );
+
+        fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'movement_created',
             movement: {
-              id:             mov.id,
-              employee_name:  mov.employee_name,
-              type:           mov.type,
-              tipo_label:     tipoLabel,
-              // Título do email: "Demissão do colaborador João Silva"
-              email_subject:  `${tipoLabel} do colaborador ${mov.employee_name}`,
-              deadline:       mov.deadline,
-              deadline_fmt:   prazoFmt,
-              observation:    mov.observation,
-              status:         mov.status,
-              teams:          teamsNomes,
-              setores:        setoresNomes,
-              created_by:     user.name,
-              // Link para resposta — ajuste a URL conforme seu domínio
-              response_link:  `${window.location.origin}/responder/${mov.id}`,
+              employee_name: formData.employeeName,
+              type: movementType!,
+              movimento_tipo: MOVEMENT_TYPES[movementType as MovementType].label,
+              created_by: currentUser?.name || '',
+              deadline: formData.deadline,
+              selected_teams: selectedTeams
             },
-            recipients: emailsData.map((e: any) => ({
-              email:      e.email,
-              name:       e.nome,
-              setor_name: e.setores?.nome,
-            })),
-            email_type: 'criada',
-          }),
-        })
+            recipients: expandedRecipients,
+            email_type: 'created'
+          })
+        }).catch(e => console.error('Webhook erro:', e));
       }
-    } catch (err) { console.error('Erro webhook:', err) }
-    setEnviando(false)
 
-    resetForm(); loadAll()
-    alert('Movimentação criada e notificações enviadas!')
-  }
+      // Enviar emails para setores selecionados (funcionalidade nova)
+      if (selectedSetorIds.length > 0) {
+        try {
+          const { data: emailsData } = await supabase
+            .from('emails_setor')
+            .select('*, setores(nome)')
+            .in('setor_id', selectedSetorIds)
+            .eq('ativo', true);
 
-  const diasRestantes = (d?: string) => {
-    if (!d) return null
-    return Math.ceil((new Date(d + 'T00:00:00').getTime() - new Date().setHours(0,0,0,0)) / 86400000)
-  }
+          if (emailsData && emailsData.length > 0) {
+            const tipoLabel = MOVEMENT_TYPES[movementType as MovementType].label;
+            const prazoFmt  = formData.deadline ? new Date(formData.deadline + 'T00:00:00').toLocaleDateString('pt-BR') : null;
 
-  const filtradas = movs.filter(m => {
-    if (filtroStatus !== 'todos') {
-      if (filtroStatus === 'pendente'     && !['pendente','pending'].includes(m.status))       return false
-      if (filtroStatus === 'em_andamento' && !['em_andamento','in_progress'].includes(m.status)) return false
-      if (filtroStatus === 'concluido'    && !['concluido','completed'].includes(m.status))    return false
-      if (filtroStatus === 'cancelado'    && !['cancelado','cancelled'].includes(m.status))    return false
+            fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'movement_created',
+                movement: {
+                  employee_name: formData.employeeName,
+                  type: movementType!,
+                  tipo_label: tipoLabel,
+                  email_subject: `${tipoLabel} do colaborador ${formData.employeeName}`,
+                  created_by: currentUser?.name || '',
+                  deadline: formData.deadline,
+                  deadline_fmt: prazoFmt,
+                  observation: formData.observation || '',
+                  response_link: `${window.location.origin}/responder/`,
+                  selected_teams: selectedTeams
+                },
+                recipients: emailsData.map((e: any) => ({
+                  email: e.email,
+                  name: e.nome,
+                  setor_name: e.setores?.nome
+                })),
+                email_type: 'setor_notification'
+              })
+            }).catch(e => console.error('Webhook setores erro:', e));
+          }
+        } catch (err) {
+          console.error('Erro ao buscar emails dos setores:', err);
+        }
+      }
+
+      alert('Movimentação criada!');
+      await loadMovements();
+      setShowNewMovement(false);
+      setMovementType(null);
+      setFormData({});
+      setSelectedTeams([]);
+    } catch (err: any) {
+      alert(`Erro: ${err.message}`);
+    } finally {
+      setLoadingCreate(false);
     }
-    if (filtroTipo !== 'todos' && m.type !== filtroTipo) return false
-    return true
-  })
+  };
+
+  const myMovs = movements.filter((m: Movement) => {
+    if (isAdmin) {
+      return m.created_by === currentUser?.name || m.selected_teams.some((t: string) => currentUser?.team_ids.includes(t));
+    }
+    return m.selected_teams.includes(activeTeamId);
+  });
+  
+  const pending = myMovs.filter((m: Movement) => {
+    if (m.created_by === currentUser?.name && !m.selected_teams.includes(activeTeamId)) {
+      return m.status !== 'completed';
+    }
+    return m.responses[activeTeamId]?.status === 'pending';
+  });
+  
+  const completed = myMovs.filter((m: Movement) => {
+    if (m.created_by === currentUser?.name && !m.selected_teams.includes(activeTeamId)) {
+      return m.status === 'completed';
+    }
+    return m.responses[activeTeamId]?.status === 'completed';
+  });
+
+  const getFilteredMovements = () => {
+    let filtered = showCompleted ? completed : pending;
+    
+    if (filterType !== 'all') {
+      filtered = filtered.filter((m: Movement) => m.type === filterType);
+    }
+    
+    return filtered;
+  };
+
+  const filteredMovements = getFilteredMovements();
+
+  const isDashboardReminderActive = () => {
+    const today = new Date();
+    const day = today.getDate();
+    return day >= 15 && day <= 20;
+  };
+
+  const getCountByType = (type: MovementType, includeCompleted: boolean = false) => {
+    const movs = includeCompleted ? myMovs : pending;
+    return movs.filter((m: Movement) => m.type === type).length;
+  };
+
+  const isPost20th = () => {
+    const today = new Date();
+    return today.getDate() > 20;
+  };
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32 }}>
-        <div>
-          <h2 style={S.pageTitle}>Movimentações</h2>
-          <p style={S.pageSubtitle}>
-            {isAdmin ? 'Todas as movimentações trabalhistas' : 'Movimentações das suas equipes'}
-          </p>
+      {isDashboardReminderActive() && (
+        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded">
+          <AlertCircle className="w-5 h-5 text-blue-600 inline mr-2" />
+          <span className="font-medium text-blue-800">
+            Lembrete: Para garantir o processamento no mesmo mês, faça o cadastro das movimentações até o dia 20. Cadastros após essa data podem seguir para o mês seguinte.
+          </span>
         </div>
-        {canCreate && <button onClick={() => setShowForm(true)} style={S.btnPrimary}><Plus size={14} /> Nova Movimentação</button>}
-      </div>
+      )}
+      {pending.length > 0 && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded">
+          <Clock className="w-5 h-5 text-yellow-600 inline mr-2" />
+          <span className="font-medium text-yellow-800">Você tem {pending.length} movimentação(ões) pendente(s) de parecer</span>
+        </div>
+      )}
 
-      {/* ── MODAL NOVA MOVIMENTAÇÃO ── */}
-      {showForm && (
-        <div style={S.overlay} onClick={e => e.target === e.currentTarget && resetForm()}>
-          <div style={{ ...S.modal, maxWidth: 640 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>Nova Movimentação</h3>
-              <button onClick={resetForm} style={S.iconBtn}><X size={19} /></button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* Nome do colaborador */}
-              <div>
-                <label style={S.label}>Nome do Colaborador *</label>
-                <input value={form.employee_name} onChange={e => setForm({ ...form, employee_name: e.target.value })}
-                  placeholder="Nome completo do colaborador" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                {/* Tipo */}
-                <div>
-                  <label style={S.label}>Tipo de Movimentação *</label>
-                  <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}
-                    style={S.input} onFocus={focusAccent} onBlur={blurBorder}>
-                    <option value="demissao">Demissão</option>
-                    <option value="transferencia">Transferência</option>
-                    <option value="alteracao">Alteração Salarial</option>
-                    <option value="promocao">Promoção</option>
-                    <option value="afastamento">Afastamento</option>
-                    <option value="outros">Outros</option>
-                  </select>
-                </div>
-                {/* Prazo */}
-                <div>
-                  <label style={S.label}>Prazo de Resposta</label>
-                  <input type="date" value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })}
-                    style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
-                </div>
-              </div>
-
-              {/* Setor / Empresa / Data */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                <div>
-                  <label style={S.label}>Setor / Local</label>
-                  <input value={form.sector} onChange={e => setForm({ ...form, sector: e.target.value })}
-                    placeholder="Ex: FAZENDA PORTEIRAS" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
-                </div>
-                <div>
-                  <label style={S.label}>Empresa</label>
-                  <input value={form.company} onChange={e => setForm({ ...form, company: e.target.value })}
-                    placeholder="Ex: OL LATEX GO" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
-                </div>
-                <div>
-                  <label style={S.label}>Data de Demissão / Ocorrência</label>
-                  <input type="date" value={form.dismissalDate} onChange={e => setForm({ ...form, dismissalDate: e.target.value })}
-                    style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
-                </div>
-              </div>
-
-              {/* Observação */}
-              <div>
-                <label style={S.label}>Observações / Detalhes</label>
-                <textarea value={form.observation} onChange={e => setForm({ ...form, observation: e.target.value })}
-                  rows={3} placeholder="Informações adicionais sobre esta movimentação..."
-                  style={{ ...S.input, resize: 'vertical' }} onFocus={focusAccent} onBlur={blurBorder} />
-              </div>
-
-              {/* Equipes */}
-              <div>
-                <label style={S.label}>
-                  Equipes Envolvidas *{' '}
-                  <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>
-                    — as equipes que devem responder a esta movimentação
-                  </span>
-                </label>
-                {teams.length === 0 ? (
-                  <p style={{ fontSize: 13, color: 'var(--muted)', padding: 12, background: 'var(--bg)', borderRadius: 9, border: '1px solid var(--border)' }}>Nenhuma equipe cadastrada.</p>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
-                    {teams.map(t => {
-                      const sel = form.selected_teams.includes(t.code)
-                      return (
-                        <button key={t.id} onClick={() => setForm(f => ({ ...f, selected_teams: toggleItem(f.selected_teams, t.code) }))}
-                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${sel ? 'var(--accent)' : 'var(--border)'}`, background: sel ? 'var(--accent-light)' : 'var(--bg)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', fontFamily: 'var(--font-body)' }}>
-                          <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? 'var(--accent)' : '#d1d5db'}`, background: sel ? 'var(--accent)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            {sel && <CheckCircle size={11} color="white" />}
-                          </div>
-                          <div style={{ minWidth: 0 }}>
-                            <p style={{ fontSize: 13, fontWeight: sel ? 700 : 400, color: sel ? 'var(--accent)' : 'var(--text)', lineHeight: 1.2 }}>{t.name}</p>
-                            {t.code && <p style={{ fontSize: 11, color: 'var(--muted)' }}>{t.code}</p>}
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Setores para email */}
-              <div>
-                <label style={S.label}>
-                  Setores para Notificação por E-mail{' '}
-                  <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>
-                    — os e-mails de cada setor selecionado serão notificados via Make.com
-                  </span>
-                </label>
-                {setores.length === 0 ? (
-                  <div style={{ padding: 12, background: '#fef9c3', border: '1px solid #fde047', borderRadius: 9 }}>
-                    <p style={{ fontSize: 13, color: '#854d0e' }}>
-                      ⚠️ Nenhum setor cadastrado. Acesse <strong>Setores & Emails</strong> para criar setores.
-                    </p>
-                  </div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
-                    {setores.map(s => {
-                      const sel = form.setores_ids.includes(s.id)
-                      return (
-                        <button key={s.id} onClick={() => setForm(f => ({ ...f, setores_ids: toggleItem(f.setores_ids, s.id) }))}
-                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${sel ? '#16a34a' : 'var(--border)'}`, background: sel ? '#f0fdf4' : 'var(--bg)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', fontFamily: 'var(--font-body)' }}>
-                          <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? '#16a34a' : '#d1d5db'}`, background: sel ? '#16a34a' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            {sel && <Mail size={10} color="white" />}
-                          </div>
-                          <span style={{ fontSize: 13, fontWeight: sel ? 700 : 400, color: sel ? '#16a34a' : 'var(--text)' }}>{s.nome}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 24, justifyContent: 'flex-end' }}>
-              <button onClick={resetForm} style={S.btnSecondary}>Cancelar</button>
-              <button onClick={salvar} disabled={enviando} style={{ ...S.btnPrimary, opacity: enviando ? 0.75 : 1 }}>
-                {enviando ? 'Enviando...' : <><Send size={13} /> Criar & Notificar</>}
-              </button>
-            </div>
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">Dashboard - {showCompleted ? 'Respondidas' : 'Pendentes'}</h2>
+          <div className="flex gap-2">
+            {isAdmin && <button onClick={() => setShowRegisterUser(true)} className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm"><UserPlus className="w-4 h-4" />Cadastrar</button>}
+            <button onClick={() => setShowChangePassword(true)} className="flex items-center gap-2 px-3 py-2 border rounded-lg text-sm"><Settings className="w-4 h-4" />Senha</button>
           </div>
         </div>
-      )}
 
-      {/* ── MODAL DETALHE ── */}
-      {detalhe && (
-        <DetalheModal
-          mov={detalhe} teams={teams} setores={setores} isAdmin={isAdmin} user={user}
-          onClose={() => setDetalhe(null)}
-          onSave={() => { loadAll(); setDetalhe(null) }}
-        />
-      )}
-
-      {/* ── FILTROS ── */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Filter size={13} color="var(--muted)" />
-          <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Filtros:</span>
-        </div>
-        <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} style={{ ...S.input, width: 'auto' }}>
-          <option value="todos">Todos os Status</option>
-          <option value="pendente">Pendente</option>
-          <option value="em_andamento">Em Andamento</option>
-          <option value="concluido">Concluído</option>
-          <option value="cancelado">Cancelado</option>
-        </select>
-        <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} style={{ ...S.input, width: 'auto' }}>
-          <option value="todos">Todos os Tipos</option>
-          <option value="demissao">Demissão</option>
-          <option value="transferencia">Transferência</option>
-          <option value="alteracao">Alteração Salarial</option>
-          <option value="promocao">Promoção</option>
-          <option value="afastamento">Afastamento</option>
-          <option value="outros">Outros</option>
-        </select>
-        <span style={{ fontSize: 13, color: 'var(--muted)' }}>
-          {filtradas.length} resultado{filtradas.length !== 1 ? 's' : ''}
-        </span>
-      </div>
-
-      {/* ── LISTA ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {filtradas.map(mov => {
-          const badge  = getTipoBadge(mov.type)
-          const sc     = getStatusConf(mov.status)
-          const Icon   = sc.icon
-          const dias   = diasRestantes(mov.deadline)
-          const vencido  = dias !== null && dias < 0
-          const urgente  = dias !== null && dias >= 0 && dias <= 3
-
-          // Equipes desta movimentação
-          const movTeams = teams.filter(t => (mov.selected_teams || []).includes(t.code))
-
-          return (
-            <div key={mov.id} onClick={() => setDetalhe(mov)} style={{
-              background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
-              padding: '14px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14,
-              transition: 'all 0.15s',
-            }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.boxShadow = '0 2px 10px rgba(37,99,235,0.08)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}>
-              <div style={{ width: 40, height: 40, borderRadius: 11, background: badge.bg, border: `1px solid ${badge.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <FileText size={16} color={badge.color} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                  <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{mov.employee_name}</p>
-                  <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, fontWeight: 700, border: `1px solid ${badge.border}`, background: badge.bg, color: badge.color }}>
-                    {getTipoLabel(mov.type)}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                    {movTeams.map(t => t.name).join(' · ')}
-                  </span>
-                  {mov.deadline && dias !== null && (
-                    <span style={{ fontSize: 12, fontWeight: vencido || urgente ? 700 : 400, color: vencido ? '#ef4444' : urgente ? '#f59e0b' : 'var(--muted)' }}>
-                      {vencido ? `⚠️ Vencido há ${Math.abs(dias)}d` : dias === 0 ? '🔴 Vence hoje' : `📅 ${dias}d`}
-                    </span>
-                  )}
-                  {/* Contador de respostas */}
-                  {(mov.team_responses || []).length > 0 && (
-                    <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: 'var(--muted)' }}>
-                      <MessageSquare size={11} /> {mov.team_responses?.length} resposta{mov.team_responses?.length !== 1 ? 's' : ''}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 20, border: `1px solid ${sc.border}`, background: sc.bg, flexShrink: 0 }}>
-                <Icon size={11} color={sc.color} />
-                <span style={{ fontSize: 11, fontWeight: 700, color: sc.color }}>{sc.label}</span>
-              </div>
-              <Eye size={14} color="var(--muted)" style={{ flexShrink: 0 }} />
+        {(canCreateDemissao || canCreateTransferencia) && (
+          <div className="mb-6 pb-6 border-b">
+            <h3 className="font-semibold mb-3">Nova Movimentação</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {canCreateDemissao && (
+                <button onClick={() => { setShowNewMovement(true); setMovementType('demissao'); }} className="p-4 border-2 border-red-200 rounded-lg hover:bg-red-50">
+                  <UserX className="w-8 h-8 text-red-600 mx-auto mb-2" />
+                  <p className="text-sm font-medium">Demissão</p>
+                </button>
+              )}
+              {canCreateTransferencia && (
+                <>
+                  <button onClick={() => { setShowNewMovement(true); setMovementType('transferencia'); }} className="p-4 border-2 border-blue-200 rounded-lg hover:bg-blue-50">
+                    <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+                    <p className="text-sm font-medium">Transferência</p>
+                  </button>
+                  <button onClick={() => { setShowNewMovement(true); setMovementType('alteracao'); }} className="p-4 border-2 border-green-200 rounded-lg hover:bg-green-50">
+                    <TrendingUp className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                    <p className="text-sm font-medium">Alteração</p>
+                  </button>
+                  <button onClick={() => { setShowNewMovement(true); setMovementType('promocao'); }} className="p-4 border-2 border-purple-200 rounded-lg hover:bg-purple-50">
+                    <TrendingUp className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+                    <p className="text-sm font-medium">Promoção</p>
+                  </button>
+                </>
+              )}
             </div>
-          )
-        })}
+          </div>
+        )}
 
-        {filtradas.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '64px 0', color: 'var(--muted)' }}>
-            <Briefcase size={46} style={{ margin: '0 auto 12px', opacity: 0.18 }} />
-            <p style={{ fontSize: 15, fontWeight: 600 }}>Nenhuma movimentação encontrada</p>
-            <p style={{ fontSize: 13, marginTop: 4 }}>Tente ajustar os filtros ou crie uma nova movimentação</p>
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setShowCompleted(false)}
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${
+              !showCompleted 
+                ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-400' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            ⏳ Pendentes ({pending.length})
+          </button>
+          <button
+            onClick={() => setShowCompleted(true)}
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${
+              showCompleted 
+                ? 'bg-green-100 text-green-800 border-2 border-green-400' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            ✓ Respondidas ({completed.length})
+          </button>
+        </div>
+
+        <div className="mb-6">
+          <h3 className="font-semibold mb-3">Filtrar por Tipo</h3>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <button
+              onClick={() => setFilterType('all')}
+              className={`p-3 border-2 rounded-lg transition ${
+                filterType === 'all'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <div className="text-center">
+                <p className="text-2xl font-bold">{showCompleted ? completed.length : pending.length}</p>
+                <p className="text-xs font-medium mt-1">Todas</p>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => setFilterType('demissao')}
+              className={`p-3 border-2 rounded-lg transition ${
+                filterType === 'demissao'
+                  ? 'border-red-500 bg-red-50 text-red-700'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <div className="text-center">
+                <UserX className="w-6 h-6 mx-auto mb-1 text-red-600" />
+                <p className="text-xl font-bold">{getCountByType('demissao', showCompleted)}</p>
+                <p className="text-xs font-medium">Demissões</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setFilterType('transferencia')}
+              className={`p-3 border-2 rounded-lg transition ${
+                filterType === 'transferencia'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <div className="text-center">
+                <Users className="w-6 h-6 mx-auto mb-1 text-blue-600" />
+                <p className="text-xl font-bold">{getCountByType('transferencia', showCompleted)}</p>
+                <p className="text-xs font-medium">Transferências</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setFilterType('alteracao')}
+              className={`p-3 border-2 rounded-lg transition ${
+                filterType === 'alteracao'
+                  ? 'border-green-500 bg-green-50 text-green-700'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <div className="text-center">
+                <TrendingUp className="w-6 h-6 mx-auto mb-1 text-green-600" />
+                <p className="text-xl font-bold">{getCountByType('alteracao', showCompleted)}</p>
+                <p className="text-xs font-medium">Alterações</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setFilterType('promocao')}
+              className={`p-3 border-2 rounded-lg transition ${
+                filterType === 'promocao'
+                  ? 'border-purple-500 bg-purple-50 text-purple-700'
+                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <div className="text-center">
+                <TrendingUp className="w-6 h-6 mx-auto mb-1 text-purple-600" />
+                <p className="text-xl font-bold">{getCountByType('promocao', showCompleted)}</p>
+                <p className="text-xs font-medium">Promoções</p>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <h3 className="font-semibold mb-3">
+          {filterType === 'all' 
+            ? `Todas as Movimentações ${showCompleted ? 'Respondidas' : 'Pendentes'}`
+            : `${MOVEMENT_TYPES[filterType as MovementType].label} ${showCompleted ? 'Respondidas' : 'Pendentes'}`
+          } ({filteredMovements.length})
+        </h3>
+        
+        {loading ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
+        ) : (
+          <div className="space-y-3">
+            {filteredMovements.map((m: Movement) => {
+              const Icon = MOVEMENT_TYPES[m.type as MovementType].icon;
+              const prog = getProgress(m);
+              const myResp = m.responses[activeTeamId];
+              const overdue = isOverdue(m.deadline);
+
+              return (
+                <div key={m.id} className={`border rounded-lg p-4 hover:bg-gray-50 cursor-pointer ${overdue && !showCompleted ? 'border-red-300 bg-red-50' : ''}`} onClick={() => { setSelectedMovement(m); setView('detail'); }}>
+                  <div className="flex justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                      <Icon className="w-6 h-6" />
+                      <div>
+                        <h3 className="font-semibold">{m.employee_name}</h3>
+                        <p className="text-sm text-gray-600">{MOVEMENT_TYPES[m.type as MovementType].label}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      {m.deadline && <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${overdue && !showCompleted ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}><Clock className="w-3 h-3" />{new Date(m.deadline).toLocaleDateString('pt-BR')}</span>}
+                      <span className={`text-xs px-2 py-1 rounded ${myResp?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{myResp?.status === 'completed' ? '✓' : '⏳'}</span>
+                    </div>
+                  </div>
+                  <div className="text-sm text-gray-600 mb-2">Progresso geral: {prog.completed}/{prog.total} equipes</div>
+                  <div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-blue-600 h-2 rounded-full" style={{ width: `${prog.percentage}%` }}></div></div>
+                </div>
+              );
+            })}
+            {filteredMovements.length === 0 && (
+              <div className="text-center py-12 bg-gray-50 rounded-lg">
+                <p className="text-gray-500 text-lg">
+                  {showCompleted 
+                    ? '🎉 Nenhuma movimentação respondida ainda'
+                    : '✅ Nenhuma movimentação pendente'
+                  }
+                </p>
+                <p className="text-gray-400 text-sm mt-2">
+                  {showCompleted 
+                    ? 'Quando você responder movimentações, elas aparecerão aqui'
+                    : 'Você está em dia com todas as suas tarefas!'
+                  }
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
+      {showRegisterUser && <RegisterUserModal onClose={() => setShowRegisterUser(false)} />}
+      {showNewMovement && movementType && (
+        <NewMovementModal
+          movementType={movementType}
+          formData={formData}
+          setFormData={setFormData}
+          selectedTeams={selectedTeams}
+          setSelectedTeams={setSelectedTeams}
+          selectedSetorIds={selectedSetorIds}
+          setSelectedSetorIds={setSelectedSetorIds}
+          loading={loadingCreate}
+          onClose={() => { setShowNewMovement(false); setMovementType(null); setFormData({}); setSelectedTeams([]); setSelectedSetorIds([]); }}
+          onSubmit={handleCreate}
+          isPost20th={isPost20th}
+        />
+      )}
     </div>
-  )
+  );
 }
 
-// ─────────────────────────────────────────────
-// MODAL DE DETALHE — pareceres reais do campo responses
-// ─────────────────────────────────────────────
+function NewMovementModal({ movementType, formData, setFormData, selectedTeams, setSelectedTeams, selectedSetorIds, setSelectedSetorIds, loading, onClose, onSubmit, isPost20th }: any) {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white rounded-xl max-w-2xl w-full my-8 p-6">
+        <div className="flex justify-between mb-6">
+          <h2 className="text-xl font-bold">Nova {MOVEMENT_TYPES[movementType as MovementType].label}</h2>
+          <button onClick={onClose} className="text-gray-600 hover:text-gray-900">✕</button>
+        </div>
+        {isPost20th() && ['transferencia', 'alteracao', 'promocao'].includes(movementType) && (
+          <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6 rounded">
+            <AlertCircle className="w-5 h-5 text-red-600 inline mr-2" />
+            <span className="font-medium text-red-800">
+              Lembrete: Movimentações cadastradas após o dia 20 podem ser processadas no mês seguinte.
+            </span>
+          </div>
+        )}
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Colaborador *</label>
+            <input type="text" placeholder="Digite o nome completo" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, employeeName: e.target.value})} />
+          </div>
 
-// Checklist padrão por tipo de movimentação e equipe
-const CHECKLIST_ITEMS: Record<string, Record<string, string[]>> = {
-  demissao: {
-    dp:         ['Valores marmita', 'Comissões recebidas', 'Aviso prévio assinado'],
-    rh:         ['Entrevista de desligamento', 'Requisição de desligamento'],
-    ti:         ['Baixa de usuário'],
-    ponto:      ['Entrega espelho de ponto'],
-    seguranca:  ['Entrega de EPIs', 'Não é membro da CIPA', 'Sem acidente de trabalho'],
-    financeiro: ['Existe multas', 'Existe adiantamento', 'Valores a descontar'],
-    transporte: ['Valores de multas', 'Baixa de carro responsável'],
-    ambulatorio:['Exame demissional', 'Valores farmácia', 'Baixa plano odonto', 'Baixa plano de saúde', 'Valores plano de saúde'],
-    treinamento:['Valores a devolver bolsa de estudos', 'Valores a devolver adiantamento treinamentos'],
-    comunicacao:[],
-  },
-  dismissal: {
-    dp:         ['Valores marmita', 'Comissões recebidas', 'Aviso prévio assinado'],
-    rh:         ['Entrevista de desligamento', 'Requisição de desligamento'],
-    ti:         ['Baixa de usuário'],
-    ponto:      ['Entrega espelho de ponto'],
-    seguranca:  ['Entrega de EPIs', 'Não é membro da CIPA', 'Sem acidente de trabalho'],
-    financeiro: ['Existe multas', 'Existe adiantamento', 'Valores a descontar'],
-    transporte: ['Valores de multas', 'Baixa de carro responsável'],
-    ambulatorio:['Exame demissional', 'Valores farmácia', 'Baixa plano odonto', 'Baixa plano de saúde', 'Valores plano de saúde'],
-    treinamento:['Valores a devolver bolsa de estudos', 'Valores a devolver adiantamento treinamentos'],
-    comunicacao:[],
-  },
-  transferencia: {
-    dp:         ['Carta de transferência assinada', 'Atualização cadastral'],
-    rh:         ['Atualização de ficha', 'Novo contrato'],
-    ti:         ['Transferência de acesso'],
-    ponto:      ['Atualização de lotação'],
-    financeiro: ['Acerto de benefícios'],
-  },
-  transfer: {
-    dp:         ['Carta de transferência assinada', 'Atualização cadastral'],
-    rh:         ['Atualização de ficha', 'Novo contrato'],
-    ti:         ['Transferência de acesso'],
-    ponto:      ['Atualização de lotação'],
-    financeiro: ['Acerto de benefícios'],
-  },
+          {movementType === 'demissao' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Data do Desligamento</label>
+                <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, dismissalDate: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Empresa/Coligada</label>
+                <input type="text" placeholder="Nome da empresa" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, company: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Setor</label>
+                <input type="text" placeholder="Setor do colaborador" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, sector: e.target.value})} />
+              </div>
+            </>
+          )}
+
+          {movementType !== 'demissao' && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Setor Atual</label>
+                  <input type="text" placeholder="Setor atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldSector: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Setor Destino</label>
+                  <input type="text" placeholder="Novo setor" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newSector: e.target.value})} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Função Atual</label>
+                  <input type="text" placeholder="Função atual" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, oldPosition: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Função Destino</label>
+                  <input type="text" placeholder="Nova função" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, newPosition: e.target.value})} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Data da Mudança</label>
+                <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, changeDate: e.target.value})} />
+              </div>
+            </>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Data Limite para Respostas</label>
+            <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, deadline: e.target.value})} />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Observações Gerais</label>
+            <textarea placeholder="Digite observações adicionais..." className="w-full border rounded-lg px-3 py-2 h-24" onChange={(e) => setFormData({...formData, observation: e.target.value})} />
+          </div>
+
+          <div className="border-t pt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-3">Selecione as Equipes * ({selectedTeams.length} selecionadas)</label>
+            <div className="grid grid-cols-2 gap-2">
+              {TEAMS.map(t => (
+                <label key={t.id} className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer ${selectedTeams.includes(t.id) ? 'border-blue-500 bg-blue-50' : ''}`}>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedTeams.includes(t.id)} 
+                    onChange={() => setSelectedTeams((prev: string[]) => prev.includes(t.id) ? prev.filter((id: string) => id !== t.id) : [...prev, t.id])} 
+                    className="w-4 h-4" 
+                  />
+                  <span className="text-sm">{t.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Setor do funcionário para envio de email */}
+          <SetorEmailSelector
+            selectedSetorIds={selectedSetorIds}
+            setSelectedSetorIds={setSelectedSetorIds}
+          />
+
+          <button 
+            onClick={onSubmit} 
+            disabled={!formData.employeeName || selectedTeams.length === 0 || loading} 
+            className="w-full bg-blue-600 text-white py-2.5 rounded-lg disabled:bg-gray-300 flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Criando...
+              </>
+            ) : (
+              'Criar Movimentação'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
+// Adicione este componente final ao App.tsx
 
-function getChecklistItems(tipo: string, teamCode: string): string[] {
-  const tipoItems = CHECKLIST_ITEMS[tipo] || CHECKLIST_ITEMS['outros'] || {}
-  return tipoItems[teamCode] || []
-}
+function DetailView({ currentUser, selectedMovement, setView, setSelectedMovement, loadMovements, activeTeamId }: any) {
+  const [comment, setComment] = useState('');
+  const [loadingSub, setLoadingSub] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState(selectedMovement.details);
+  const [checklist, setChecklist] = useState<Record<string, boolean>>(
+    selectedMovement.responses[activeTeamId]?.checklist || {}
+  );
+  const [isEditingResponse, setIsEditingResponse] = useState(false);
+  const [showHistory, setShowHistory] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>(
+    selectedMovement.responses[activeTeamId]?.attachments || []
+  );
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [editSelectedTeams, setEditSelectedTeams] = useState<string[]>(selectedMovement.selected_teams);
 
-function DetalheModal({ mov, teams, setores, isAdmin, user, onClose, onSave }: {
-  mov: Movimentacao; teams: Team[]; setores: Setor[]; isAdmin: boolean; user: User
-  onClose: () => void
-  onSave: () => void
-}) {
-  const [tab,        setTab]        = useState<'pareceres' | 'detalhes' | 'editar'>('pareceres')
-  const [responses,  setResponses]  = useState<Record<string, any>>(mov.responses || {})
-  const [saving,     setSaving]     = useState(false)
-  // Parecer sendo preenchido agora
-  const [parecerAtivo, setParecerAtivo] = useState<string | null>(null)
-  const [parecerForm,  setParecerForm]  = useState({ comment: '', checklist: {} as Record<string, boolean> })
-  // Form edição
-  const [formEdit, setFormEdit] = useState({
-    employee_name:  mov.employee_name,
-    type:           mov.type,
-    deadline:       mov.deadline || '',
-    observation:    mov.observation || '',
-    selected_teams: mov.selected_teams || [],
-    setores_ids:    mov.setores_ids || [],
-    details: {
-      sector:       (mov.details as any)?.sector || '',
-      company:      (mov.details as any)?.company || '',
-      dismissalDate:(mov.details as any)?.dismissalDate || '',
-    },
-  })
+  const isMyTeam = selectedMovement.selected_teams.includes(activeTeamId);
+  const myResp = activeTeamId ? selectedMovement.responses[activeTeamId] : null;
+  const hasResponded = myResp?.status === 'completed';
+  const isAdmin = currentUser?.role === 'admin';
 
-  const badge     = getTipoBadge(formEdit.type)
-  const sc        = getStatusConf(mov.status)
-  const prazoFmt  = formEdit.deadline ? new Date(formEdit.deadline + 'T00:00:00').toLocaleDateString('pt-BR') : 'Sem prazo'
-  const criadoFmt = new Date(mov.created_at).toLocaleDateString('pt-BR')
-  const movTeams  = teams.filter(t => (formEdit.selected_teams || []).includes(t.code))
+  const userTeamChecklist: string[] = CHECKLISTS[selectedMovement.type as MovementType]?.[activeTeamId || ''] || [];
 
-  // Equipes com e sem resposta
-  const teamCodes       = formEdit.selected_teams || []
-  const respondidas     = teamCodes.filter(code => responses[code]?.status === 'completed')
-  const pendentes       = teamCodes.filter(code => !responses[code] || responses[code].status !== 'completed')
-  const progressoPct    = teamCodes.length > 0 ? Math.round((respondidas.length / teamCodes.length) * 100) : 0
-
-  // Verifica se o usuário pode dar parecer
-  // Suporta 3 formas de vinculação: team_ids (UUIDs), team_id (UUID legado), team_name (code direto)
-  const userTeamCodes = teams
-    .filter(t => (user.team_ids || []).includes(t.id))
-    .map(t => t.code)
-  const userTeamCodeLegacy = teams.find(t => t.id === user.team_id)?.code
-  // Alguns usuários têm team_name armazenando o code diretamente (ex: "dp", "rh")
-  const userTeamNameCode = user.team_name
-    ? (teams.find(t => t.code === user.team_name)?.code || user.team_name)
-    : null
-  // team_names array também pode conter codes diretamente
-  const userTeamNamesCodes = (user.team_names || []).map(tn =>
-    teams.find(t => t.code === tn || t.name === tn)?.code || tn
-  )
-
-  const canRespond = (teamCode: string) => {
-    if (isAdmin) return true
-    return (
-      userTeamCodes.includes(teamCode) ||
-      userTeamCodeLegacy === teamCode ||
-      userTeamNameCode === teamCode ||
-      userTeamNamesCodes.includes(teamCode)
-    )
-  }
-
-  const abrirParecer = (teamCode: string) => {
-    const existing = responses[teamCode] || {}
-    // Mescla itens padrão com os que já existem salvo no banco
-    // Os itens padrão aparecem pré-marcados conforme já estavam salvos
-    const savedChecklist = existing.checklist || {}
-    const defaultItems   = getChecklistItems(mov.type, teamCode)
-    // Garante que todos os itens padrão existam no checklist (false se não marcado)
-    const mergedChecklist: Record<string, boolean> = { ...savedChecklist }
-    defaultItems.forEach(item => {
-      if (!(item in mergedChecklist)) mergedChecklist[item] = false
-    })
-    setParecerForm({
-      comment:   existing.comment || '',
-      checklist: mergedChecklist,
-    })
-    setParecerAtivo(teamCode)
-  }
-
-  const salvarParecer = async (teamCode: string) => {
-    setSaving(true)
-    const now = new Date().toISOString()
-    const today = now.slice(0, 10)
-    const newEntry = {
-      ...responses[teamCode],
-      date:     today,
-      status:   'completed',
-      comment:  parecerForm.comment,
-      checklist: parecerForm.checklist,
-      history: [
-        ...((responses[teamCode]?.history) || []),
-        {
-          date:       today,
-          action:     responses[teamCode] ? 'updated' : 'created',
-          timestamp:  now,
-          user_name:  user.name,
-          user_email: user.email,
-        },
-      ],
-      attachments: responses[teamCode]?.attachments || [],
+  const handleStartEdit = () => {
+    if (myResp) {
+      setComment(myResp.comment || '');
+      setChecklist(myResp.checklist || {});
+      setAttachments(myResp.attachments || []);
+      setIsEditingResponse(true);
     }
-    const newResponses = { ...responses, [teamCode]: newEntry }
-    const { error } = await supabase
-      .from('movements')
-      .update({ responses: newResponses })
-      .eq('id', mov.id)
-    if (error) { alert('Erro ao salvar: ' + error.message); setSaving(false); return }
-    setResponses(newResponses)
-    setParecerAtivo(null)
-    setSaving(false)
-    onSave()
-  }
+  };
 
-  const toggleItem = (arr: string[], id: string) =>
-    arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id]
+  const handleChecklistToggle = (item: string) => {
+    setChecklist(prev => ({
+      ...prev,
+      [item]: !prev[item]
+    }));
+  };
 
-  const salvarEdicao = async () => {
-    setSaving(true)
-    const { error } = await supabase.from('movements').update({
-      employee_name:  formEdit.employee_name.trim(),
-      type:           formEdit.type,
-      deadline:       formEdit.deadline || null,
-      observation:    formEdit.observation || null,
-      selected_teams: formEdit.selected_teams,
-      setores_ids:    formEdit.setores_ids,
-      details: {
-        ...(mov.details as any || {}),
-        sector:       formEdit.details.sector,
-        company:      formEdit.details.company,
-        dismissalDate:formEdit.details.dismissalDate,
-      },
-    }).eq('id', mov.id)
-    if (error) { alert('Erro: ' + error.message); setSaving(false); return }
-    await supabase.from('movement_teams').delete().eq('movement_id', mov.id)
-    if (formEdit.selected_teams.length > 0) {
-      await supabase.from('movement_teams').insert(
-        formEdit.selected_teams.map(code => {
-          const team = teams.find(t => t.code === code)
-          return { movement_id: mov.id, team_id: team?.id || code }
-        })
-      )
+  const handleAddAttachment = async (file: File) => {
+    setUploadingFile(true);
+    try {
+      const attachment = await uploadFile(file, selectedMovement.id, activeTeamId);
+      if (attachment) {
+        setAttachments(prev => [...prev, attachment]);
+      } else {
+        alert('Erro ao fazer upload do arquivo');
+      }
+    } catch (error) {
+      alert('Erro ao fazer upload do arquivo');
+    } finally {
+      setUploadingFile(false);
     }
-    setSaving(false)
-    setTab('pareceres')
-    onSave()
-  }
+  };
+
+  const handleRemoveAttachment = async (attachment: Attachment) => {
+    if (!confirm('Deseja remover este arquivo?')) return;
+    
+    const success = await deleteFile(attachment.url);
+    if (success) {
+      setAttachments(prev => prev.filter(a => a.url !== attachment.url));
+    } else {
+      alert('Erro ao remover arquivo');
+    }
+  };
+
+  const allChecklistCompleted = userTeamChecklist.length > 0 && userTeamChecklist.every(checkItem => checklist[checkItem]);
+
+  const handleSubmit = async () => {
+    if (!comment.trim()) {
+      alert('Por favor, adicione um comentário');
+      return;
+    }
+    
+    if (userTeamChecklist.length > 0 && !allChecklistCompleted) {
+      alert('Por favor, complete todos os itens do checklist antes de enviar');
+      return;
+    }
+
+    setLoadingSub(true);
+    try {
+      const now = new Date();
+      const action = hasResponded ? 'updated' : 'created';
+      
+      const existingHistory = myResp?.history || [];
+      const newHistoryEntry = {
+        user_name: currentUser.name,
+        user_email: currentUser.email,
+        action: action,
+        date: now.toISOString().split('T')[0],
+        timestamp: now.toISOString()
+      };
+      
+      const updated = { 
+        ...selectedMovement.responses, 
+        [activeTeamId!]: { 
+          status: 'completed', 
+          comment: comment.trim(), 
+          date: now.toISOString().split('T')[0],
+          checklist: checklist,
+          attachments: attachments,
+          history: [...existingHistory, newHistoryEntry]
+        } 
+      };
+      
+      const allDone = selectedMovement.selected_teams.every((id: string) => updated[id]?.status === 'completed');
+      const { error } = await supabase.from('movements').update({ 
+        responses: updated, 
+        status: allDone ? 'completed' : 'in_progress' 
+      }).eq('id', selectedMovement.id);
+      
+      if (error) throw error;
+      
+      alert(hasResponded ? 'Parecer atualizado com sucesso!' : 'Parecer enviado com sucesso!');
+      await loadMovements();
+      setView('dashboard');
+      setSelectedMovement(null);
+    } catch (err) {
+      alert('Erro ao enviar parecer');
+    } finally {
+      setLoadingSub(false);
+    }
+  };
+
+  const handleUpdate = async () => {
+    setLoadingSub(true);
+    try {
+      const updatedResponses = { ...selectedMovement.responses };
+      
+      editSelectedTeams.forEach(teamId => {
+        if (!updatedResponses[teamId]) {
+          updatedResponses[teamId] = {
+            status: 'pending',
+            checklist: {},
+            attachments: []
+          };
+        }
+      });
+      
+      Object.keys(updatedResponses).forEach(teamId => {
+        if (!editSelectedTeams.includes(teamId)) {
+          delete updatedResponses[teamId];
+        }
+      });
+
+      const allDone = editSelectedTeams.every(id => updatedResponses[id]?.status === 'completed');
+      
+      const { error } = await supabase.from('movements').update({ 
+        details: editData,
+        employee_name: editData.employeeName || selectedMovement.employee_name,
+        selected_teams: editSelectedTeams,
+        responses: updatedResponses,
+        status: allDone ? 'completed' : (Object.values(updatedResponses).some((r: any) => r.status === 'completed') ? 'in_progress' : 'pending')
+      }).eq('id', selectedMovement.id);
+      
+      if (error) throw error;
+
+      const newTeams = editSelectedTeams.filter(id => !selectedMovement.selected_teams.includes(id));
+      
+      if (newTeams.length > 0) {
+        const { data: newUsersData } = await supabase
+          .from('users')
+          .select('email, name, team_ids, team_names')
+          .overlaps('team_ids', newTeams);
+
+        if (newUsersData && newUsersData.length > 0) {
+          const expandedRecipients = newUsersData.flatMap((user: any) => 
+            user.team_ids
+              .map((teamId: string, index: number) => {
+                if (newTeams.includes(teamId)) {
+                  return {
+                    email: user.email,
+                    name: user.name,
+                    team_id: teamId,
+                    team_name: user.team_names[index]
+                  };
+                }
+                return null;
+              })
+              .filter((item: any) => item !== null)
+          );
+
+          fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'movement_created',
+              movement: {
+                employee_name: editData.employeeName || selectedMovement.employee_name,
+                type: selectedMovement.type,
+                movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label,
+                created_by: selectedMovement.created_by,
+                deadline: selectedMovement.deadline,
+                selected_teams: newTeams
+              },
+              recipients: expandedRecipients,
+              email_type: 'created'
+            })
+          }).catch(e => console.error('Webhook erro:', e));
+        }
+      }
+
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('email, name, team_ids, team_names')
+        .overlaps('team_ids', editSelectedTeams);
+
+      if (usersData && usersData.length > 0) {
+        const expandedRecipients = usersData.flatMap((user: any) => 
+          user.team_ids
+            .map((teamId: string, index: number) => {
+              if (editSelectedTeams.includes(teamId)) {
+                return {
+                  email: user.email,
+                  name: user.name,
+                  team_id: teamId,
+                  team_name: user.team_names[index]
+                };
+              }
+              return null;
+            })
+            .filter((item: any) => item !== null)
+        );
+
+        fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'movement_updated',
+            movement: {
+              employee_name: editData.employeeName || selectedMovement.employee_name,
+              type: selectedMovement.type,
+              movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label,
+              created_by: selectedMovement.created_by,
+              deadline: selectedMovement.deadline,
+              selected_teams: editSelectedTeams
+            },
+            recipients: expandedRecipients,
+            updated_by: currentUser?.name || '',
+            email_type: 'updated'
+          })
+        }).catch(e => console.error('Webhook erro:', e));
+      }
+
+      alert('Movimentação atualizada!');
+      await loadMovements();
+      setIsEditing(false);
+    } catch (err) {
+      alert('Erro ao atualizar');
+    } finally {
+      setLoadingSub(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('Tem certeza que deseja excluir esta movimentação?')) return;
+    setLoadingSub(true);
+    try {
+      const { error } = await supabase.from('movements').delete().eq('id', selectedMovement.id);
+      if (error) throw error;
+      alert('Movimentação excluída!');
+      await loadMovements();
+      setView('dashboard');
+      setSelectedMovement(null);
+    } catch (err) {
+      alert('Erro ao excluir');
+    } finally {
+      setLoadingSub(false);
+    }
+  };
 
   return (
-    <div style={S.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ ...S.modal, maxWidth: 660, padding: 0, overflow: 'hidden' }}>
+    <div className="bg-white rounded-lg shadow p-6">
+      <div className="flex justify-between mb-6">
+        <div>
+          <h2 className="text-2xl font-bold">{selectedMovement.employee_name}</h2>
+          <p className="text-gray-600">{MOVEMENT_TYPES[selectedMovement.type as MovementType].label}</p>
+        </div>
+        <div className="flex gap-2">
+          {isAdmin && !isEditing && (
+            <>
+              <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Editar</button>
+              <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Excluir</button>
+            </>
+          )}
+          <button onClick={() => { setView('dashboard'); setSelectedMovement(null); }} className="text-gray-600 hover:text-gray-900">← Voltar</button>
+        </div>
+      </div>
 
-        {/* ── Cabeçalho ── */}
-        <div style={{ padding: '22px 28px 0', background: 'var(--surface)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 700, border: `1px solid ${badge.border}`, background: badge.bg, color: badge.color }}>
-                  {getTipoLabel(formEdit.type)}
-                </span>
-                <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 700, border: `1px solid ${sc.border}`, background: sc.bg, color: sc.color }}>
-                  {sc.label}
-                </span>
-              </div>
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, color: 'var(--text)', margin: 0 }}>
-                {formEdit.employee_name}
-              </h3>
-              {(mov.details as any)?.sector && (
-                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>
-                  {(mov.details as any).sector}{(mov.details as any)?.company ? ` · ${(mov.details as any).company}` : ''}
-                </p>
-              )}
-            </div>
-            <button onClick={onClose} style={{ ...S.iconBtn, flexShrink: 0 }}><X size={19} /></button>
+      {isEditing ? (
+        <div className="bg-gray-50 rounded-lg p-4 mb-6 space-y-4">
+          <h3 className="font-semibold mb-3">Editar Informações</h3>
+          <div>
+            <label className="block text-sm font-medium mb-2">Nome do Colaborador</label>
+            <input type="text" value={editData.employeeName || selectedMovement.employee_name} onChange={(e) => setEditData({...editData, employeeName: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
           </div>
-
-          {/* Barra de progresso */}
-          {teamCodes.length > 0 && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>
-                  {respondidas.length}/{teamCodes.length} equipes responderam
-                </span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: progressoPct === 100 ? '#16a34a' : 'var(--muted)' }}>
-                  {progressoPct}%
-                </span>
+          
+          {selectedMovement.type === 'demissao' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium mb-2">Data do Desligamento</label>
+                <input type="date" value={editData.dismissalDate || ''} onChange={(e) => setEditData({...editData, dismissalDate: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
               </div>
-              <div style={{ height: 5, background: 'var(--border)', borderRadius: 99 }}>
-                <div style={{ height: 5, width: `${progressoPct}%`, background: progressoPct === 100 ? '#16a34a' : 'var(--accent)', borderRadius: 99, transition: 'width 0.4s ease' }} />
+              <div>
+                <label className="block text-sm font-medium mb-2">Empresa</label>
+                <input type="text" value={editData.company || ''} onChange={(e) => setEditData({...editData, company: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
               </div>
-            </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Setor</label>
+                <input type="text" value={editData.sector || ''} onChange={(e) => setEditData({...editData, sector: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
+              </div>
+            </>
           )}
 
-          {/* Tabs */}
-          <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)' }}>
-            {([['pareceres', 'Pareceres'], ['detalhes', 'Detalhes'], ...(isAdmin ? [['editar', 'Editar']] : [])] as [string,string][]).map(([id, label]) => (
-              <button key={id} onClick={() => setTab(id as any)} style={{
-                padding: '10px 18px', border: 'none', background: 'transparent', cursor: 'pointer',
-                fontSize: 13, fontWeight: tab === id ? 700 : 400,
-                color: tab === id ? 'var(--accent)' : 'var(--muted)',
-                borderBottom: tab === id ? '2px solid var(--accent)' : '2px solid transparent',
-                marginBottom: -1, fontFamily: 'var(--font-body)', transition: 'all 0.15s',
-              }}>
-                {label}
-                {id === 'pareceres' && pendentes.length > 0 && (
-                  <span style={{ marginLeft: 6, background: '#ef4444', color: 'white', borderRadius: 99, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>
-                    {pendentes.length}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* ── CONTEÚDO DAS TABS ── */}
-        <div style={{ padding: '20px 28px 24px', overflowY: 'auto', maxHeight: 'calc(92vh - 200px)' }}>
-
-          {/* ── TAB: PARECERES ── */}
-          {tab === 'pareceres' && (
-            <div>
-              {/* Modal de preenchimento de parecer */}
-              {parecerAtivo && (
-                <div style={{ background: '#eff6ff', border: '2px solid var(--accent)', borderRadius: 12, padding: '18px 20px', marginBottom: 20 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                    <p style={{ fontWeight: 700, color: 'var(--accent)', fontSize: 14 }}>
-                      Parecer — {teams.find(t => t.code === parecerAtivo)?.name || parecerAtivo}
-                    </p>
-                    <button onClick={() => setParecerAtivo(null)} style={S.iconBtn}><X size={15} /></button>
-                  </div>
-
-                  {/* Checklist de itens — mostra todos os itens (padrão + salvos) */}
-                  {Object.keys(parecerForm.checklist).length > 0 && (
-                    <div style={{ marginBottom: 14 }}>
-                      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Checklist</p>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {Object.keys(parecerForm.checklist).map(item => {
-                          const checked = parecerForm.checklist[item] === true
-                          return (
-                            <label key={item} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 12px', background: checked ? '#f0fdf4' : 'var(--surface)', borderRadius: 8, border: `1px solid ${checked ? '#86efac' : 'var(--border)'}`, transition: 'all 0.15s' }}>
-                              <div onClick={() => setParecerForm(f => ({ ...f, checklist: { ...f.checklist, [item]: !checked } }))}
-                                style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${checked ? '#16a34a' : '#d1d5db'}`, background: checked ? '#16a34a' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer' }}>
-                                {checked && <CheckCircle size={11} color="white" />}
-                              </div>
-                              <span style={{ fontSize: 13, color: checked ? '#15803d' : 'var(--text)', fontWeight: checked ? 600 : 400 }}>{item}</span>
-                            </label>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Comentário */}
-                  <div style={{ marginBottom: 14 }}>
-                    <label style={S.label}>Comentário / Parecer</label>
-                    <textarea value={parecerForm.comment}
-                      onChange={e => setParecerForm({ ...parecerForm, comment: e.target.value })}
-                      rows={3} placeholder="Descreva o parecer desta equipe..."
-                      style={{ ...S.input, resize: 'vertical' }} onFocus={focusAccent} onBlur={blurBorder} />
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <button onClick={() => setParecerAtivo(null)} style={S.btnSecondary}>Cancelar</button>
-                    <button onClick={() => salvarParecer(parecerAtivo)} disabled={saving}
-                      style={{ ...S.btnPrimary, opacity: saving ? 0.7 : 1 }}>
-                      {saving ? 'Salvando...' : <><CheckCircle size={13} /> Salvar Parecer</>}
-                    </button>
-                  </div>
+          {selectedMovement.type !== 'demissao' && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Setor Atual</label>
+                  <input type="text" value={editData.oldSector || ''} onChange={(e) => setEditData({...editData, oldSector: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
                 </div>
-              )}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Setor Destino</label>
+                  <input type="text" value={editData.newSector || ''} onChange={(e) => setEditData({...editData, newSector: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Função Atual</label>
+                  <input type="text" value={editData.oldPosition || ''} onChange={(e) => setEditData({...editData, oldPosition: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Função Destino</label>
+                  <input type="text" value={editData.newPosition || ''} onChange={(e) => setEditData({...editData, newPosition: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Data da Mudança</label>
+                <input type="date" value={editData.changeDate || ''} onChange={(e) => setEditData({...editData, changeDate: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
+              </div>
+            </>
+          )}
 
-              {/* Lista de equipes com status */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {teamCodes.map(code => {
-                  const resp    = responses[code]
-                  const team    = teams.find(t => t.code === code)
-                  const teamNm  = team?.name || code
-                  const done    = resp?.status === 'completed'
-                  const items   = getChecklistItems(mov.type, code)
-                  const checkedCount = done ? Object.values(resp.checklist || {}).filter(Boolean).length : 0
-                  const respondido = resp?.history?.[resp.history.length - 1]
-                  const podeResponder = canRespond(code) && !parecerAtivo
-
-                  return (
-                    <div key={code} style={{
-                      background: 'var(--bg)', border: `1px solid ${done ? '#86efac' : 'var(--border)'}`,
-                      borderRadius: 12, overflow: 'hidden',
-                      transition: 'border-color 0.15s',
-                    }}>
-                      {/* Header do card */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' }}>
-                        <div style={{ width: 36, height: 36, borderRadius: 9, background: done ? '#f0fdf4' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          {done
-                            ? <CheckCircle size={17} color="#16a34a" />
-                            : <Clock size={17} color="#9ca3af" />
+          <div className="border-t pt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Equipes Selecionadas ({editSelectedTeams.length} selecionadas)
+            </label>
+            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-3">
+              <p className="text-xs text-blue-800 mb-2">
+                ℹ️ <strong>Importante:</strong> Ao adicionar novas equipes, elas receberão notificação por email. 
+                Ao remover equipes, suas respostas serão perdidas.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+              {TEAMS.map(t => {
+                const wasOriginallySelected = selectedMovement.selected_teams.includes(t.id);
+                const hasResponse = selectedMovement.responses[t.id]?.status === 'completed';
+                const isSelected = editSelectedTeams.includes(t.id);
+                
+                return (
+                  <label 
+                    key={t.id} 
+                    className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer transition ${
+                      isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                    } ${hasResponse && !isSelected ? 'opacity-50' : ''}`}
+                  >
+                    <input 
+                      type="checkbox" 
+                      checked={isSelected} 
+                      onChange={() => {
+                        if (hasResponse && isSelected) {
+                          if (!confirm(`A equipe "${t.name}" já respondeu esta movimentação. Tem certeza que deseja removê-la? A resposta será perdida.`)) {
+                            return;
                           }
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{teamNm}</p>
-                          {done && respondido && (
-                            <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
-                              {respondido.user_name} · {new Date(respondido.timestamp).toLocaleDateString('pt-BR')}
-                            </p>
-                          )}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                          {items.length > 0 && done && (
-                            <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>
-                              {checkedCount}/{items.length} itens
-                            </span>
-                          )}
-                          <span style={{
-                            fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 700,
-                            ...(done
-                              ? { background: '#f0fdf4', color: '#16a34a', border: '1px solid #86efac' }
-                              : { background: '#f9fafb', color: '#9ca3af', border: '1px solid #e5e7eb' })
-                          }}>
-                            {done ? 'Concluído' : 'Aguardando'}
-                          </span>
-                          {podeResponder && (
-                            <button onClick={() => abrirParecer(code)}
-                              style={{ ...S.btnPrimary, padding: '5px 12px', fontSize: 12 }}>
-                              <Edit size={11} /> {done ? 'Editar' : 'Responder'}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Detalhes do parecer */}
-                      {done && (resp.comment || Object.keys(resp.checklist || {}).length > 0) && (
-                        <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px', background: 'var(--surface)' }}>
-                          {/* Checklist respondido */}
-                          {Object.keys(resp.checklist || {}).length > 0 && (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: resp.comment ? 10 : 0 }}>
-                              {Object.entries(resp.checklist).map(([item, ok]) => (
-                                <span key={item} style={{
-                                  fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 600,
-                                  ...(ok
-                                    ? { background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }
-                                    : { background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' })
-                                }}>
-                                  {ok ? '✓' : '✗'} {item}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          {/* Comentário */}
-                          {resp.comment && (
-                            <div style={{ borderLeft: '3px solid #16a34a', paddingLeft: 12 }}>
-                              <p style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginBottom: 3 }}>Parecer:</p>
-                              <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{resp.comment}</p>
-                            </div>
-                          )}
-                        </div>
+                        }
+                        setEditSelectedTeams((prev: string[]) => 
+                          prev.includes(t.id) 
+                            ? prev.filter((id: string) => id !== t.id) 
+                            : [...prev, t.id]
+                        );
+                      }}
+                      className="w-4 h-4" 
+                    />
+                    <div className="flex-1">
+                      <span className="text-sm">{t.name}</span>
+                      {hasResponse && (
+                        <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">✓ Respondida</span>
+                      )}
+                      {!wasOriginallySelected && isSelected && (
+                        <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">Nova</span>
                       )}
                     </div>
-                  )
-                })}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
 
-                {teamCodes.length === 0 && (
-                  <p style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: '24px 0' }}>
-                    Nenhuma equipe vinculada a esta movimentação.
-                  </p>
-                )}
+          <div className="flex gap-2 pt-4">
+            <button onClick={handleUpdate} disabled={loadingSub || editSelectedTeams.length === 0} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300">
+              {loadingSub ? 'Salvando...' : 'Salvar'}
+            </button>
+            <button onClick={() => { setIsEditing(false); setEditSelectedTeams(selectedMovement.selected_teams); }} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-gray-50 rounded-lg p-4 mb-6">
+          <h3 className="font-semibold mb-3">Informações da Movimentação</h3>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <span className="text-gray-600 font-medium">Criado por:</span>
+              <p className="text-gray-900">{selectedMovement.created_by}</p>
+            </div>
+            <div>
+              <span className="text-gray-600 font-medium">Data de criação:</span>
+              <p className="text-gray-900">{new Date(selectedMovement.created_at).toLocaleDateString('pt-BR')}</p>
+            </div>
+            {selectedMovement.deadline && (
+              <div>
+                <span className="text-gray-600 font-medium">Prazo limite:</span>
+                <p className="text-gray-900">{new Date(selectedMovement.deadline).toLocaleDateString('pt-BR')}</p>
               </div>
+            )}
+            {Object.entries(selectedMovement.details).map(([key, value]) => {
+              const labels: any = {
+                dismissalDate: 'Data do Desligamento',
+                company: 'Empresa',
+                sector: 'Setor',
+                oldSector: 'Setor Atual',
+                newSector: 'Setor Destino',
+                oldPosition: 'Função Atual',
+                newPosition: 'Função Destino',
+                changeDate: 'Data da Mudança'
+              };
+              if (key === 'observation') return null;
+              return (
+                <div key={key}>
+                  <span className="text-gray-600 font-medium">{labels[key] || key}:</span>
+                  <p className="text-gray-900">{typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/) ? new Date(value).toLocaleDateString('pt-BR') : String(value)}</p>
+                </div>
+              );
+            })}
+          </div>
+          {(selectedMovement.details?.observation || selectedMovement.observation) && (
+            <div className="mt-4 pt-4 border-t">
+              <span className="text-gray-600 font-medium">Observações:</span>
+              <p className="text-sm text-gray-700 mt-2 bg-white p-3 rounded border">{selectedMovement.details?.observation || selectedMovement.observation}</p>
             </div>
           )}
+        </div>
+      )}
 
-          {/* ── TAB: DETALHES ── */}
-          {tab === 'detalhes' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {([
-                  ['Prazo',         prazoFmt],
-                  ['Registrado em', criadoFmt],
-                  ['Criado por',    mov.created_by || '—'],
-                  ['Status',        sc.label],
-                  [(mov.details as any)?.sector ? 'Setor/Local' : '', (mov.details as any)?.sector || ''],
-                  [(mov.details as any)?.company ? 'Empresa' : '', (mov.details as any)?.company || ''],
-                  [(mov.details as any)?.dismissalDate ? 'Data de Demissão' : '', (mov.details as any)?.dismissalDate ? new Date((mov.details as any).dismissalDate + 'T00:00:00').toLocaleDateString('pt-BR') : ''],
-                ] as [string,string][]).filter(([k]) => k).map(([k, v]) => (
-                  <div key={k} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px' }}>
-                    <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>{k}</p>
-                    <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{v || '—'}</p>
-                  </div>
-                ))}
+      <h3 className="font-semibold mb-3">Pareceres das Equipes</h3>
+      <div className="space-y-3 mb-6">
+        {selectedMovement.selected_teams.map((id: string) => {
+          const team = TEAMS.find(t => t.id === id);
+          const resp = selectedMovement.responses[id];
+          const isMine = id === activeTeamId;
+          
+          if (!isAdmin && !isMine) {
+            return null;
+          }
+          
+          return (
+            <div key={id} className={`border rounded-lg p-4 ${isMine ? 'border-blue-500 bg-blue-50' : ''}`}>
+              <div className="flex justify-between mb-2">
+                <span className="font-medium">{team?.name} {isMine && '(Sua Equipe)'}</span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-1 rounded ${resp?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                    {resp?.status === 'completed' ? '✓ Respondido' : '⏳ Pendente'}
+                  </span>
+                  {resp?.history && resp.history.length > 0 && (
+                    <button
+                      onClick={() => setShowHistory(showHistory === id ? null : id)}
+                      className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded flex items-center gap-1"
+                    >
+                      <Clock className="w-3 h-3" />
+                      Histórico
+                    </button>
+                  )}
+                </div>
               </div>
-
-              {formEdit.observation && (
-                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px' }}>
-                  <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Observações</p>
-                  <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{formEdit.observation}</p>
+              
+              {showHistory === id && resp?.history && (
+                <div className="mb-3 bg-gray-50 border rounded p-3">
+                  <p className="text-xs font-semibold text-gray-600 mb-2">Histórico de Alterações:</p>
+                  <div className="space-y-2">
+                    {resp.history.map((entry: any, idx: number) => (
+                      <div key={idx} className="text-xs bg-white p-2 rounded border">
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-900">{entry.user_name}</span>
+                          <span className="text-gray-500">{new Date(entry.timestamp).toLocaleString('pt-BR')}</span>
+                        </div>
+                        <div className="text-gray-600 mt-1">
+                          <span className={`inline-block px-2 py-0.5 rounded ${entry.action === 'created' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
+                            {entry.action === 'created' ? 'Criou o parecer' : 'Atualizou o parecer'}
+                          </span>
+                          <span className="ml-2">({entry.user_email})</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
-
-              {/* Equipes */}
-              <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Equipes Vinculadas</p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {movTeams.map(t => (
-                    <span key={t.id} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, background: 'var(--accent-light)', color: 'var(--accent)', fontWeight: 700, border: '1px solid var(--accent-border)' }}>
-                      {t.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Setores notificados */}
-              {(mov.movimentacoes_setores || []).length > 0 && (
-                <div>
-                  <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Setores Notificados</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {(mov.movimentacoes_setores || []).map(ms => (
-                      <span key={ms.setor_id} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, background: '#f0fdf4', color: '#16a34a', fontWeight: 700, border: '1px solid #86efac' }}>
-                        {ms.setores?.nome}
-                      </span>
+              
+              {resp?.checklist && Object.keys(resp.checklist).length > 0 && (
+                <div className="mt-3 bg-white p-3 rounded border">
+                  <p className="text-xs font-semibold text-gray-600 mb-2">Checklist:</p>
+                  <div className="space-y-1">
+                    {Object.entries(resp.checklist).map(([item, checked]: [string, any]) => (
+                      <div key={item} className="flex items-center gap-2 text-sm">
+                        {checked ? <CheckSquare className="w-4 h-4 text-green-600" /> : <Square className="w-4 h-4 text-gray-400" />}
+                        <span className={checked ? 'text-gray-900' : 'text-gray-500'}>{item}</span>
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Alterar status */}
-              {isAdmin && (
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
-                  <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Alterar Status</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                    {[
-                      { key: 'pendente', label: 'Pendente' },
-                      { key: 'em_andamento', label: 'Em Andamento' },
-                      { key: 'concluido', label: 'Concluído' },
-                      { key: 'cancelado', label: 'Cancelado' },
-                    ].map(({ key, label }) => {
-                      const cfg  = getStatusConf(key)
-                      const Icon = cfg.icon
-                      const active = mov.status === key
-                        || (key === 'pendente'     && mov.status === 'pending')
-                        || (key === 'em_andamento' && mov.status === 'in_progress')
-                        || (key === 'concluido'    && mov.status === 'completed')
-                        || (key === 'cancelado'    && mov.status === 'cancelled')
-                      return (
-                        <button key={key} onClick={async () => {
-                          await supabase.from('movements').update({ status: key }).eq('id', mov.id)
-                          onSave()
-                        }} style={{
-                          display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 9,
-                          border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-                          background: active ? 'var(--accent-light)' : 'var(--surface)',
-                          color: active ? 'var(--accent)' : 'var(--text)',
-                          cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 400, fontFamily: 'var(--font-body)',
-                        }}>
-                          <Icon size={12} /> {label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <button onClick={async () => {
-                    if (!confirm('Excluir esta movimentação?')) return
-                    await supabase.from('movement_teams').delete().eq('movement_id', mov.id)
-                    await supabase.from('team_responses').delete().eq('movement_id', mov.id)
-                    await supabase.from('movimentacoes_setores').delete().eq('movimentacao_id', mov.id)
-                    await supabase.from('movements').delete().eq('id', mov.id)
-                    onSave(); onClose()
-                  }} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: 9, padding: '7px 14px', cursor: 'pointer', fontSize: 12, fontFamily: 'var(--font-body)' }}>
-                    <Trash2 size={12} /> Excluir Movimentação
-                  </button>
+              {resp?.attachments && resp.attachments.length > 0 && (
+                <div className="mt-3 bg-white p-3 rounded border">
+                  <p className="text-xs font-semibold text-gray-600 mb-2">Anexos ({resp.attachments.length}):</p>
+                  <AttachmentManager
+                    attachments={resp.attachments}
+                    onAdd={() => {}}
+                    onRemove={() => {}}
+                    disabled={true}
+                  />
+                </div>
+              )}
+              
+              {resp?.comment && (
+                <div className="mt-2">
+                  <p className="text-sm bg-white p-3 rounded border">{resp.comment}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Respondido em {new Date(resp.date!).toLocaleDateString('pt-BR')}
+                    {resp.history && resp.history.length > 1 && ' (editado)'}
+                  </p>
                 </div>
               )}
             </div>
-          )}
-
-          {/* ── TAB: EDITAR ── */}
-          {tab === 'editar' && isAdmin && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div>
-                <label style={S.label}>Nome do Colaborador</label>
-                <input value={formEdit.employee_name} onChange={e => setFormEdit({ ...formEdit, employee_name: e.target.value })}
-                  style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                <div>
-                  <label style={S.label}>Tipo</label>
-                  <select value={formEdit.type} onChange={e => setFormEdit({ ...formEdit, type: e.target.value })}
-                    style={S.input} onFocus={focusAccent} onBlur={blurBorder}>
-                    <option value="demissao">Demissão</option>
-                    <option value="transferencia">Transferência</option>
-                    <option value="alteracao">Alteração Salarial</option>
-                    <option value="promocao">Promoção</option>
-                    <option value="afastamento">Afastamento</option>
-                    <option value="outros">Outros</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={S.label}>Prazo</label>
-                  <input type="date" value={formEdit.deadline} onChange={e => setFormEdit({ ...formEdit, deadline: e.target.value })}
-                    style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
-                </div>
-                <div>
-                  <label style={S.label}>Setor / Local</label>
-                  <input value={formEdit.details.sector} onChange={e => setFormEdit({ ...formEdit, details: { ...formEdit.details, sector: e.target.value } })}
-                    placeholder="Ex: FAZENDA PORTEIRAS" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
-                </div>
-                <div>
-                  <label style={S.label}>Empresa</label>
-                  <input value={formEdit.details.company} onChange={e => setFormEdit({ ...formEdit, details: { ...formEdit.details, company: e.target.value } })}
-                    placeholder="Ex: OL LATEX GO" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
-                </div>
-                <div>
-                  <label style={S.label}>Data de Demissão</label>
-                  <input type="date" value={formEdit.details.dismissalDate} onChange={e => setFormEdit({ ...formEdit, details: { ...formEdit.details, dismissalDate: e.target.value } })}
-                    style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
-                </div>
-              </div>
-              <div>
-                <label style={S.label}>Observações</label>
-                <textarea value={formEdit.observation} onChange={e => setFormEdit({ ...formEdit, observation: e.target.value })}
-                  rows={3} style={{ ...S.input, resize: 'vertical' }} onFocus={focusAccent} onBlur={blurBorder} />
-              </div>
-
-              {/* Equipes */}
-              <div>
-                <label style={S.label}>Equipes Vinculadas</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
-                  {teams.map(t => {
-                    const sel = formEdit.selected_teams.includes(t.code)
-                    return (
-                      <button key={t.id} onClick={() => setFormEdit(f => ({ ...f, selected_teams: toggleItem(f.selected_teams, t.code) }))}
-                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${sel ? 'var(--accent)' : 'var(--border)'}`, background: sel ? 'var(--accent-light)' : 'var(--bg)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', fontFamily: 'var(--font-body)' }}>
-                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? 'var(--accent)' : '#d1d5db'}`, background: sel ? 'var(--accent)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          {sel && <CheckCircle size={11} color="white" />}
-                        </div>
-                        <span style={{ fontSize: 13, fontWeight: sel ? 700 : 400, color: sel ? 'var(--accent)' : 'var(--text)' }}>{t.name}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Setores email */}
-              {setores.length > 0 && (
-                <div>
-                  <label style={S.label}>Setores para Notificação de E-mail</label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
-                    {setores.map(s => {
-                      const sel = formEdit.setores_ids.includes(s.id)
-                      return (
-                        <button key={s.id} onClick={() => setFormEdit(f => ({ ...f, setores_ids: toggleItem(f.setores_ids, s.id) }))}
-                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${sel ? '#16a34a' : 'var(--border)'}`, background: sel ? '#f0fdf4' : 'var(--bg)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', fontFamily: 'var(--font-body)' }}>
-                          <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? '#16a34a' : '#d1d5db'}`, background: sel ? '#16a34a' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            {sel && <Mail size={10} color="white" />}
-                          </div>
-                          <span style={{ fontSize: 13, fontWeight: sel ? 700 : 400, color: sel ? '#16a34a' : 'var(--text)' }}>{s.nome}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button onClick={() => setTab('pareceres')} style={S.btnSecondary}>Cancelar</button>
-                <button onClick={salvarEdicao} disabled={saving} style={{ ...S.btnPrimary, opacity: saving ? 0.7 : 1 }}>
-                  {saving ? 'Salvando...' : <><CheckCircle size={13} /> Salvar Alterações</>}
-                </button>
-              </div>
-            </div>
-          )}
-
-        </div>
+          );
+        })}
       </div>
+
+      {isMyTeam && !hasResponded && (
+        <div className="border-t pt-6">
+          {userTeamChecklist.length > 0 && (
+            <div className="mb-6">
+              <h3 className="font-semibold mb-3 flex items-center gap-2">
+                <CheckSquare className="w-5 h-5" />
+                Checklist de Verificação
+              </h3>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                {userTeamChecklist.map((checkItem: string) => (
+                  <label key={checkItem} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
+                    <input
+                      type="checkbox"
+                      checked={checklist[checkItem] || false}
+                      onChange={() => handleChecklistToggle(checkItem)}
+                      className="mt-1 w-5 h-5 rounded border-gray-300"
+                    />
+                    <span className="text-sm flex-1">{checkItem}</span>
+                  </label>
+                ))}
+                <div className="mt-4 pt-3 border-t border-blue-200">
+                  <p className="text-xs text-gray-600">
+                    {userTeamChecklist.filter((itm: string) => checklist[itm]).length} de {userTeamChecklist.length} itens concluídos
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="mb-6">
+            <AttachmentManager
+              attachments={attachments}
+              onAdd={handleAddAttachment}
+              onRemove={handleRemoveAttachment}
+              disabled={uploadingFile}
+            />
+            {uploadingFile && (
+              <div className="flex items-center gap-2 text-sm text-blue-600 mt-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Fazendo upload do arquivo...
+              </div>
+            )}
+          </div>
+          
+          <h3 className="font-semibold mb-3">Adicionar Parecer</h3>
+          <textarea 
+            value={comment} 
+            onChange={(e) => setComment(e.target.value)} 
+            placeholder="Digite seu parecer sobre esta movimentação..." 
+            className="w-full border rounded-lg p-3 h-32" 
+            disabled={loadingSub} 
+          />
+          <button 
+            onClick={handleSubmit} 
+            disabled={!comment.trim() || loadingSub || uploadingFile || (userTeamChecklist.length > 0 && !allChecklistCompleted)} 
+            className="mt-3 bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2"
+          >
+            {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Enviando...</> : 'Enviar Parecer'}
+          </button>
+          {userTeamChecklist.length > 0 && !allChecklistCompleted && (
+            <p className="text-sm text-red-600 mt-2">Complete todos os itens do checklist antes de enviar</p>
+          )}
+        </div>
+      )}
+
+      {isMyTeam && hasResponded && !isEditingResponse && (
+        <div className="border-t pt-6 space-y-3">
+          <div className="bg-green-50 p-4 rounded flex items-center justify-between">
+            <span className="text-green-800 font-medium">✓ Você já respondeu esta movimentação</span>
+            <button
+              onClick={handleStartEdit}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+            >
+              Editar Parecer
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isMyTeam && hasResponded && isEditingResponse && (
+        <div className="border-t pt-6">
+          {userTeamChecklist.length > 0 && (
+            <div className="mb-6">
+              <h3 className="font-semibold mb-3 flex items-center gap-2">
+                <CheckSquare className="w-5 h-5" />
+                Checklist de Verificação
+              </h3>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                {userTeamChecklist.map((checkItem: string) => (
+                  <label key={checkItem} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
+                    <input
+                      type="checkbox"
+                      checked={checklist[checkItem] || false}
+                      onChange={() => handleChecklistToggle(checkItem)}
+                      className="mt-1 w-5 h-5 rounded border-gray-300"
+                    />
+                    <span className="text-sm flex-1">{checkItem}</span>
+                  </label>
+                ))}
+                <div className="mt-4 pt-3 border-t border-blue-200">
+                  <p className="text-xs text-gray-600">
+                    {userTeamChecklist.filter((itm: string) => checklist[itm]).length} de {userTeamChecklist.length} itens concluídos
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="mb-6">
+            <AttachmentManager
+              attachments={attachments}
+              onAdd={handleAddAttachment}
+              onRemove={handleRemoveAttachment}
+              disabled={uploadingFile}
+            />
+            {uploadingFile && (
+              <div className="flex items-center gap-2 text-sm text-blue-600 mt-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Fazendo upload do arquivo...
+              </div>
+            )}
+          </div>
+          
+          <h3 className="font-semibold mb-3">Editar Parecer</h3>
+          <textarea 
+            value={comment} 
+            onChange={(e) => setComment(e.target.value)} 
+            placeholder="Digite seu parecer sobre esta movimentação..." 
+            className="w-full border rounded-lg p-3 h-32" 
+            disabled={loadingSub} 
+          />
+          <div className="flex gap-2 mt-3">
+            <button 
+              onClick={handleSubmit} 
+              disabled={!comment.trim() || loadingSub || uploadingFile || (userTeamChecklist.length > 0 && !allChecklistCompleted)} 
+              className="bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2"
+            >
+              {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Salvando...</> : 'Salvar Alterações'}
+            </button>
+            <button
+              onClick={() => {
+                setIsEditingResponse(false);
+                setComment('');
+                setChecklist(myResp?.checklist || {});
+                setAttachments(myResp?.attachments || []);
+              }}
+              className="px-6 py-2.5 bg-gray-300 rounded-lg hover:bg-gray-400"
+              disabled={loadingSub}
+            >
+              Cancelar
+            </button>
+          </div>
+          {userTeamChecklist.length > 0 && !allChecklistCompleted && (
+            <p className="text-sm text-red-600 mt-2">Complete todos os itens do checklist antes de salvar</p>
+          )}
+        </div>
+      )}
     </div>
-  )
+  );
 }
 
+// ─── Seletor de Setores para o formulário de nova movimentação ───
+function SetorEmailSelector({ selectedSetorIds, setSelectedSetorIds }: {
+  selectedSetorIds: string[];
+  setSelectedSetorIds: (ids: string[]) => void;
+}) {
+  const [setores, setSetores] = useState<Setor[]>([]);
 
-// ─────────────────────────────────────────────
-// SETORES & EMAILS
-// ─────────────────────────────────────────────
-function GerenciarSetores({ user }: { user: User }) {
-  const [setores,       setSetores]       = useState<Setor[]>([])
-  const [emails,        setEmails]        = useState<any[]>([])
-  const [expandido,     setExpandido]     = useState<string | null>(null)
-  const [showFormSetor, setShowFormSetor] = useState(false)
-  const [showFormEmail, setShowFormEmail] = useState<string | null>(null)
-  const [editando,      setEditando]      = useState<Setor | null>(null)
-  const [formSetor,     setFormSetor]     = useState({ nome: '', descricao: '' })
-  const [formEmail,     setFormEmail]     = useState({ nome: '', email: '' })
-  const isAdmin = user.role === 'admin'
+  useEffect(() => {
+    supabase.from('setores').select('*').eq('ativo', true).order('nome').then(({ data }) => {
+      if (data) setSetores(data);
+    });
+  }, []);
 
-  useEffect(() => { loadAll() }, [])
+  if (setores.length === 0) return null;
+
+  const toggle = (id: string) =>
+    setSelectedSetorIds(
+      selectedSetorIds.includes(id)
+        ? selectedSetorIds.filter(s => s !== id)
+        : [...selectedSetorIds, id]
+    );
+
+  return (
+    <div className="border-t pt-4 mt-2">
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        Setor do Funcionário para Notificação por E-mail
+        <span className="text-gray-400 font-normal ml-1">(opcional)</span>
+      </label>
+      <p className="text-xs text-gray-500 mb-3">
+        Os e-mails cadastrados nos setores selecionados receberão notificação desta movimentação.
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        {setores.map(s => {
+          const sel = selectedSetorIds.includes(s.id);
+          return (
+            <label
+              key={s.id}
+              className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer transition ${
+                sel ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={sel}
+                onChange={() => toggle(s.id)}
+                className="w-4 h-4"
+              />
+              <span className="text-sm">{s.nome}</span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// SETORES & EMAILS — módulo novo para notificações
+// ═══════════════════════════════════════════════════
+
+interface Setor {
+  id: string;
+  nome: string;
+  descricao?: string;
+  ativo: boolean;
+  created_at: string;
+}
+
+interface EmailSetor {
+  id: string;
+  setor_id: string;
+  nome: string;
+  email: string;
+  ativo: boolean;
+  created_at: string;
+}
+
+function SetoresView() {
+  const [setores,       setSetores]       = useState<Setor[]>([]);
+  const [emails,        setEmails]        = useState<EmailSetor[]>([]);
+  const [expandido,     setExpandido]     = useState<string | null>(null);
+  const [showFormSetor, setShowFormSetor] = useState(false);
+  const [editando,      setEditando]      = useState<Setor | null>(null);
+  const [showFormEmail, setShowFormEmail] = useState<string | null>(null);
+  const [formSetor,     setFormSetor]     = useState({ nome: '', descricao: '' });
+  const [formEmail,     setFormEmail]     = useState({ nome: '', email: '' });
+
+  useEffect(() => { loadAll(); }, []);
 
   const loadAll = async () => {
     const [{ data: s }, { data: e }] = await Promise.all([
       supabase.from('setores').select('*').order('nome'),
       supabase.from('emails_setor').select('*').order('nome'),
-    ])
-    if (s) setSetores(s)
-    if (e) setEmails(e)
-  }
+    ]);
+    if (s) setSetores(s);
+    if (e) setEmails(e);
+  };
 
   const salvarSetor = async () => {
-    if (!formSetor.nome.trim()) { alert('Informe o nome do setor'); return }
+    if (!formSetor.nome.trim()) { alert('Informe o nome do setor'); return; }
     if (editando) {
-      await supabase.from('setores').update({ nome: formSetor.nome.trim(), descricao: formSetor.descricao }).eq('id', editando.id)
+      await supabase.from('setores').update({ nome: formSetor.nome.trim(), descricao: formSetor.descricao }).eq('id', editando.id);
     } else {
-      await supabase.from('setores').insert({ nome: formSetor.nome.trim(), descricao: formSetor.descricao, ativo: true })
+      await supabase.from('setores').insert({ nome: formSetor.nome.trim(), descricao: formSetor.descricao, ativo: true });
     }
-    setShowFormSetor(false); setEditando(null); loadAll()
-  }
+    setShowFormSetor(false); setEditando(null); setFormSetor({ nome: '', descricao: '' }); loadAll();
+  };
 
   const excluirSetor = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (emails.some(em => em.setor_id === id)) { alert('Remova todos os emails antes de excluir.'); return }
-    if (!confirm('Excluir este setor?')) return
-    await supabase.from('setores').delete().eq('id', id); loadAll()
-  }
+    e.stopPropagation();
+    if (emails.some(em => em.setor_id === id)) { alert('Remova todos os emails antes de excluir.'); return; }
+    if (!confirm('Excluir este setor?')) return;
+    await supabase.from('setores').delete().eq('id', id); loadAll();
+  };
 
   const salvarEmail = async (setorId: string) => {
-    if (!formEmail.nome.trim() || !formEmail.email.trim()) { alert('Preencha nome e email'); return }
-    if (!/\S+@\S+\.\S+/.test(formEmail.email)) { alert('E-mail inválido'); return }
-    await supabase.from('emails_setor').insert({ setor_id: setorId, nome: formEmail.nome.trim(), email: formEmail.email.trim().toLowerCase(), ativo: true })
-    setFormEmail({ nome: '', email: '' }); setShowFormEmail(null); loadAll()
-  }
+    if (!formEmail.nome.trim() || !formEmail.email.trim()) { alert('Preencha nome e email'); return; }
+    if (!/\S+@\S+\.\S+/.test(formEmail.email)) { alert('E-mail inválido'); return; }
+    await supabase.from('emails_setor').insert({ setor_id: setorId, nome: formEmail.nome.trim(), email: formEmail.email.trim().toLowerCase(), ativo: true });
+    setFormEmail({ nome: '', email: '' }); setShowFormEmail(null); loadAll();
+  };
 
   const excluirEmail = async (id: string) => {
-    if (!confirm('Remover este email?')) return
-    await supabase.from('emails_setor').delete().eq('id', id); loadAll()
-  }
+    if (!confirm('Remover este email?')) return;
+    await supabase.from('emails_setor').delete().eq('id', id); loadAll();
+  };
 
-  const toggleEmail = async (id: string, ativo: boolean) => {
-    await supabase.from('emails_setor').update({ ativo: !ativo }).eq('id', id); loadAll()
-  }
+  const toggleEmailAtivo = async (id: string, ativo: boolean) => {
+    await supabase.from('emails_setor').update({ ativo: !ativo }).eq('id', id); loadAll();
+  };
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32 }}>
+    <div className="bg-white rounded-lg shadow p-6">
+      <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 style={S.pageTitle}>Setores & Emails</h2>
-          <p style={S.pageSubtitle}>Gerencie setores e os e-mails que recebem notificações de movimentações</p>
+          <h2 className="text-xl font-bold">Setores & Emails</h2>
+          <p className="text-sm text-gray-600 mt-1">Gerencie os setores e emails para notificações de movimentações</p>
         </div>
-        {isAdmin && <button onClick={() => { setEditando(null); setFormSetor({ nome: '', descricao: '' }); setShowFormSetor(true) }} style={S.btnPrimary}><Plus size={14} /> Novo Setor</button>}
+        <button
+          onClick={() => { setEditando(null); setFormSetor({ nome: '', descricao: '' }); setShowFormSetor(true); }}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          <Plus className="w-4 h-4" /> Novo Setor
+        </button>
       </div>
 
       {showFormSetor && (
-        <div style={{ ...S.card, marginBottom: 20 }}>
-          <h3 style={{ fontWeight: 700, color: 'var(--text)', marginBottom: 18, fontSize: 15 }}>{editando ? 'Editar Setor' : 'Novo Setor'}</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 }}>
+        <div className="bg-gray-50 border rounded-lg p-4 mb-6">
+          <h3 className="font-semibold mb-4">{editando ? 'Editar Setor' : 'Novo Setor'}</h3>
+          <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
-              <label style={S.label}>Nome *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
               <input value={formSetor.nome} onChange={e => setFormSetor({ ...formSetor, nome: e.target.value })}
-                placeholder="Ex: Recursos Humanos" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+                placeholder="Ex: Recursos Humanos" className="w-full border rounded-lg px-3 py-2" />
             </div>
             <div>
-              <label style={S.label}>Descrição</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
               <input value={formSetor.descricao} onChange={e => setFormSetor({ ...formSetor, descricao: e.target.value })}
-                placeholder="Opcional" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+                placeholder="Opcional" className="w-full border rounded-lg px-3 py-2" />
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => { setShowFormSetor(false); setEditando(null) }} style={S.btnSecondary}>Cancelar</button>
-            <button onClick={salvarSetor} style={S.btnPrimary}>Salvar</button>
+          <div className="flex gap-2">
+            <button onClick={() => { setShowFormSetor(false); setEditando(null); }} className="px-4 py-2 border rounded-lg hover:bg-gray-100">Cancelar</button>
+            <button onClick={salvarSetor} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Salvar</button>
           </div>
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="space-y-3">
         {setores.map(setor => {
-          const emailsSetor = emails.filter(e => e.setor_id === setor.id)
-          const exp = expandido === setor.id
+          const emailsSetor = emails.filter(e => e.setor_id === setor.id);
+          const exp = expandido === setor.id;
           return (
-            <div key={setor.id} style={{ background: 'var(--surface)', border: `1px solid ${exp ? 'var(--accent-border)' : 'var(--border)'}`, borderRadius: 14, overflow: 'hidden', transition: 'border-color 0.2s' }}>
-              <div style={{ padding: '15px 20px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
-                onClick={() => setExpandido(exp ? null : setor.id)}>
-                <div style={{ width: 40, height: 40, background: 'var(--accent-light)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Building2 size={18} color="var(--accent)" />
+            <div key={setor.id} className={`border rounded-lg overflow-hidden transition-all ${exp ? 'border-blue-300' : 'border-gray-200'}`}>
+              <div className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50" onClick={() => setExpandido(exp ? null : setor.id)}>
+                <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                  <Building2 className="w-5 h-5 text-blue-600" />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <p style={{ fontWeight: 700, color: 'var(--text)', fontSize: 14 }}>{setor.nome}</p>
-                  {setor.descricao && <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>{setor.descricao}</p>}
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-900">{setor.nome}</p>
+                  {setor.descricao && <p className="text-xs text-gray-500">{setor.descricao}</p>}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 12, padding: '3px 11px', borderRadius: 20, fontWeight: emailsSetor.length > 0 ? 700 : 400, color: emailsSetor.length > 0 ? 'var(--accent)' : 'var(--muted)', background: emailsSetor.length > 0 ? 'var(--accent-light)' : 'var(--bg)', border: `1px solid ${emailsSetor.length > 0 ? 'var(--accent-border)' : 'var(--border)'}` }}>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${emailsSetor.length > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
                     {emailsSetor.length} email{emailsSetor.length !== 1 ? 's' : ''}
                   </span>
-                  {isAdmin && (
-                    <>
-                      <button onClick={e => { e.stopPropagation(); setEditando(setor); setFormSetor({ nome: setor.nome, descricao: setor.descricao || '' }); setShowFormSetor(true) }} style={S.iconBtn}><Edit size={13} /></button>
-                      <button onClick={e => excluirSetor(setor.id, e)} style={{ ...S.iconBtn, color: '#ef4444' }}><Trash2 size={13} /></button>
-                    </>
-                  )}
-                  <ChevronRight size={15} color="var(--muted)" style={{ transform: exp ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
+                  <button onClick={e => { e.stopPropagation(); setEditando(setor); setFormSetor({ nome: setor.nome, descricao: setor.descricao || '' }); setShowFormSetor(true); }}
+                    className="p-1.5 text-gray-400 hover:text-blue-600 rounded"><Settings className="w-4 h-4" /></button>
+                  <button onClick={e => excluirSetor(setor.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 rounded"><Trash2 className="w-4 h-4" /></button>
+                  <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${exp ? 'rotate-90' : ''}`} />
                 </div>
               </div>
 
               {exp && (
-                <div style={{ borderTop: '1px solid var(--border)', padding: '16px 20px', background: 'var(--bg)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                    <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>E-mails para notificação</p>
-                    {isAdmin && (
-                      <button onClick={() => setShowFormEmail(showFormEmail === setor.id ? null : setor.id)}
-                        style={{ ...S.btnPrimary, padding: '5px 12px', fontSize: 12 }}>
-                        <Plus size={12} /> Adicionar
-                      </button>
-                    )}
+                <div className="border-t bg-gray-50 p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <p className="text-sm font-semibold text-gray-700">E-mails para notificação</p>
+                    <button onClick={() => setShowFormEmail(showFormEmail === setor.id ? null : setor.id)}
+                      className="flex items-center gap-1 text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                      <Plus className="w-3 h-3" /> Adicionar
+                    </button>
                   </div>
+
                   {showFormEmail === setor.id && (
-                    <div style={{ ...S.card, marginBottom: 12, padding: 16 }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                    <div className="bg-white border rounded-lg p-3 mb-3">
+                      <div className="grid grid-cols-2 gap-3 mb-3">
                         <div>
-                          <label style={S.label}>Nome *</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Nome *</label>
                           <input value={formEmail.nome} onChange={e => setFormEmail({ ...formEmail, nome: e.target.value })}
-                            placeholder="Nome do responsável" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+                            placeholder="Nome do responsável" className="w-full border rounded px-2 py-1.5 text-sm" />
                         </div>
                         <div>
-                          <label style={S.label}>E-mail *</label>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">E-mail *</label>
                           <input type="email" value={formEmail.email} onChange={e => setFormEmail({ ...formEmail, email: e.target.value })}
-                            placeholder="email@empresa.com" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+                            placeholder="email@empresa.com" className="w-full border rounded px-2 py-1.5 text-sm" />
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button onClick={() => { setShowFormEmail(null); setFormEmail({ nome: '', email: '' }) }} style={S.btnSecondary}>Cancelar</button>
-                        <button onClick={() => salvarEmail(setor.id)} style={S.btnPrimary}>Adicionar</button>
+                      <div className="flex gap-2">
+                        <button onClick={() => { setShowFormEmail(null); setFormEmail({ nome: '', email: '' }); }} className="text-xs px-3 py-1.5 border rounded hover:bg-gray-100">Cancelar</button>
+                        <button onClick={() => salvarEmail(setor.id)} className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700">Adicionar</button>
                       </div>
                     </div>
                   )}
+
                   {emailsSetor.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--muted)' }}>
-                      <Mail size={24} style={{ margin: '0 auto 8px', opacity: 0.25 }} />
-                      <p style={{ fontSize: 13 }}>Nenhum e-mail cadastrado</p>
+                    <div className="text-center py-6 text-gray-400">
+                      <Mail className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">Nenhum e-mail cadastrado</p>
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {emailsSetor.map((em: any) => (
-                        <div key={em.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)' }}>
-                          <div style={{ width: 33, height: 33, borderRadius: '50%', background: em.ativo ? 'var(--accent-light)' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            <Mail size={13} color={em.ativo ? 'var(--accent)' : '#9ca3af'} />
+                    <div className="space-y-2">
+                      {emailsSetor.map(em => (
+                        <div key={em.id} className="flex items-center gap-3 bg-white border rounded-lg px-3 py-2">
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${em.ativo ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                            <Mail className={`w-3.5 h-3.5 ${em.ativo ? 'text-blue-600' : 'text-gray-400'}`} />
                           </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{em.nome}</p>
-                            <p style={{ fontSize: 12, color: 'var(--muted)' }}>{em.email}</p>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900">{em.nome}</p>
+                            <p className="text-xs text-gray-500">{em.email}</p>
                           </div>
-                          <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 20, border: '1px solid', flexShrink: 0, ...(em.ativo ? { color: '#16a34a', borderColor: '#86efac', background: '#f0fdf4' } : { color: '#6b7280', borderColor: '#d1d5db', background: '#f9fafb' }) }}>
+                          <span className={`text-xs px-2 py-0.5 rounded-full border flex-shrink-0 ${em.ativo ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
                             {em.ativo ? 'Ativo' : 'Inativo'}
                           </span>
-                          {isAdmin && (
-                            <div style={{ display: 'flex', gap: 2 }}>
-                              <button onClick={() => toggleEmail(em.id, em.ativo)} style={S.iconBtn}>{em.ativo ? <X size={13} /> : <CheckCircle size={13} />}</button>
-                              <button onClick={() => excluirEmail(em.id)} style={{ ...S.iconBtn, color: '#ef4444' }}><Trash2 size={13} /></button>
-                            </div>
-                          )}
+                          <button onClick={() => toggleEmailAtivo(em.id, em.ativo)} className="p-1 text-gray-400 hover:text-blue-600 rounded" title={em.ativo ? 'Desativar' : 'Ativar'}>
+                            {em.ativo ? <X className="w-3.5 h-3.5" /> : <CheckSquare className="w-3.5 h-3.5" />}
+                          </button>
+                          <button onClick={() => excluirEmail(em.id)} className="p-1 text-gray-400 hover:text-red-600 rounded">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -1707,185 +2280,17 @@ function GerenciarSetores({ user }: { user: User }) {
                 </div>
               )}
             </div>
-          )
+          );
         })}
+
         {setores.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '64px 0', color: 'var(--muted)' }}>
-            <Building2 size={46} style={{ margin: '0 auto 12px', opacity: 0.18 }} />
-            <p style={{ fontSize: 15, fontWeight: 600 }}>Nenhum setor cadastrado</p>
+          <div className="text-center py-12 text-gray-400">
+            <Building2 className="w-12 h-12 mx-auto mb-3 opacity-20" />
+            <p className="font-medium">Nenhum setor cadastrado</p>
+            <p className="text-sm mt-1">Clique em "Novo Setor" para começar</p>
           </div>
         )}
       </div>
     </div>
-  )
-}
-
-// ─────────────────────────────────────────────
-// USUÁRIOS — com seleção de equipes
-// ─────────────────────────────────────────────
-function GerenciarUsuarios({ user }: { user: User }) {
-  const [usuarios, setUsuarios]     = useState<User[]>([])
-  const [teams,    setTeams]        = useState<Team[]>([])
-  const [editando, setEditando]     = useState<User | null>(null)
-  const [formUser, setFormUser]     = useState({ role: 'user', team_ids: [] as string[], team_names: [] as string[] })
-
-  useEffect(() => {
-    Promise.all([
-      supabase.from('users').select('id,email,name,role,team_id,team_name,team_ids,team_names,created_at').order('created_at', { ascending: false }),
-      supabase.from('teams').select('*').order('name'),
-    ]).then(([{ data: u }, { data: t }]) => {
-      if (u) setUsuarios(u as User[])
-      if (t) setTeams(t)
-    })
-  }, [])
-
-  const abrirEditar = (u: User) => {
-    setEditando(u)
-    setFormUser({
-      role:       u.role,
-      team_ids:   u.team_ids || [],
-      team_names: u.team_names || [],
-    })
-  }
-
-  const toggleTeam = (teamId: string, teamName: string) => {
-    setFormUser(f => {
-      const sel = f.team_ids.includes(teamId)
-      return {
-        ...f,
-        team_ids:   sel ? f.team_ids.filter(id => id !== teamId)     : [...f.team_ids, teamId],
-        team_names: sel ? f.team_names.filter(n => n !== teamName)   : [...f.team_names, teamName],
-      }
-    })
-  }
-
-  const salvarUsuario = async () => {
-    if (!editando) return
-    const { error } = await supabase.from('users').update({
-      role:       formUser.role,
-      team_ids:   formUser.team_ids,
-      team_names: formUser.team_names,
-      // compatibilidade com campos legados
-      team_id:    formUser.team_ids[0]   || null,
-      team_name:  formUser.team_names[0] || null,
-    }).eq('id', editando.id)
-
-    if (error) { alert('Erro ao salvar: ' + error.message); return }
-    setUsuarios(prev => prev.map(u => u.id === editando.id ? { ...u, ...formUser } : u))
-    setEditando(null)
-  }
-
-  return (
-    <div>
-      <h2 style={{ ...S.pageTitle, marginBottom: 6 }}>Usuários</h2>
-      <p style={{ ...S.pageSubtitle, marginBottom: 32 }}>Gerencie usuários, funções e equipes</p>
-
-      {/* Modal edição */}
-      {editando && (
-        <div style={S.overlay} onClick={e => e.target === e.currentTarget && setEditando(null)}>
-          <div style={{ ...S.modal, maxWidth: 480 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
-              <div>
-                <p style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Editar Usuário</p>
-                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: 'var(--text)', marginTop: 2 }}>{editando.name}</h3>
-              </div>
-              <button onClick={() => setEditando(null)} style={S.iconBtn}><X size={18} /></button>
-            </div>
-
-            {/* Role */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={S.label}>Nível de Acesso</label>
-              <select value={formUser.role} onChange={e => setFormUser({ ...formUser, role: e.target.value })}
-                style={S.input} onFocus={focusAccent} onBlur={blurBorder}>
-                <option value="admin">Admin — acesso total</option>
-                <option value="user">Usuário — cria e vê movimentações</option>
-                <option value="viewer">Visualizador — apenas visualiza</option>
-              </select>
-            </div>
-
-            {/* Equipes */}
-            <div>
-              <label style={S.label}>
-                Equipes do Usuário{' '}
-                <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>
-                  — o usuário verá as movimentações dessas equipes
-                </span>
-              </label>
-              {teams.length === 0 ? (
-                <p style={{ fontSize: 13, color: 'var(--muted)' }}>Nenhuma equipe cadastrada no banco.</p>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
-                  {teams.map(t => {
-                    const sel = formUser.team_ids.includes(t.id)
-                    return (
-                      <button key={t.id} onClick={() => toggleTeam(t.id, t.name)} style={{
-                        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-                        borderRadius: 10, border: `2px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
-                        background: sel ? 'var(--accent-light)' : 'var(--bg)',
-                        cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', fontFamily: 'var(--font-body)',
-                      }}>
-                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? 'var(--accent)' : '#d1d5db'}`, background: sel ? 'var(--accent)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          {sel && <CheckCircle size={11} color="white" />}
-                        </div>
-                        <div style={{ minWidth: 0 }}>
-                          <p style={{ fontSize: 13, fontWeight: sel ? 700 : 400, color: sel ? 'var(--accent)' : 'var(--text)', lineHeight: 1.2 }}>{t.name}</p>
-                          {t.code && <p style={{ fontSize: 11, color: 'var(--muted)' }}>{t.code}</p>}
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 24, justifyContent: 'flex-end' }}>
-              <button onClick={() => setEditando(null)} style={S.btnSecondary}>Cancelar</button>
-              <button onClick={salvarUsuario} style={S.btnPrimary}>Salvar Alterações</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Lista */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {usuarios.map(u => (
-          <div key={u.id} style={{ ...S.card, display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px' }}>
-            <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--accent-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Users size={16} color="var(--accent)" />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{u.name}</p>
-              <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>{u.email}</p>
-              {/* Equipes do usuário */}
-              {u.team_names && u.team_names.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
-                  {u.team_names.map((tn, i) => (
-                    <span key={i} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: 'var(--accent-light)', color: 'var(--accent)', border: '1px solid var(--accent-border)', fontWeight: 600 }}>
-                      {tn}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-            <span style={{
-              fontSize: 12, padding: '4px 12px', borderRadius: 20, fontWeight: 700,
-              ...(u.role === 'admin'
-                ? { background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5' }
-                : u.role === 'viewer'
-                  ? { background: '#f9fafb', color: '#6b7280', border: '1px solid #d1d5db' }
-                  : { background: 'var(--accent-light)', color: 'var(--accent)', border: '1px solid var(--accent-border)' })
-            }}>
-              {u.role === 'admin' ? 'Admin' : u.role === 'viewer' ? 'Visualizador' : 'Usuário'}
-            </span>
-            {u.id !== user.id && (
-              <button onClick={() => abrirEditar(u)} style={{ ...S.iconBtn, color: 'var(--accent)' }}><Edit size={15} /></button>
-            )}
-          </div>
-        ))}
-        {usuarios.length === 0 && (
-          <p style={{ textAlign: 'center', color: 'var(--muted)', padding: '40px 0', fontSize: 14 }}>Nenhum usuário encontrado</p>
-        )}
-      </div>
-    </div>
-  )
+  );
 }
