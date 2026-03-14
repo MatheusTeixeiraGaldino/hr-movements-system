@@ -71,8 +71,15 @@ interface Movimentacao {
   type: string
   selected_teams: string[]   // array de team_ids
   status: string
-  responses?: any
-  details?: any
+  responses?: Record<string, {
+    date?: string
+    status: string
+    comment?: string
+    checklist?: Record<string, boolean>
+    history?: { date: string; action: string; timestamp: string; user_name: string; user_email: string }[]
+    attachments?: any[]
+  }>
+  details?: Record<string, any>
   checklist?: any
   observation?: string
   created_by?: string
@@ -434,6 +441,7 @@ function GerenciarMovimentacoes({ user }: { user: User }) {
     employee_name: '', type: 'demissao', deadline: '',
     observation: '', selected_teams: [] as string[],
     setores_ids: [] as string[],
+    sector: '', company: '', dismissalDate: '',
     details: {} as any, checklist: [] as any[],
   })
 
@@ -524,7 +532,7 @@ function GerenciarMovimentacoes({ user }: { user: User }) {
     arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id]
 
   const resetForm = () => {
-    setForm({ employee_name: '', type: 'demissao', deadline: '', observation: '', selected_teams: [], setores_ids: [], details: {}, checklist: [] })
+    setForm({ employee_name: '', type: 'demissao', deadline: '', observation: '', selected_teams: [], setores_ids: [], sector: '', company: '', dismissalDate: '', details: {}, checklist: [] })
     setShowForm(false)
   }
 
@@ -541,9 +549,15 @@ function GerenciarMovimentacoes({ user }: { user: User }) {
       setores_ids:    form.setores_ids,
       status:         'pendente',
       created_by:     user.id,
-      details:        form.details || {},
-      checklist:      form.checklist || [],
-      responses:      {},
+      details: {
+        sector:        form.sector || '',
+        company:       form.company || '',
+        dismissalDate: form.dismissalDate || '',
+        observation:   form.observation || '',
+        employeeName:  form.employee_name.trim(),
+      },
+      checklist:  form.checklist || [],
+      responses:  {},
     }).select().single()
 
     if (error || !mov) { alert('Erro ao salvar: ' + error?.message); return }
@@ -694,6 +708,25 @@ function GerenciarMovimentacoes({ user }: { user: User }) {
                 </div>
               </div>
 
+              {/* Setor / Empresa / Data */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div>
+                  <label style={S.label}>Setor / Local</label>
+                  <input value={form.sector} onChange={e => setForm({ ...form, sector: e.target.value })}
+                    placeholder="Ex: FAZENDA PORTEIRAS" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+                </div>
+                <div>
+                  <label style={S.label}>Empresa</label>
+                  <input value={form.company} onChange={e => setForm({ ...form, company: e.target.value })}
+                    placeholder="Ex: OL LATEX GO" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+                </div>
+                <div>
+                  <label style={S.label}>Data de Demissão / Ocorrência</label>
+                  <input type="date" value={form.dismissalDate} onChange={e => setForm({ ...form, dismissalDate: e.target.value })}
+                    style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+                </div>
+              </div>
+
               {/* Observação */}
               <div>
                 <label style={S.label}>Observações / Detalhes</label>
@@ -779,10 +812,8 @@ function GerenciarMovimentacoes({ user }: { user: User }) {
       {/* ── MODAL DETALHE ── */}
       {detalhe && (
         <DetalheModal
-          mov={detalhe} teams={teams} setores={setores} isAdmin={isAdmin}
+          mov={detalhe} teams={teams} setores={setores} isAdmin={isAdmin} user={user}
           onClose={() => setDetalhe(null)}
-          onStatusChange={atualizarStatus}
-          onDelete={excluir}
           onSave={() => { loadAll(); setDetalhe(null) }}
         />
       )}
@@ -884,18 +915,68 @@ function GerenciarMovimentacoes({ user }: { user: User }) {
 }
 
 // ─────────────────────────────────────────────
-// MODAL DE DETALHE — com edição e pareceres completos
+// MODAL DE DETALHE — pareceres reais do campo responses
 // ─────────────────────────────────────────────
-function DetalheModal({ mov, teams, setores, isAdmin, onClose, onStatusChange, onDelete, onSave }: {
-  mov: Movimentacao; teams: Team[]; setores: Setor[]; isAdmin: boolean
+
+// Checklist padrão por tipo de movimentação e equipe
+const CHECKLIST_ITEMS: Record<string, Record<string, string[]>> = {
+  demissao: {
+    dp:         ['Valores marmita', 'Comissões recebidas', 'Aviso prévio assinado'],
+    rh:         ['Entrevista de desligamento', 'Requisição de desligamento'],
+    ti:         ['Baixa de usuário'],
+    ponto:      ['Entrega espelho de ponto'],
+    seguranca:  ['Entrega de EPIs', 'Não é membro da CIPA', 'Sem acidente de trabalho'],
+    financeiro: ['Existe multas', 'Existe adiantamento', 'Valores a descontar'],
+    transporte: ['Valores de multas', 'Baixa de carro responsável'],
+    ambulatorio:['Exame demissional', 'Valores farmácia', 'Baixa plano odonto', 'Baixa plano de saúde', 'Valores plano de saúde'],
+    treinamento:['Valores a devolver bolsa de estudos', 'Valores a devolver adiantamento treinamentos'],
+    comunicacao:[],
+  },
+  dismissal: {
+    dp:         ['Valores marmita', 'Comissões recebidas', 'Aviso prévio assinado'],
+    rh:         ['Entrevista de desligamento', 'Requisição de desligamento'],
+    ti:         ['Baixa de usuário'],
+    ponto:      ['Entrega espelho de ponto'],
+    seguranca:  ['Entrega de EPIs', 'Não é membro da CIPA', 'Sem acidente de trabalho'],
+    financeiro: ['Existe multas', 'Existe adiantamento', 'Valores a descontar'],
+    transporte: ['Valores de multas', 'Baixa de carro responsável'],
+    ambulatorio:['Exame demissional', 'Valores farmácia', 'Baixa plano odonto', 'Baixa plano de saúde', 'Valores plano de saúde'],
+    treinamento:['Valores a devolver bolsa de estudos', 'Valores a devolver adiantamento treinamentos'],
+    comunicacao:[],
+  },
+  transferencia: {
+    dp:         ['Carta de transferência assinada', 'Atualização cadastral'],
+    rh:         ['Atualização de ficha', 'Novo contrato'],
+    ti:         ['Transferência de acesso'],
+    ponto:      ['Atualização de lotação'],
+    financeiro: ['Acerto de benefícios'],
+  },
+  transfer: {
+    dp:         ['Carta de transferência assinada', 'Atualização cadastral'],
+    rh:         ['Atualização de ficha', 'Novo contrato'],
+    ti:         ['Transferência de acesso'],
+    ponto:      ['Atualização de lotação'],
+    financeiro: ['Acerto de benefícios'],
+  },
+}
+
+function getChecklistItems(tipo: string, teamCode: string): string[] {
+  const tipoItems = CHECKLIST_ITEMS[tipo] || CHECKLIST_ITEMS['outros'] || {}
+  return tipoItems[teamCode] || []
+}
+
+function DetalheModal({ mov, teams, setores, isAdmin, user, onClose, onSave }: {
+  mov: Movimentacao; teams: Team[]; setores: Setor[]; isAdmin: boolean; user: User
   onClose: () => void
-  onStatusChange: (id: string, s: string) => void
-  onDelete: (id: string) => void
   onSave: () => void
 }) {
-  const [editando,      setEditando]      = useState(false)
-  const [respostas,     setRespostas]     = useState<TeamResponse[]>([])
-  const [loadingResp,   setLoadingResp]   = useState(true)
+  const [tab,        setTab]        = useState<'pareceres' | 'detalhes' | 'editar'>('pareceres')
+  const [responses,  setResponses]  = useState<Record<string, any>>(mov.responses || {})
+  const [saving,     setSaving]     = useState(false)
+  // Parecer sendo preenchido agora
+  const [parecerAtivo, setParecerAtivo] = useState<string | null>(null)
+  const [parecerForm,  setParecerForm]  = useState({ comment: '', checklist: {} as Record<string, boolean> })
+  // Form edição
   const [formEdit, setFormEdit] = useState({
     employee_name:  mov.employee_name,
     type:           mov.type,
@@ -903,34 +984,85 @@ function DetalheModal({ mov, teams, setores, isAdmin, onClose, onStatusChange, o
     observation:    mov.observation || '',
     selected_teams: mov.selected_teams || [],
     setores_ids:    mov.setores_ids || [],
+    details: {
+      sector:       (mov.details as any)?.sector || '',
+      company:      (mov.details as any)?.company || '',
+      dismissalDate:(mov.details as any)?.dismissalDate || '',
+    },
   })
 
   const badge     = getTipoBadge(formEdit.type)
   const sc        = getStatusConf(mov.status)
-  const movTeams  = teams.filter(t => (formEdit.selected_teams).includes(t.code))
   const prazoFmt  = formEdit.deadline ? new Date(formEdit.deadline + 'T00:00:00').toLocaleDateString('pt-BR') : 'Sem prazo'
   const criadoFmt = new Date(mov.created_at).toLocaleDateString('pt-BR')
+  const movTeams  = teams.filter(t => (formEdit.selected_teams || []).includes(t.code))
 
-  // Carrega respostas frescas do banco ao abrir o modal
-  useEffect(() => {
-    setLoadingResp(true)
-    supabase
-      .from('team_responses')
-      .select('*')
-      .eq('movement_id', mov.id)
-      .then(({ data }) => {
-        setRespostas(data || [])
-        setLoadingResp(false)
-      })
-  }, [mov.id])
+  // Equipes com e sem resposta
+  const teamCodes       = formEdit.selected_teams || []
+  const respondidas     = teamCodes.filter(code => responses[code]?.status === 'completed')
+  const pendentes       = teamCodes.filter(code => !responses[code] || responses[code].status !== 'completed')
+  const progressoPct    = teamCodes.length > 0 ? Math.round((respondidas.length / teamCodes.length) * 100) : 0
+
+  // Verifica se o usuário logado pode dar parecer (pelo team_name ou code da equipe)
+  const userTeamCodes = teams
+    .filter(t => (user.team_ids || []).includes(t.id))
+    .map(t => t.code)
+  // Também verifica pelo campo legado team_id
+  const userTeamCodeLegacy = teams.find(t => t.id === user.team_id)?.code
+
+  const canRespond = (teamCode: string) => {
+    if (isAdmin) return true
+    return userTeamCodes.includes(teamCode) || userTeamCodeLegacy === teamCode
+  }
+
+  const abrirParecer = (teamCode: string) => {
+    const existing = responses[teamCode] || {}
+    setParecerForm({
+      comment: existing.comment || '',
+      checklist: existing.checklist || {},
+    })
+    setParecerAtivo(teamCode)
+  }
+
+  const salvarParecer = async (teamCode: string) => {
+    setSaving(true)
+    const now = new Date().toISOString()
+    const today = now.slice(0, 10)
+    const newEntry = {
+      ...responses[teamCode],
+      date:     today,
+      status:   'completed',
+      comment:  parecerForm.comment,
+      checklist: parecerForm.checklist,
+      history: [
+        ...((responses[teamCode]?.history) || []),
+        {
+          date:       today,
+          action:     responses[teamCode] ? 'updated' : 'created',
+          timestamp:  now,
+          user_name:  user.name,
+          user_email: user.email,
+        },
+      ],
+      attachments: responses[teamCode]?.attachments || [],
+    }
+    const newResponses = { ...responses, [teamCode]: newEntry }
+    const { error } = await supabase
+      .from('movements')
+      .update({ responses: newResponses })
+      .eq('id', mov.id)
+    if (error) { alert('Erro ao salvar: ' + error.message); setSaving(false); return }
+    setResponses(newResponses)
+    setParecerAtivo(null)
+    setSaving(false)
+    onSave()
+  }
 
   const toggleItem = (arr: string[], id: string) =>
     arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id]
 
   const salvarEdicao = async () => {
-    if (!formEdit.employee_name.trim()) { alert('Informe o nome do colaborador'); return }
-    if (formEdit.selected_teams.length === 0) { alert('Selecione pelo menos uma equipe'); return }
-
+    setSaving(true)
     const { error } = await supabase.from('movements').update({
       employee_name:  formEdit.employee_name.trim(),
       type:           formEdit.type,
@@ -938,308 +1070,452 @@ function DetalheModal({ mov, teams, setores, isAdmin, onClose, onStatusChange, o
       observation:    formEdit.observation || null,
       selected_teams: formEdit.selected_teams,
       setores_ids:    formEdit.setores_ids,
+      details: {
+        ...(mov.details as any || {}),
+        sector:       formEdit.details.sector,
+        company:      formEdit.details.company,
+        dismissalDate:formEdit.details.dismissalDate,
+      },
     }).eq('id', mov.id)
-
-    if (error) { alert('Erro ao salvar: ' + error.message); return }
-
-    // Atualiza movement_teams
+    if (error) { alert('Erro: ' + error.message); setSaving(false); return }
     await supabase.from('movement_teams').delete().eq('movement_id', mov.id)
     if (formEdit.selected_teams.length > 0) {
       await supabase.from('movement_teams').insert(
-        formEdit.selected_teams.map(code => { const team = teams.find(t => t.code === code); return { movement_id: mov.id, team_id: team?.id || code } })
+        formEdit.selected_teams.map(code => {
+          const team = teams.find(t => t.code === code)
+          return { movement_id: mov.id, team_id: team?.id || code }
+        })
       )
     }
-
-    setEditando(false)
+    setSaving(false)
+    setTab('pareceres')
     onSave()
   }
 
-  // Mapeia team_id → nome da equipe
-  const teamName = (tid: string) => teams.find(t => t.code === tid)?.name || tid
-
   return (
     <div style={S.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ ...S.modal, maxWidth: 620 }}>
+      <div style={{ ...S.modal, maxWidth: 660, padding: 0, overflow: 'hidden' }}>
 
         {/* ── Cabeçalho ── */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 }}>
-          <div>
-            <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 700, border: `1px solid ${badge.border}`, background: badge.bg, color: badge.color }}>
-              {getTipoLabel(formEdit.type)}
-            </span>
-            {editando ? (
-              <input value={formEdit.employee_name} onChange={e => setFormEdit({ ...formEdit, employee_name: e.target.value })}
-                style={{ ...S.input, fontSize: 20, fontWeight: 700, marginTop: 8, fontFamily: 'var(--font-display)' }}
-                onFocus={focusAccent} onBlur={blurBorder} />
-            ) : (
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: 'var(--text)', marginTop: 8 }}>
+        <div style={{ padding: '22px 28px 0', background: 'var(--surface)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 700, border: `1px solid ${badge.border}`, background: badge.bg, color: badge.color }}>
+                  {getTipoLabel(formEdit.type)}
+                </span>
+                <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 700, border: `1px solid ${sc.border}`, background: sc.bg, color: sc.color }}>
+                  {sc.label}
+                </span>
+              </div>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, color: 'var(--text)', margin: 0 }}>
                 {formEdit.employee_name}
               </h3>
-            )}
+              {(mov.details as any)?.sector && (
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>
+                  {(mov.details as any).sector}{(mov.details as any)?.company ? ` · ${(mov.details as any).company}` : ''}
+                </p>
+              )}
+            </div>
+            <button onClick={onClose} style={{ ...S.iconBtn, flexShrink: 0 }}><X size={19} /></button>
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {isAdmin && !editando && (
-              <button onClick={() => setEditando(true)} style={{ ...S.btnSecondary, padding: '7px 14px' }}>
-                <Edit size={13} /> Editar
+
+          {/* Barra de progresso */}
+          {teamCodes.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>
+                  {respondidas.length}/{teamCodes.length} equipes responderam
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: progressoPct === 100 ? '#16a34a' : 'var(--muted)' }}>
+                  {progressoPct}%
+                </span>
+              </div>
+              <div style={{ height: 5, background: 'var(--border)', borderRadius: 99 }}>
+                <div style={{ height: 5, width: `${progressoPct}%`, background: progressoPct === 100 ? '#16a34a' : 'var(--accent)', borderRadius: 99, transition: 'width 0.4s ease' }} />
+              </div>
+            </div>
+          )}
+
+          {/* Tabs */}
+          <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)' }}>
+            {([['pareceres', 'Pareceres'], ['detalhes', 'Detalhes'], ...(isAdmin ? [['editar', 'Editar']] : [])] as [string,string][]).map(([id, label]) => (
+              <button key={id} onClick={() => setTab(id as any)} style={{
+                padding: '10px 18px', border: 'none', background: 'transparent', cursor: 'pointer',
+                fontSize: 13, fontWeight: tab === id ? 700 : 400,
+                color: tab === id ? 'var(--accent)' : 'var(--muted)',
+                borderBottom: tab === id ? '2px solid var(--accent)' : '2px solid transparent',
+                marginBottom: -1, fontFamily: 'var(--font-body)', transition: 'all 0.15s',
+              }}>
+                {label}
+                {id === 'pareceres' && pendentes.length > 0 && (
+                  <span style={{ marginLeft: 6, background: '#ef4444', color: 'white', borderRadius: 99, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>
+                    {pendentes.length}
+                  </span>
+                )}
               </button>
-            )}
-            <button onClick={onClose} style={S.iconBtn}><X size={19} /></button>
+            ))}
           </div>
         </div>
 
-        {/* ── MODO EDIÇÃO ── */}
-        {editando ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <div>
-                <label style={S.label}>Tipo de Movimentação</label>
-                <select value={formEdit.type} onChange={e => setFormEdit({ ...formEdit, type: e.target.value })}
-                  style={S.input} onFocus={focusAccent} onBlur={blurBorder}>
-                  <option value="demissao">Demissão</option>
-                  <option value="transferencia">Transferência</option>
-                  <option value="alteracao">Alteração Salarial</option>
-                  <option value="promocao">Promoção</option>
-                  <option value="afastamento">Afastamento</option>
-                  <option value="outros">Outros</option>
-                </select>
-              </div>
-              <div>
-                <label style={S.label}>Prazo de Resposta</label>
-                <input type="date" value={formEdit.deadline} onChange={e => setFormEdit({ ...formEdit, deadline: e.target.value })}
-                  style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
-              </div>
-            </div>
+        {/* ── CONTEÚDO DAS TABS ── */}
+        <div style={{ padding: '20px 28px 24px', overflowY: 'auto', maxHeight: 'calc(92vh - 200px)' }}>
+
+          {/* ── TAB: PARECERES ── */}
+          {tab === 'pareceres' && (
             <div>
-              <label style={S.label}>Observações</label>
-              <textarea value={formEdit.observation} onChange={e => setFormEdit({ ...formEdit, observation: e.target.value })}
-                rows={3} style={{ ...S.input, resize: 'vertical' }} onFocus={focusAccent} onBlur={blurBorder} />
-            </div>
-            {/* Equipes */}
-            <div>
-              <label style={S.label}>Equipes Envolvidas</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
-                {teams.map(t => {
-                  const sel = formEdit.selected_teams.includes(t.code)
-                  return (
-                    <button key={t.id} onClick={() => setFormEdit(f => ({ ...f, selected_teams: toggleItem(f.selected_teams, t.code) }))}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${sel ? 'var(--accent)' : 'var(--border)'}`, background: sel ? 'var(--accent-light)' : 'var(--bg)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', fontFamily: 'var(--font-body)' }}>
-                      <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? 'var(--accent)' : '#d1d5db'}`, background: sel ? 'var(--accent)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {sel && <CheckCircle size={11} color="white" />}
+              {/* Modal de preenchimento de parecer */}
+              {parecerAtivo && (
+                <div style={{ background: '#eff6ff', border: '2px solid var(--accent)', borderRadius: 12, padding: '18px 20px', marginBottom: 20 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                    <p style={{ fontWeight: 700, color: 'var(--accent)', fontSize: 14 }}>
+                      Parecer — {teams.find(t => t.code === parecerAtivo)?.name || parecerAtivo}
+                    </p>
+                    <button onClick={() => setParecerAtivo(null)} style={S.iconBtn}><X size={15} /></button>
+                  </div>
+
+                  {/* Checklist de itens */}
+                  {getChecklistItems(mov.type, parecerAtivo).length > 0 && (
+                    <div style={{ marginBottom: 14 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Checklist</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {getChecklistItems(mov.type, parecerAtivo).map(item => {
+                          const checked = parecerForm.checklist[item] === true
+                          return (
+                            <label key={item} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 12px', background: checked ? '#f0fdf4' : 'var(--surface)', borderRadius: 8, border: `1px solid ${checked ? '#86efac' : 'var(--border)'}`, transition: 'all 0.15s' }}>
+                              <div onClick={() => setParecerForm(f => ({ ...f, checklist: { ...f.checklist, [item]: !checked } }))}
+                                style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${checked ? '#16a34a' : '#d1d5db'}`, background: checked ? '#16a34a' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer' }}>
+                                {checked && <CheckCircle size={11} color="white" />}
+                              </div>
+                              <span style={{ fontSize: 13, color: checked ? '#15803d' : 'var(--text)', fontWeight: checked ? 600 : 400 }}>{item}</span>
+                            </label>
+                          )
+                        })}
                       </div>
-                      <span style={{ fontSize: 13, fontWeight: sel ? 700 : 400, color: sel ? 'var(--accent)' : 'var(--text)' }}>{t.name}</span>
+                    </div>
+                  )}
+
+                  {/* Comentário */}
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={S.label}>Comentário / Parecer</label>
+                    <textarea value={parecerForm.comment}
+                      onChange={e => setParecerForm({ ...parecerForm, comment: e.target.value })}
+                      rows={3} placeholder="Descreva o parecer desta equipe..."
+                      style={{ ...S.input, resize: 'vertical' }} onFocus={focusAccent} onBlur={blurBorder} />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button onClick={() => setParecerAtivo(null)} style={S.btnSecondary}>Cancelar</button>
+                    <button onClick={() => salvarParecer(parecerAtivo)} disabled={saving}
+                      style={{ ...S.btnPrimary, opacity: saving ? 0.7 : 1 }}>
+                      {saving ? 'Salvando...' : <><CheckCircle size={13} /> Salvar Parecer</>}
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Lista de equipes com status */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {teamCodes.map(code => {
+                  const resp    = responses[code]
+                  const team    = teams.find(t => t.code === code)
+                  const teamNm  = team?.name || code
+                  const done    = resp?.status === 'completed'
+                  const items   = getChecklistItems(mov.type, code)
+                  const checkedCount = done ? Object.values(resp.checklist || {}).filter(Boolean).length : 0
+                  const respondido = resp?.history?.[resp.history.length - 1]
+                  const podeResponder = canRespond(code) && !parecerAtivo
+
+                  return (
+                    <div key={code} style={{
+                      background: 'var(--bg)', border: `1px solid ${done ? '#86efac' : 'var(--border)'}`,
+                      borderRadius: 12, overflow: 'hidden',
+                      transition: 'border-color 0.15s',
+                    }}>
+                      {/* Header do card */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 9, background: done ? '#f0fdf4' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {done
+                            ? <CheckCircle size={17} color="#16a34a" />
+                            : <Clock size={17} color="#9ca3af" />
+                          }
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{teamNm}</p>
+                          {done && respondido && (
+                            <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
+                              {respondido.user_name} · {new Date(respondido.timestamp).toLocaleDateString('pt-BR')}
+                            </p>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                          {items.length > 0 && done && (
+                            <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>
+                              {checkedCount}/{items.length} itens
+                            </span>
+                          )}
+                          <span style={{
+                            fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 700,
+                            ...(done
+                              ? { background: '#f0fdf4', color: '#16a34a', border: '1px solid #86efac' }
+                              : { background: '#f9fafb', color: '#9ca3af', border: '1px solid #e5e7eb' })
+                          }}>
+                            {done ? 'Concluído' : 'Aguardando'}
+                          </span>
+                          {podeResponder && (
+                            <button onClick={() => abrirParecer(code)}
+                              style={{ ...S.btnPrimary, padding: '5px 12px', fontSize: 12 }}>
+                              <Edit size={11} /> {done ? 'Editar' : 'Responder'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Detalhes do parecer */}
+                      {done && (resp.comment || Object.keys(resp.checklist || {}).length > 0) && (
+                        <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px', background: 'var(--surface)' }}>
+                          {/* Checklist respondido */}
+                          {Object.keys(resp.checklist || {}).length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: resp.comment ? 10 : 0 }}>
+                              {Object.entries(resp.checklist).map(([item, ok]) => (
+                                <span key={item} style={{
+                                  fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 600,
+                                  ...(ok
+                                    ? { background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }
+                                    : { background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' })
+                                }}>
+                                  {ok ? '✓' : '✗'} {item}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {/* Comentário */}
+                          {resp.comment && (
+                            <div style={{ borderLeft: '3px solid #16a34a', paddingLeft: 12 }}>
+                              <p style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginBottom: 3 }}>Parecer:</p>
+                              <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{resp.comment}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )
                 })}
-              </div>
-            </div>
-            {/* Setores */}
-            {setores.length > 0 && (
-              <div>
-                <label style={S.label}>Setores para Notificação</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
-                  {setores.map(s => {
-                    const sel = formEdit.setores_ids.includes(s.id)
-                    return (
-                      <button key={s.id} onClick={() => setFormEdit(f => ({ ...f, setores_ids: toggleItem(f.setores_ids, s.id) }))}
-                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${sel ? '#16a34a' : 'var(--border)'}`, background: sel ? '#f0fdf4' : 'var(--bg)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', fontFamily: 'var(--font-body)' }}>
-                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? '#16a34a' : '#d1d5db'}`, background: sel ? '#16a34a' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          {sel && <CheckCircle size={11} color="white" />}
-                        </div>
-                        <span style={{ fontSize: 13, fontWeight: sel ? 700 : 400, color: sel ? '#16a34a' : 'var(--text)' }}>{s.nome}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-              <button onClick={() => setEditando(false)} style={S.btnSecondary}>Cancelar</button>
-              <button onClick={salvarEdicao} style={S.btnPrimary}><CheckCircle size={13} /> Salvar Alterações</button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* ── MODO VISUALIZAÇÃO ── */}
 
-            {/* Grid de info */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
-              {([
-                ['Status',     sc.label],
-                ['Prazo',      prazoFmt],
-                ['Registrado', criadoFmt],
-                ['Criado por', mov.created_by || '—'],
-              ] as [string,string][]).map(([k, v]) => (
-                <div key={k} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px' }}>
-                  <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>{k}</p>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{v}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Observação */}
-            {formEdit.observation && (
-              <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
-                <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Observações</p>
-                <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{formEdit.observation}</p>
-              </div>
-            )}
-
-            {/* Details jsonb */}
-            {mov.details && Object.keys(mov.details).length > 0 && (
-              <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
-                <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>Detalhes</p>
-                {Object.entries(mov.details).map(([k, v]) => (
-                  <p key={k} style={{ fontSize: 12, color: 'var(--text)', marginBottom: 3 }}>
-                    <span style={{ fontWeight: 700 }}>{k}:</span> {String(v)}
+                {teamCodes.length === 0 && (
+                  <p style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: '24px 0' }}>
+                    Nenhuma equipe vinculada a esta movimentação.
                   </p>
-                ))}
-              </div>
-            )}
-
-            {/* Equipes envolvidas */}
-            <div style={{ marginBottom: 16 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Equipes Envolvidas</p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {movTeams.length > 0 ? movTeams.map(t => (
-                  <span key={t.id} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, background: 'var(--accent-light)', color: 'var(--accent)', fontWeight: 700, border: '1px solid var(--accent-border)' }}>
-                    {t.name}
-                  </span>
-                )) : (
-                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>Nenhuma equipe vinculada</span>
                 )}
               </div>
             </div>
+          )}
 
-            {/* ── PARECERES / RESPOSTAS DAS EQUIPES ── */}
-            <div style={{ marginBottom: 16 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Pareceres das Equipes
-              </p>
-              {loadingResp ? (
-                <p style={{ fontSize: 13, color: 'var(--muted)', padding: 12 }}>Carregando pareceres...</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {/* Para cada equipe vinculada, mostra o status da resposta */}
-                  {formEdit.selected_teams.map(tid => {
-                    const equipe   = teams.find(t => t.code === tid)
-                    const resposta = respostas.find(r => { const team = teams.find(t => t.code === tid); return team ? r.team_id === team.id : false })
-                    const rsc      = resposta ? getStatusConf(resposta.status) : null
-                    const RIcon    = rsc?.icon
+          {/* ── TAB: DETALHES ── */}
+          {tab === 'detalhes' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {([
+                  ['Prazo',         prazoFmt],
+                  ['Registrado em', criadoFmt],
+                  ['Criado por',    mov.created_by || '—'],
+                  ['Status',        sc.label],
+                  [(mov.details as any)?.sector ? 'Setor/Local' : '', (mov.details as any)?.sector || ''],
+                  [(mov.details as any)?.company ? 'Empresa' : '', (mov.details as any)?.company || ''],
+                  [(mov.details as any)?.dismissalDate ? 'Data de Demissão' : '', (mov.details as any)?.dismissalDate ? new Date((mov.details as any).dismissalDate + 'T00:00:00').toLocaleDateString('pt-BR') : ''],
+                ] as [string,string][]).filter(([k]) => k).map(([k, v]) => (
+                  <div key={k} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px' }}>
+                    <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>{k}</p>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{v || '—'}</p>
+                  </div>
+                ))}
+              </div>
 
-                    return (
-                      <div key={tid} style={{ background: 'var(--bg)', border: `1px solid ${resposta ? (rsc?.border || 'var(--border)') : 'var(--border)'}`, borderRadius: 10, padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ width: 32, height: 32, borderRadius: 8, background: resposta ? (rsc?.bg || '#f3f4f6') : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              {RIcon ? <RIcon size={14} color={rsc?.color} /> : <Clock size={14} color="#9ca3af" />}
-                            </div>
-                            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{equipe?.name || teamName(tid)}</p>
-                          </div>
-                          {resposta && rsc ? (
-                            <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20, border: `1px solid ${rsc.border}`, background: rsc.bg, color: rsc.color, fontWeight: 700 }}>
-                              {RIcon && <RIcon size={10} />} {rsc.label}
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#9ca3af', fontWeight: 600 }}>
-                              Aguardando
-                            </span>
-                          )}
-                        </div>
-                        {resposta?.comment && (
-                          <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--surface)', borderRadius: 8, borderLeft: `3px solid ${rsc?.color || '#d1d5db'}` }}>
-                            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 3, fontWeight: 600 }}>Parecer:</p>
-                            <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{resposta.comment}</p>
-                          </div>
-                        )}
-                        {resposta?.responded_at && (
-                          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
-                            Respondido em {new Date(resposta.responded_at).toLocaleDateString('pt-BR')} às {new Date(resposta.responded_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                          </p>
-                        )}
-                      </div>
-                    )
-                  })}
-
-                  {/* Respostas de equipes que não estão mais no selected_teams */}
-                  {respostas.filter(r => !formEdit.selected_teams.includes(r.team_id)).map(r => {
-                    const rsc   = getStatusConf(r.status)
-                    const RIcon = rsc.icon
-                    return (
-                      <div key={r.id} style={{ background: 'var(--bg)', border: `1px solid ${rsc.border}`, borderRadius: 10, padding: '12px 16px', opacity: 0.7 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{teamName(r.team_id)} <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>(equipe removida)</span></p>
-                          <span style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20, border: `1px solid ${rsc.border}`, background: rsc.bg, color: rsc.color, fontWeight: 700 }}>
-                            <RIcon size={10} /> {rsc.label}
-                          </span>
-                        </div>
-                        {r.comment && <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6, lineHeight: 1.5 }}>{r.comment}</p>}
-                      </div>
-                    )
-                  })}
-
-                  {formEdit.selected_teams.length === 0 && respostas.length === 0 && (
-                    <p style={{ fontSize: 13, color: 'var(--muted)', padding: '10px 0' }}>Nenhuma equipe vinculada a esta movimentação.</p>
-                  )}
+              {formEdit.observation && (
+                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px' }}>
+                  <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Observações</p>
+                  <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{formEdit.observation}</p>
                 </div>
               )}
-            </div>
 
-            {/* Setores notificados */}
-            {(mov.movimentacoes_setores || []).length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Setores Notificados</p>
+              {/* Equipes */}
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Equipes Vinculadas</p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {(mov.movimentacoes_setores || []).map(ms => (
-                    <span key={ms.setor_id} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, background: '#f0fdf4', color: '#16a34a', fontWeight: 700, border: '1px solid #86efac' }}>
-                      {ms.setores?.nome}
+                  {movTeams.map(t => (
+                    <span key={t.id} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, background: 'var(--accent-light)', color: 'var(--accent)', fontWeight: 700, border: '1px solid var(--accent-border)' }}>
+                      {t.name}
                     </span>
                   ))}
                 </div>
               </div>
-            )}
 
-            {/* Alterar status + excluir */}
-            {isAdmin && (
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Alterar Status</p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-                  {[
-                    { key: 'pendente',     label: 'Pendente'     },
-                    { key: 'em_andamento', label: 'Em Andamento' },
-                    { key: 'concluido',    label: 'Concluído'    },
-                    { key: 'cancelado',    label: 'Cancelado'    },
-                  ].map(({ key, label }) => {
-                    const cfg  = getStatusConf(key)
-                    const Icon = cfg.icon
-                    const active = mov.status === key
-                      || (key === 'pendente'     && mov.status === 'pending')
-                      || (key === 'em_andamento' && mov.status === 'in_progress')
-                      || (key === 'concluido'    && mov.status === 'completed')
-                      || (key === 'cancelado'    && mov.status === 'cancelled')
+              {/* Setores notificados */}
+              {(mov.movimentacoes_setores || []).length > 0 && (
+                <div>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Setores Notificados</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {(mov.movimentacoes_setores || []).map(ms => (
+                      <span key={ms.setor_id} style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, background: '#f0fdf4', color: '#16a34a', fontWeight: 700, border: '1px solid #86efac' }}>
+                        {ms.setores?.nome}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Alterar status */}
+              {isAdmin && (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Alterar Status</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                    {[
+                      { key: 'pendente', label: 'Pendente' },
+                      { key: 'em_andamento', label: 'Em Andamento' },
+                      { key: 'concluido', label: 'Concluído' },
+                      { key: 'cancelado', label: 'Cancelado' },
+                    ].map(({ key, label }) => {
+                      const cfg  = getStatusConf(key)
+                      const Icon = cfg.icon
+                      const active = mov.status === key
+                        || (key === 'pendente'     && mov.status === 'pending')
+                        || (key === 'em_andamento' && mov.status === 'in_progress')
+                        || (key === 'concluido'    && mov.status === 'completed')
+                        || (key === 'cancelado'    && mov.status === 'cancelled')
+                      return (
+                        <button key={key} onClick={async () => {
+                          await supabase.from('movements').update({ status: key }).eq('id', mov.id)
+                          onSave()
+                        }} style={{
+                          display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 9,
+                          border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                          background: active ? 'var(--accent-light)' : 'var(--surface)',
+                          color: active ? 'var(--accent)' : 'var(--text)',
+                          cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 400, fontFamily: 'var(--font-body)',
+                        }}>
+                          <Icon size={12} /> {label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <button onClick={async () => {
+                    if (!confirm('Excluir esta movimentação?')) return
+                    await supabase.from('movement_teams').delete().eq('movement_id', mov.id)
+                    await supabase.from('team_responses').delete().eq('movement_id', mov.id)
+                    await supabase.from('movimentacoes_setores').delete().eq('movimentacao_id', mov.id)
+                    await supabase.from('movements').delete().eq('id', mov.id)
+                    onSave(); onClose()
+                  }} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: 9, padding: '7px 14px', cursor: 'pointer', fontSize: 12, fontFamily: 'var(--font-body)' }}>
+                    <Trash2 size={12} /> Excluir Movimentação
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── TAB: EDITAR ── */}
+          {tab === 'editar' && isAdmin && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <label style={S.label}>Nome do Colaborador</label>
+                <input value={formEdit.employee_name} onChange={e => setFormEdit({ ...formEdit, employee_name: e.target.value })}
+                  style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div>
+                  <label style={S.label}>Tipo</label>
+                  <select value={formEdit.type} onChange={e => setFormEdit({ ...formEdit, type: e.target.value })}
+                    style={S.input} onFocus={focusAccent} onBlur={blurBorder}>
+                    <option value="demissao">Demissão</option>
+                    <option value="transferencia">Transferência</option>
+                    <option value="alteracao">Alteração Salarial</option>
+                    <option value="promocao">Promoção</option>
+                    <option value="afastamento">Afastamento</option>
+                    <option value="outros">Outros</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={S.label}>Prazo</label>
+                  <input type="date" value={formEdit.deadline} onChange={e => setFormEdit({ ...formEdit, deadline: e.target.value })}
+                    style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+                </div>
+                <div>
+                  <label style={S.label}>Setor / Local</label>
+                  <input value={formEdit.details.sector} onChange={e => setFormEdit({ ...formEdit, details: { ...formEdit.details, sector: e.target.value } })}
+                    placeholder="Ex: FAZENDA PORTEIRAS" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+                </div>
+                <div>
+                  <label style={S.label}>Empresa</label>
+                  <input value={formEdit.details.company} onChange={e => setFormEdit({ ...formEdit, details: { ...formEdit.details, company: e.target.value } })}
+                    placeholder="Ex: OL LATEX GO" style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+                </div>
+                <div>
+                  <label style={S.label}>Data de Demissão</label>
+                  <input type="date" value={formEdit.details.dismissalDate} onChange={e => setFormEdit({ ...formEdit, details: { ...formEdit.details, dismissalDate: e.target.value } })}
+                    style={S.input} onFocus={focusAccent} onBlur={blurBorder} />
+                </div>
+              </div>
+              <div>
+                <label style={S.label}>Observações</label>
+                <textarea value={formEdit.observation} onChange={e => setFormEdit({ ...formEdit, observation: e.target.value })}
+                  rows={3} style={{ ...S.input, resize: 'vertical' }} onFocus={focusAccent} onBlur={blurBorder} />
+              </div>
+
+              {/* Equipes */}
+              <div>
+                <label style={S.label}>Equipes Vinculadas</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+                  {teams.map(t => {
+                    const sel = formEdit.selected_teams.includes(t.code)
                     return (
-                      <button key={key} onClick={() => onStatusChange(mov.id, key)} style={{
-                        display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 9,
-                        border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-                        background: active ? 'var(--accent-light)' : 'var(--surface)',
-                        color: active ? 'var(--accent)' : 'var(--text)',
-                        cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 400, fontFamily: 'var(--font-body)',
-                      }}>
-                        <Icon size={12} /> {label}
+                      <button key={t.id} onClick={() => setFormEdit(f => ({ ...f, selected_teams: toggleItem(f.selected_teams, t.code) }))}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${sel ? 'var(--accent)' : 'var(--border)'}`, background: sel ? 'var(--accent-light)' : 'var(--bg)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', fontFamily: 'var(--font-body)' }}>
+                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? 'var(--accent)' : '#d1d5db'}`, background: sel ? 'var(--accent)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {sel && <CheckCircle size={11} color="white" />}
+                        </div>
+                        <span style={{ fontSize: 13, fontWeight: sel ? 700 : 400, color: sel ? 'var(--accent)' : 'var(--text)' }}>{t.name}</span>
                       </button>
                     )
                   })}
                 </div>
-                <button onClick={() => onDelete(mov.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: 9, padding: '7px 14px', cursor: 'pointer', fontSize: 12, fontFamily: 'var(--font-body)' }}>
-                  <Trash2 size={12} /> Excluir Movimentação
+              </div>
+
+              {/* Setores email */}
+              {setores.length > 0 && (
+                <div>
+                  <label style={S.label}>Setores para Notificação de E-mail</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+                    {setores.map(s => {
+                      const sel = formEdit.setores_ids.includes(s.id)
+                      return (
+                        <button key={s.id} onClick={() => setFormEdit(f => ({ ...f, setores_ids: toggleItem(f.setores_ids, s.id) }))}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10, border: `2px solid ${sel ? '#16a34a' : 'var(--border)'}`, background: sel ? '#f0fdf4' : 'var(--bg)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', fontFamily: 'var(--font-body)' }}>
+                          <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${sel ? '#16a34a' : '#d1d5db'}`, background: sel ? '#16a34a' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            {sel && <Mail size={10} color="white" />}
+                          </div>
+                          <span style={{ fontSize: 13, fontWeight: sel ? 700 : 400, color: sel ? '#16a34a' : 'var(--text)' }}>{s.nome}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button onClick={() => setTab('pareceres')} style={S.btnSecondary}>Cancelar</button>
+                <button onClick={salvarEdicao} disabled={saving} style={{ ...S.btnPrimary, opacity: saving ? 0.7 : 1 }}>
+                  {saving ? 'Salvando...' : <><CheckCircle size={13} /> Salvar Alterações</>}
                 </button>
               </div>
-            )}
-          </>
-        )}
+            </div>
+          )}
+
+        </div>
       </div>
     </div>
   )
 }
+
 
 // ─────────────────────────────────────────────
 // SETORES & EMAILS
