@@ -296,14 +296,102 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <HeaderComponent currentUser={currentUser} setCurrentUser={setCurrentUser} setView={setView} activeTeamId={activeTeamId} />
-      <main className="max-w-7xl mx-auto px-4 py-6">
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', fontFamily: 'var(--font-body)' }}>
+      {/* ── SIDEBAR ── */}
+      <aside style={{
+        position: 'fixed', top: 0, left: 0, width: 240, height: '100vh',
+        background: 'var(--sidebar-bg)', borderRight: '1px solid var(--sidebar-border)',
+        display: 'flex', flexDirection: 'column', zIndex: 100,
+        boxShadow: '1px 0 0 var(--border)',
+      }}>
+        {/* Logo */}
+        <div style={{ padding: '20px 18px 16px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+            </div>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>RH Movimentações</p>
+              <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>Sistema Trabalhista</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Nav */}
+        <nav style={{ flex: 1, padding: '12px 10px', overflowY: 'auto' }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '0 8px 8px' }}>Menu</p>
+          {[
+            { id: 'dashboard', label: 'Dashboard', icon: '▦' },
+            ...(currentUser.role === 'admin' ? [{ id: 'setores', label: 'Setores & Emails', icon: '✉' }] : []),
+          ].map(item => {
+            const active = view === item.id;
+            return (
+              <button key={item.id} onClick={() => setView(item.id)} style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 9,
+                padding: '9px 10px', borderRadius: 9, border: 'none', cursor: 'pointer',
+                marginBottom: 2, textAlign: 'left', fontSize: 13,
+                fontWeight: active ? 700 : 400,
+                background: active ? 'var(--accent-light)' : 'transparent',
+                color: active ? 'var(--accent)' : 'var(--muted)',
+                transition: 'all 0.15s', fontFamily: 'var(--font-body)',
+              }}>
+                <span style={{ fontSize: 14, width: 18, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
+                {item.label}
+                {active && <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* TeamSelector inline */}
+        {currentUser.team_ids.length > 1 && (
+          <div style={{ padding: '10px 10px', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, padding: '0 2px' }}>Equipe ativa</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {currentUser.team_ids.map((teamId: string, index: number) => {
+                const active = teamId === activeTeamId;
+                return (
+                  <button key={teamId} onClick={() => setActiveTeamId(teamId)} style={{
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
+                    borderRadius: 8, border: `1px solid ${active ? 'var(--accent-border)' : 'transparent'}`,
+                    background: active ? 'var(--accent-light)' : 'transparent',
+                    color: active ? 'var(--accent)' : 'var(--muted)',
+                    cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 400,
+                    fontFamily: 'var(--font-body)', textAlign: 'left',
+                  }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: active ? 'var(--accent)' : 'var(--muted-light)', flexShrink: 0 }} />
+                    {currentUser.team_names[index]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* User + Logout */}
+        <div style={{ padding: '12px 10px' }}>
+          <div style={{ padding: '6px 10px', marginBottom: 4 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>{currentUser.name}</p>
+            <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
+              {currentUser.role === 'admin' ? 'Administrador' : 'Membro de equipe'}
+            </p>
+          </div>
+          <button onClick={() => { setCurrentUser(null); setView('login'); }} style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 10px', borderRadius: 9, border: 'none', cursor: 'pointer',
+            background: 'transparent', color: 'var(--muted)', fontSize: 13,
+            fontFamily: 'var(--font-body)', transition: 'all 0.15s',
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Sair
+          </button>
+        </div>
+      </aside>
+
+      {/* ── CONTEÚDO PRINCIPAL ── */}
+      <main style={{ flex: 1, marginLeft: 240, padding: '32px 36px', minHeight: '100vh', animation: 'fadeIn 0.2s ease' }}>
         {view === 'dashboard' && (
-          <>
-            <TeamSelector currentUser={currentUser} activeTeamId={activeTeamId} setActiveTeamId={setActiveTeamId} />
-            <DashboardView currentUser={currentUser} movements={movements} loading={loading} loadMovements={loadMovements} setSelectedMovement={setSelectedMovement} setView={setView} activeTeamId={activeTeamId} />
-          </>
+          <DashboardView currentUser={currentUser} movements={movements} loading={loading} loadMovements={loadMovements} setSelectedMovement={setSelectedMovement} setView={setView} activeTeamId={activeTeamId} />
         )}
         {view === 'detail' && selectedMovement && (
           <DetailView currentUser={currentUser} selectedMovement={selectedMovement} setView={setView} setSelectedMovement={setSelectedMovement} loadMovements={loadMovements} activeTeamId={activeTeamId} />
@@ -325,64 +413,81 @@ function LoginComponent({ setCurrentUser, setView, setActiveTeamId }: any) {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoadingLogin(true);
     setError('');
-
+    setLoadingLogin(true);
     try {
       const { data, error } = await supabase.from('users').select('*').eq('email', email.toLowerCase()).eq('password', password).single();
-      if (error || !data) {
-        setError('Email ou senha incorretos');
-        return;
-      }
+      if (error || !data) { setError('E-mail ou senha incorretos.'); return; }
       setCurrentUser(data);
-      if (data.team_ids && data.team_ids.length > 0) {
-        setActiveTeamId(data.team_ids[0]);
-      }
+      if (data.team_ids?.length > 0) setActiveTeamId(data.team_ids[0]);
       setView('dashboard');
-    } catch (err) {
-      setError('Erro ao fazer login');
-    } finally {
-      setLoadingLogin(false);
-    }
+    } catch { setError('Erro ao fazer login.'); }
+    finally { setLoadingLogin(false); }
+  };
+
+  const inp: React.CSSProperties = {
+    width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 14,
+    border: '1.5px solid var(--border)', background: 'var(--bg)', color: 'var(--text)',
+    outline: 'none', fontFamily: 'var(--font-body)',
+  };
+  const lbl: React.CSSProperties = {
+    display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text)',
+    marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5,
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-            <Users className="w-8 h-8 text-blue-600" />
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', fontFamily: 'var(--font-body)' }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 18, padding: '44px 40px', width: '100%', maxWidth: 420, boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)' }}>
+        <div style={{ textAlign: 'center', marginBottom: 36 }}>
+          <div style={{ width: 52, height: 52, background: 'var(--accent)', borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Sistema de Movimentações</h1>
-          <p className="text-gray-600 mt-2">Gestão de Colaboradores</p>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 700, color: 'var(--text)' }}>RH Movimentações</h1>
+          <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 6 }}>Sistema de Movimentações Trabalhistas</p>
         </div>
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">E-mail</label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg" required disabled={loadingLogin} />
-            </div>
+            <label style={lbl}>E-mail</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="seu@email.com" style={inp}
+              onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+              onBlur={e => (e.target.style.borderColor = 'var(--border)')} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Senha</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-10 pr-12 py-2 border rounded-lg" required disabled={loadingLogin} />
-              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+            <label style={lbl}>Senha</label>
+            <div style={{ position: 'relative' }}>
+              <input type={showPassword ? 'text' : 'password'} value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••" style={{ ...inp, paddingRight: 44 }}
+                onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+                onBlur={e => (e.target.style.borderColor = 'var(--border)')} />
+              <button type="button" onClick={() => setShowPassword(s => !s)} style={{
+                position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 0,
+              }}>
+                {showPassword
+                  ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                }
               </button>
             </div>
           </div>
-          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4" />{error}</div>}
-          <button type="submit" disabled={loadingLogin} className="w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 disabled:bg-blue-400 flex items-center justify-center gap-2">
-            {loadingLogin ? <><Loader2 className="w-5 h-5 animate-spin" />Entrando...</> : 'Entrar'}
+          {error && <p style={{ fontSize: 13, color: '#ef4444', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px' }}>{error}</p>}
+          <button type="submit" disabled={loadingLogin} style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            padding: '11px 18px', borderRadius: 10, border: 'none',
+            background: 'var(--accent)', color: 'white', fontSize: 14, fontWeight: 700,
+            cursor: loadingLogin ? 'not-allowed' : 'pointer', opacity: loadingLogin ? 0.75 : 1,
+            fontFamily: 'var(--font-body)', marginTop: 4,
+          }}>
+            {loadingLogin ? <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: 'spin 0.8s linear infinite' }}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Entrando...</> : 'Entrar'}
           </button>
         </form>
       </div>
     </div>
   );
 }
+
 
 function HeaderComponent({ currentUser, setCurrentUser, setView, activeTeamId }: any) {
   const activeTeamName = currentUser.team_ids.map((id: string, index: number) => 
