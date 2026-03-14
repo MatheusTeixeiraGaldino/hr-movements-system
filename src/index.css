@@ -8,33 +8,37 @@
    VARIÁVEIS — Light Mode
    ───────────────────────────────────────────── */
 :root {
-  /* Superfícies */
-  --bg:            #f5f4f1;
+  /* Superfícies — paleta clara/fresca */
+  --bg:            #f0f4ff;
   --surface:       #ffffff;
   --surface-raised:#ffffff;
-  --border:        #e8e5de;
-  --border-strong: #d1cdc5;
+  --border:        #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  /* Sidebar */
+  --sidebar-bg:    #ffffff;
+  --sidebar-border:#e2e8f0;
 
   /* Texto */
-  --text:          #1a1917;
-  --text-secondary:#4b4642;
-  --muted:         #7c7369;
-  --muted-light:   #a8a39c;
+  --text:          #0f172a;
+  --text-secondary:#334155;
+  --muted:         #64748b;
+  --muted-light:   #94a3b8;
 
-  /* Accent (azul) */
-  --accent:        #2563eb;
-  --accent-hover:  #1d4ed8;
-  --accent-light:  #eff6ff;
-  --accent-border: #bfdbfe;
+  /* Accent (azul índigo) */
+  --accent:        #4f46e5;
+  --accent-hover:  #4338ca;
+  --accent-light:  #eef2ff;
+  --accent-border: #c7d2fe;
 
   /* Tipografia */
   --font-display:  'DM Serif Display', Georgia, 'Times New Roman', serif;
   --font-body:     'DM Sans', system-ui, -apple-system, sans-serif;
 
-  /* Sombras */
-  --shadow-sm:     0 1px 3px rgba(26,25,23,0.07), 0 1px 2px rgba(26,25,23,0.04);
-  --shadow-md:     0 4px 16px rgba(26,25,23,0.09), 0 2px 6px rgba(26,25,23,0.05);
-  --shadow-lg:     0 20px 60px rgba(26,25,23,0.14), 0 8px 24px rgba(26,25,23,0.08);
+  /* Sombras suaves */
+  --shadow-sm:     0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
+  --shadow-md:     0 4px 16px rgba(15,23,42,0.08), 0 2px 6px rgba(15,23,42,0.04);
+  --shadow-lg:     0 20px 60px rgba(15,23,42,0.12), 0 8px 24px rgba(15,23,42,0.07);
 
   /* Raios */
   --radius-sm:     6px;
