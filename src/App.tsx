@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, LogOut, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight } from 'lucide-react';
+import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
 type UserRole = 'admin' | 'team_member';
@@ -12,17 +12,7 @@ interface Attachment {
   uploadedAt: string;
 }
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  password: string;
-  role: UserRole;
-  can_manage_demissoes: boolean;
-  can_manage_transferencias: boolean;
-  team_ids: string[];
-  team_names: string[];
-}
+
 
 interface Movement {
   id: string;
@@ -236,6 +226,150 @@ function AttachmentManager({ attachments, onAdd, onRemove, disabled }: {
       {attachments.length === 0 && (
         <p className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg border-2 border-dashed">Nenhum anexo adicionado</p>
       )}
+    </div>
+  );
+}
+
+export default function App() {
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [movements, setMovements] = useState<Movement[]>([]);
+  const [view, setView] = useState('login');
+  const [selectedMovement, setSelectedMovement] = useState<Movement | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [activeTeamId, setActiveTeamId] = useState<string>('');
+
+  useEffect(() => {
+    if (currentUser) {
+      if (!activeTeamId && currentUser.team_ids.length > 0) {
+        setActiveTeamId(currentUser.team_ids[0]);
+      }
+      loadMovements();
+    }
+  }, [currentUser]);
+
+  const loadMovements = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.from('movements').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      setMovements(data || []);
+    } catch (error) {
+      console.error('Erro:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!currentUser) {
+    return <LoginComponent setCurrentUser={setCurrentUser} setView={setView} setActiveTeamId={setActiveTeamId} />;
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', fontFamily: 'var(--font-body)' }}>
+      {/* ── SIDEBAR ── */}
+      <aside style={{
+        position: 'fixed', top: 0, left: 0, width: 240, height: '100vh',
+        background: 'var(--sidebar-bg)', borderRight: '1px solid var(--sidebar-border)',
+        display: 'flex', flexDirection: 'column', zIndex: 100,
+      }}>
+        {/* Logo */}
+        <div style={{ padding: '20px 18px 16px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+            </div>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>RH Movimentações</p>
+              <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>Sistema Trabalhista</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Nav */}
+        <nav style={{ flex: 1, padding: '12px 10px', overflowY: 'auto' }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '0 8px 8px' }}>Menu</p>
+          {[
+            { id: 'dashboard', label: 'Dashboard', icon: '▦' },
+            ...(currentUser.role === 'admin' ? [{ id: 'setores', label: 'Setores & Emails', icon: '✉' }] : []),
+          ].map(item => {
+            const active = view === item.id;
+            return (
+              <button key={item.id} onClick={() => setView(item.id)} style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 9,
+                padding: '9px 10px', borderRadius: 9, border: 'none', cursor: 'pointer',
+                marginBottom: 2, textAlign: 'left', fontSize: 13,
+                fontWeight: active ? 700 : 400,
+                background: active ? 'var(--accent-light)' : 'transparent',
+                color: active ? 'var(--accent)' : 'var(--muted)',
+                transition: 'all 0.15s', fontFamily: 'var(--font-body)',
+              }}>
+                <span style={{ fontSize: 14, width: 18, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
+                {item.label}
+                {active && <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Equipe ativa */}
+        {currentUser.team_ids.length > 0 && (
+          <div style={{ padding: '10px 10px', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, padding: '0 2px' }}>
+              {currentUser.team_ids.length > 1 ? 'Equipe ativa' : 'Equipe'}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {currentUser.team_ids.map((teamId: string, index: number) => {
+                const active = teamId === activeTeamId;
+                return (
+                  <button key={teamId} onClick={() => setActiveTeamId(teamId)} style={{
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
+                    borderRadius: 8, border: `1px solid ${active ? 'var(--accent-border)' : 'transparent'}`,
+                    background: active ? 'var(--accent-light)' : 'transparent',
+                    color: active ? 'var(--accent)' : 'var(--muted)',
+                    cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 400,
+                    fontFamily: 'var(--font-body)', textAlign: 'left',
+                  }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: active ? 'var(--accent)' : 'var(--muted-light)', flexShrink: 0 }} />
+                    {currentUser.team_names[index]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Usuário + logout */}
+        <div style={{ padding: '12px 10px' }}>
+          <div style={{ padding: '6px 10px', marginBottom: 4 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>{currentUser.name}</p>
+            <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
+              {currentUser.role === 'admin' ? 'Administrador' : 'Membro de equipe'}
+            </p>
+          </div>
+          <button onClick={() => { setCurrentUser(null); setView('login'); }} style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 10px', borderRadius: 9, border: 'none', cursor: 'pointer',
+            background: 'transparent', color: 'var(--muted)', fontSize: 13,
+            fontFamily: 'var(--font-body)', transition: 'all 0.15s',
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Sair
+          </button>
+        </div>
+      </aside>
+
+      {/* ── CONTEÚDO ── */}
+      <main style={{ flex: 1, marginLeft: 240, padding: '32px 36px', minHeight: '100vh', animation: 'fadeIn 0.2s ease' }}>
+        {view === 'dashboard' && (
+          <DashboardView currentUser={currentUser} movements={movements} loading={loading} loadMovements={loadMovements} setSelectedMovement={setSelectedMovement} setView={setView} activeTeamId={activeTeamId} />
+        )}
+        {view === 'detail' && selectedMovement && (
+          <DetailView currentUser={currentUser} selectedMovement={selectedMovement} setView={setView} setSelectedMovement={setSelectedMovement} loadMovements={loadMovements} activeTeamId={activeTeamId} />
+        )}
+        {view === 'setores' && currentUser.role === 'admin' && (
+          <SetoresView />
+        )}
+      </main>
     </div>
   );
 }
