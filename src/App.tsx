@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
-type UserRole = 'admin' | 'team_member';
+type UserRole = 'admin' | 'responsavel' | 'team_member';
 type MovementType = 'demissao' | 'transferencia' | 'alteracao' | 'promocao';
 
 interface Attachment {
@@ -290,7 +290,10 @@ export default function App() {
           <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '0 8px 8px' }}>Menu</p>
           {[
             { id: 'dashboard', label: 'Dashboard', icon: '▦' },
-            ...(currentUser.role === 'admin' ? [{ id: 'setores', label: 'Setores & Emails', icon: '✉' }] : []),
+            ...(currentUser.role === 'admin' ? [
+              { id: 'setores', label: 'Setores & Emails', icon: '✉' },
+              { id: 'usuarios', label: 'Usuários', icon: '👤' },
+            ] : []),
           ].map(item => {
             const active = view === item.id;
             return (
@@ -343,7 +346,7 @@ export default function App() {
           <div style={{ padding: '6px 10px', marginBottom: 4 }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>{currentUser.name}</p>
             <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
-              {currentUser.role === 'admin' ? 'Administrador' : 'Membro de equipe'}
+              {currentUser.role === 'admin' ? 'Administrador' : currentUser.role === 'responsavel' ? 'Responsável' : 'Membro de equipe'}
             </p>
           </div>
           <button onClick={() => { setCurrentUser(null); setView('login'); }} style={{
@@ -368,6 +371,9 @@ export default function App() {
         )}
         {view === 'setores' && currentUser.role === 'admin' && (
           <SetoresView />
+        )}
+        {view === 'usuarios' && currentUser.role === 'admin' && (
+          <UsuariosView />
         )}
       </main>
     </div>
@@ -683,7 +689,7 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
 
           <div className="border-t pt-3">
             <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Usuário *</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <label className="flex items-start gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
                 <input 
                   type="radio" 
@@ -692,8 +698,8 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
                   checked={formData.role === 'team_member'} 
                   onChange={(e) => setFormData({ 
                     ...formData, 
-                    role: e.target.value as UserRole, 
-                    can_manage_demissoes: false, 
+                    role: e.target.value as UserRole,
+                    can_manage_demissoes: false,
                     can_manage_transferencias: false 
                   })} 
                   className="w-4 h-4 mt-0.5" 
@@ -701,7 +707,22 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
                 />
                 <div>
                   <p className="font-medium text-sm">Membro da Equipe</p>
-                  <p className="text-xs text-gray-600">Responde movimentações</p>
+                  <p className="text-xs text-gray-600">Responde pareceres</p>
+                </div>
+              </label>
+              <label className="flex items-start gap-2 p-2 border-2 border-blue-200 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100">
+                <input 
+                  type="radio" 
+                  name="role" 
+                  value="responsavel" 
+                  checked={formData.role === 'responsavel'} 
+                  onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole })} 
+                  className="w-4 h-4 mt-0.5" 
+                  disabled={loading} 
+                />
+                <div>
+                  <p className="font-medium text-sm">Responsável</p>
+                  <p className="text-xs text-gray-600">Cria movimentações</p>
                 </div>
               </label>
               <label className="flex items-start gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
@@ -716,13 +737,13 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
                 />
                 <div>
                   <p className="font-medium text-sm">Administrador</p>
-                  <p className="text-xs text-gray-600">Cria e gerencia</p>
+                  <p className="text-xs text-gray-600">Acesso total</p>
                 </div>
               </label>
             </div>
           </div>
 
-          {formData.role === 'admin' && (
+          {(formData.role === 'admin' || formData.role === 'responsavel') && (
             <div className="border-t pt-3">
               <label className="block text-sm font-medium text-gray-700 mb-2">Permissões</label>
               <div className="grid grid-cols-2 gap-2">
@@ -799,8 +820,9 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
   const [selectedSetorIds, setSelectedSetorIds] = useState<string[]>([]);
 
   const isAdmin = currentUser?.role === 'admin';
-  const canCreateDemissao = isAdmin && currentUser?.can_manage_demissoes;
-  const canCreateTransferencia = isAdmin && currentUser?.can_manage_transferencias;
+  const isResponsavel = currentUser?.role === 'responsavel';
+  const canCreateDemissao = (isAdmin || isResponsavel) && currentUser?.can_manage_demissoes;
+  const canCreateTransferencia = (isAdmin || isResponsavel) && currentUser?.can_manage_transferencias;
 
   const isOverdue = (deadline?: string | null) => {
     if (!deadline) return false;
@@ -2323,6 +2345,305 @@ function SetoresView() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// USUÁRIOS — gerenciamento de usuários para admin
+// ═══════════════════════════════════════════════════
+
+interface UsuarioEdit {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  can_manage_demissoes: boolean;
+  can_manage_transferencias: boolean;
+  team_ids: string[];
+  team_names: string[];
+}
+
+function UsuariosView() {
+  const [usuarios,    setUsuarios]    = useState<UsuarioEdit[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [editando,    setEditando]    = useState<UsuarioEdit | null>(null);
+  const [saving,      setSaving]      = useState(false);
+  const [formEdit,    setFormEdit]    = useState<Partial<UsuarioEdit>>({});
+
+  useEffect(() => { loadUsuarios(); }, []);
+
+  const loadUsuarios = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('users')
+      .select('id, name, email, role, can_manage_demissoes, can_manage_transferencias, team_ids, team_names')
+      .order('name');
+    if (data) setUsuarios(data as UsuarioEdit[]);
+    setLoading(false);
+  };
+
+  const abrirEditar = (u: UsuarioEdit) => {
+    setEditando(u);
+    setFormEdit({
+      role:                   u.role,
+      can_manage_demissoes:   u.can_manage_demissoes,
+      can_manage_transferencias: u.can_manage_transferencias,
+      team_ids:               u.team_ids || [],
+      team_names:             u.team_names || [],
+    });
+  };
+
+  const toggleTeam = (teamId: string, teamName: string) => {
+    setFormEdit(f => {
+      const ids   = f.team_ids || [];
+      const names = f.team_names || [];
+      const sel   = ids.includes(teamId);
+      return {
+        ...f,
+        team_ids:   sel ? ids.filter(id => id !== teamId)       : [...ids, teamId],
+        team_names: sel ? names.filter(n => n !== teamName)     : [...names, teamName],
+      };
+    });
+  };
+
+  const salvar = async () => {
+    if (!editando) return;
+    setSaving(true);
+    const { error } = await supabase.from('users').update({
+      role:                     formEdit.role,
+      can_manage_demissoes:     formEdit.can_manage_demissoes,
+      can_manage_transferencias:formEdit.can_manage_transferencias,
+      team_ids:                 formEdit.team_ids,
+      team_names:               formEdit.team_names,
+    }).eq('id', editando.id);
+    if (error) { alert('Erro: ' + error.message); setSaving(false); return; }
+    setUsuarios(prev => prev.map(u => u.id === editando.id ? { ...u, ...formEdit } as UsuarioEdit : u));
+    setEditando(null);
+    setSaving(false);
+  };
+
+  const ROLE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; desc: string }> = {
+    admin:       { label: 'Administrador', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', desc: 'Acesso total ao sistema' },
+    responsavel: { label: 'Responsável',   color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', desc: 'Cria movimentações' },
+    team_member: { label: 'Membro',        color: '#059669', bg: '#ecfdf5', border: '#a7f3d0', desc: 'Responde pareceres' },
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow p-6">
+      <div className="mb-6">
+        <h2 className="text-xl font-bold">Usuários</h2>
+        <p className="text-sm text-gray-500 mt-1">Gerencie acessos, funções e equipes de cada usuário</p>
+      </div>
+
+      {/* Modal de edição */}
+      {editando && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+        }} onClick={e => e.target === e.currentTarget && setEditando(null)}>
+          <div style={{
+            background: 'white', borderRadius: 16, padding: 28,
+            width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 }}>
+              <div>
+                <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Editar Usuário</p>
+                <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{editando.name}</h3>
+                <p style={{ fontSize: 13, color: '#64748b', marginTop: 1 }}>{editando.email}</p>
+              </div>
+              <button onClick={() => setEditando(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Tipo de acesso */}
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Tipo de Acesso</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+                {(['team_member', 'responsavel', 'admin'] as UserRole[]).map(role => {
+                  const cfg = ROLE_CONFIG[role];
+                  const sel = formEdit.role === role;
+                  return (
+                    <button key={role} onClick={() => setFormEdit(f => ({
+                      ...f, role,
+                      can_manage_demissoes: role === 'team_member' ? false : f.can_manage_demissoes,
+                      can_manage_transferencias: role === 'team_member' ? false : f.can_manage_transferencias,
+                    }))} style={{
+                      padding: '10px 8px', borderRadius: 10, cursor: 'pointer', textAlign: 'center',
+                      border: `2px solid ${sel ? cfg.color : '#e2e8f0'}`,
+                      background: sel ? cfg.bg : 'white',
+                      transition: 'all 0.15s', fontFamily: 'inherit',
+                    }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: sel ? cfg.color : '#334155' }}>{cfg.label}</p>
+                      <p style={{ fontSize: 10, color: sel ? cfg.color : '#94a3b8', marginTop: 2 }}>{cfg.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Permissões de criação */}
+            {(formEdit.role === 'admin' || formEdit.role === 'responsavel') && (
+              <div style={{ marginBottom: 20, padding: '14px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                <p style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Pode Cadastrar</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    { key: 'can_manage_demissoes', label: 'Demissões', desc: 'Pode criar movimentações de demissão' },
+                    { key: 'can_manage_transferencias', label: 'Transferências / Alterações / Promoções', desc: 'Pode criar os demais tipos' },
+                  ].map(({ key, label, desc }) => {
+                    const checked = formEdit[key as keyof typeof formEdit] as boolean;
+                    return (
+                      <label key={key} style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+                        padding: '10px 12px', borderRadius: 8,
+                        background: checked ? '#eff6ff' : 'white',
+                        border: `1px solid ${checked ? '#bfdbfe' : '#e2e8f0'}`,
+                        transition: 'all 0.15s',
+                      }}>
+                        <input type="checkbox" checked={checked}
+                          onChange={e => setFormEdit(f => ({ ...f, [key]: e.target.checked }))}
+                          style={{ width: 16, height: 16, marginTop: 2, cursor: 'pointer', accentColor: '#4f46e5', flexShrink: 0 }} />
+                        <div>
+                          <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{label}</p>
+                          <p style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{desc}</p>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Equipes */}
+            <div style={{ marginBottom: 22 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Equipes Vinculadas</p>
+              <p style={{ fontSize: 11, color: '#64748b', marginBottom: 10 }}>O usuário verá e responderá movimentações dessas equipes.</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 6 }}>
+                {TEAMS.map(t => {
+                  const sel = (formEdit.team_ids || []).includes(t.id);
+                  return (
+                    <button key={t.id} onClick={() => toggleTeam(t.id, t.name)} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px',
+                      borderRadius: 8, border: `2px solid ${sel ? '#4f46e5' : '#e2e8f0'}`,
+                      background: sel ? '#eef2ff' : 'white', cursor: 'pointer',
+                      textAlign: 'left', transition: 'all 0.15s', fontFamily: 'inherit',
+                    }}>
+                      <div style={{
+                        width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                        border: `2px solid ${sel ? '#4f46e5' : '#cbd5e1'}`,
+                        background: sel ? '#4f46e5' : 'transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {sel && <svg width="9" height="9" viewBox="0 0 12 12" fill="none"><polyline points="2 6 5 9 10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: sel ? 700 : 400, color: sel ? '#4f46e5' : '#334155' }}>{t.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setEditando(null)} style={{
+                padding: '9px 18px', borderRadius: 9, border: '1px solid #e2e8f0',
+                background: 'white', color: '#334155', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit',
+              }}>Cancelar</button>
+              <button onClick={salvar} disabled={saving} style={{
+                padding: '9px 18px', borderRadius: 9, border: 'none',
+                background: '#4f46e5', color: 'white', cursor: saving ? 'not-allowed' : 'pointer',
+                fontSize: 13, fontWeight: 700, opacity: saving ? 0.75 : 1, fontFamily: 'inherit',
+              }}>
+                {saving ? 'Salvando...' : 'Salvar Alterações'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lista de usuários */}
+      {loading ? (
+        <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {usuarios.map(u => {
+            const cfg = ROLE_CONFIG[u.role] || ROLE_CONFIG.team_member;
+            return (
+              <div key={u.id} style={{
+                display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px',
+                background: 'white', border: '1px solid #e2e8f0', borderRadius: 12,
+                transition: 'box-shadow 0.15s',
+              }}>
+                {/* Avatar */}
+                <div style={{
+                  width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
+                  background: cfg.bg, border: `1px solid ${cfg.border}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 14, fontWeight: 700, color: cfg.color,
+                }}>
+                  {u.name.charAt(0).toUpperCase()}
+                </div>
+
+                {/* Info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{u.name}</p>
+                  <p style={{ fontSize: 12, color: '#64748b', marginTop: 1 }}>{u.email}</p>
+                  {/* Equipes */}
+                  {u.team_names && u.team_names.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
+                      {u.team_names.map((tn, i) => (
+                        <span key={i} style={{
+                          fontSize: 10, padding: '2px 8px', borderRadius: 20, fontWeight: 600,
+                          background: '#eef2ff', color: '#4f46e5', border: '1px solid #c7d2fe',
+                        }}>{tn}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Permissões */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                  <span style={{
+                    fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 700,
+                    background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`,
+                  }}>{cfg.label}</span>
+                  {(u.can_manage_demissoes || u.can_manage_transferencias) && (
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {u.can_manage_demissoes && (
+                        <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', fontWeight: 600 }}>
+                          Demissões
+                        </span>
+                      )}
+                      {u.can_manage_transferencias && (
+                        <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', fontWeight: 600 }}>
+                          Transferências
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Botão editar */}
+                <button onClick={() => abrirEditar(u)} style={{
+                  flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0',
+                  background: 'white', color: '#334155', cursor: 'pointer',
+                  fontSize: 12, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.15s',
+                }}>
+                  <Settings className="w-3.5 h-3.5" /> Editar
+                </button>
+              </div>
+            );
+          })}
+          {usuarios.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '48px 0', color: '#94a3b8' }}>
+              <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p>Nenhum usuário encontrado</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
