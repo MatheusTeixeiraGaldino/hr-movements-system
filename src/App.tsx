@@ -810,7 +810,6 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
 function DashboardView({ currentUser, movements, loading, loadMovements, setSelectedMovement, setView, activeTeamId }: any) {
   const [showNewMovement, setShowNewMovement] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
-  const [showRegisterUser, setShowRegisterUser] = useState(false);
   const [movementType, setMovementType] = useState<MovementType | null>(null);
   const [formData, setFormData] = useState<any>({});
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
@@ -1035,7 +1034,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold">Dashboard - {showCompleted ? 'Respondidas' : 'Pendentes'}</h2>
           <div className="flex gap-2">
-            {isAdmin && <button onClick={() => setShowRegisterUser(true)} className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm"><UserPlus className="w-4 h-4" />Cadastrar</button>}
+            
             <button onClick={() => setShowChangePassword(true)} className="flex items-center gap-2 px-3 py-2 border rounded-lg text-sm"><Settings className="w-4 h-4" />Senha</button>
           </div>
         </div>
@@ -1230,7 +1229,6 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
       </div>
 
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
-      {showRegisterUser && <RegisterUserModal onClose={() => setShowRegisterUser(false)} />}
       {showNewMovement && movementType && (
         <NewMovementModal
           movementType={movementType}
@@ -2365,11 +2363,15 @@ interface UsuarioEdit {
 }
 
 function UsuariosView() {
-  const [usuarios,    setUsuarios]    = useState<UsuarioEdit[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [editando,    setEditando]    = useState<UsuarioEdit | null>(null);
-  const [saving,      setSaving]      = useState(false);
-  const [formEdit,    setFormEdit]    = useState<Partial<UsuarioEdit>>({});
+  const [usuarios,      setUsuarios]      = useState<UsuarioEdit[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [editando,      setEditando]      = useState<UsuarioEdit | null>(null);
+  const [saving,        setSaving]        = useState(false);
+  const [formEdit,      setFormEdit]      = useState<Partial<UsuarioEdit>>({});
+  const [showCadastrar, setShowCadastrar] = useState(false);
+  const [resetando,     setResetando]     = useState<UsuarioEdit | null>(null);
+  const [novaSenha,     setNovaSenha]     = useState('');
+  const [savingReset,   setSavingReset]   = useState(false);
 
   useEffect(() => { loadUsuarios(); }, []);
 
@@ -2423,6 +2425,21 @@ function UsuariosView() {
     setSaving(false);
   };
 
+  const resetarSenha = async () => {
+    if (!resetando || !novaSenha.trim()) return;
+    if (novaSenha.length < 4) { alert('A senha deve ter pelo menos 4 caracteres'); return; }
+    setSavingReset(true);
+    const { error } = await supabase
+      .from('users')
+      .update({ password: novaSenha.trim() })
+      .eq('id', resetando.id);
+    if (error) { alert('Erro ao resetar senha: ' + error.message); setSavingReset(false); return; }
+    alert(`Senha de ${resetando.name} atualizada com sucesso!`);
+    setResetando(null);
+    setNovaSenha('');
+    setSavingReset(false);
+  };
+
   const ROLE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; desc: string }> = {
     admin:       { label: 'Administrador', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', desc: 'Acesso total ao sistema' },
     responsavel: { label: 'Responsável',   color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', desc: 'Cria movimentações' },
@@ -2431,10 +2448,83 @@ function UsuariosView() {
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <div className="mb-6">
-        <h2 className="text-xl font-bold">Usuários</h2>
-        <p className="text-sm text-gray-500 mt-1">Gerencie acessos, funções e equipes de cada usuário</p>
+      <div className="flex justify-between items-start mb-6">
+        <div>
+          <h2 className="text-xl font-bold">Usuários</h2>
+          <p className="text-sm text-gray-500 mt-1">Gerencie acessos, funções e equipes de cada usuário</p>
+        </div>
+        <button onClick={() => setShowCadastrar(true)} style={{
+          display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px',
+          borderRadius: 9, border: 'none', background: '#4f46e5', color: 'white',
+          fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+        }}>
+          <UserPlus className="w-4 h-4" /> Novo Usuário
+        </button>
       </div>
+
+      {/* Modal cadastrar usuário */}
+      {showCadastrar && (
+        <RegisterUserModal onClose={() => { setShowCadastrar(false); loadUsuarios(); }} />
+      )}
+
+      {/* Modal reset de senha */}
+      {resetando && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+        }} onClick={e => e.target === e.currentTarget && setResetando(null)}>
+          <div style={{
+            background: 'white', borderRadius: 16, padding: 28,
+            width: '100%', maxWidth: 420,
+            boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div>
+                <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Resetar Senha</p>
+                <h3 style={{ fontSize: 17, fontWeight: 700, color: '#0f172a', marginTop: 3 }}>{resetando.name}</h3>
+                <p style={{ fontSize: 12, color: '#64748b', marginTop: 1 }}>{resetando.email}</p>
+              </div>
+              <button onClick={() => { setResetando(null); setNovaSenha(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 9, padding: '10px 14px', marginBottom: 18 }}>
+              <p style={{ fontSize: 12, color: '#92400e' }}>⚠️ A senha atual será substituída pela senha temporária definida abaixo. Informe o usuário para alterá-la após o login.</p>
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                Nova Senha Temporária
+              </label>
+              <input
+                type="text"
+                value={novaSenha}
+                onChange={e => setNovaSenha(e.target.value)}
+                placeholder="Digite a senha temporária..."
+                style={{
+                  width: '100%', padding: '10px 14px', borderRadius: 9, fontSize: 14,
+                  border: '1.5px solid #e2e8f0', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
+                }}
+                onFocus={e => (e.target.style.borderColor = '#4f46e5')}
+                onBlur={e => (e.target.style.borderColor = '#e2e8f0')}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => { setResetando(null); setNovaSenha(''); }} style={{
+                padding: '9px 18px', borderRadius: 9, border: '1px solid #e2e8f0',
+                background: 'white', color: '#334155', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit',
+              }}>Cancelar</button>
+              <button onClick={resetarSenha} disabled={savingReset || !novaSenha.trim()} style={{
+                padding: '9px 18px', borderRadius: 9, border: 'none',
+                background: '#dc2626', color: 'white', cursor: (savingReset || !novaSenha.trim()) ? 'not-allowed' : 'pointer',
+                fontSize: 13, fontWeight: 700, opacity: (savingReset || !novaSenha.trim()) ? 0.65 : 1,
+                fontFamily: 'inherit',
+              }}>
+                {savingReset ? 'Salvando...' : 'Confirmar Reset'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de edição */}
       {editando && (
@@ -2625,14 +2715,25 @@ function UsuariosView() {
                 </div>
 
                 {/* Botão editar */}
-                <button onClick={() => abrirEditar(u)} style={{
-                  flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0',
-                  background: 'white', color: '#334155', cursor: 'pointer',
-                  fontSize: 12, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.15s',
-                }}>
-                  <Settings className="w-3.5 h-3.5" /> Editar
-                </button>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <button onClick={() => { setResetando(u); setNovaSenha(''); }} style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    padding: '7px 12px', borderRadius: 8, border: '1px solid #fecaca',
+                    background: '#fef2f2', color: '#dc2626', cursor: 'pointer',
+                    fontSize: 12, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.15s',
+                  }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    Senha
+                  </button>
+                  <button onClick={() => abrirEditar(u)} style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    padding: '7px 12px', borderRadius: 8, border: '1px solid #e2e8f0',
+                    background: 'white', color: '#334155', cursor: 'pointer',
+                    fontSize: 12, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.15s',
+                  }}>
+                    <Settings className="w-3.5 h-3.5" /> Editar
+                  </button>
+                </div>
               </div>
             );
           })}
