@@ -989,23 +989,45 @@ function DetalheModal({ mov, teams, setores, isAdmin, user, onClose, onSave }: {
   const pendentes       = teamCodes.filter(code => !responses[code] || responses[code].status !== 'completed')
   const progressoPct    = teamCodes.length > 0 ? Math.round((respondidas.length / teamCodes.length) * 100) : 0
 
-  // Verifica se o usuário logado pode dar parecer (pelo team_name ou code da equipe)
+  // Verifica se o usuário pode dar parecer
+  // Suporta 3 formas de vinculação: team_ids (UUIDs), team_id (UUID legado), team_name (code direto)
   const userTeamCodes = teams
     .filter(t => (user.team_ids || []).includes(t.id))
     .map(t => t.code)
-  // Também verifica pelo campo legado team_id
   const userTeamCodeLegacy = teams.find(t => t.id === user.team_id)?.code
+  // Alguns usuários têm team_name armazenando o code diretamente (ex: "dp", "rh")
+  const userTeamNameCode = user.team_name
+    ? (teams.find(t => t.code === user.team_name)?.code || user.team_name)
+    : null
+  // team_names array também pode conter codes diretamente
+  const userTeamNamesCodes = (user.team_names || []).map(tn =>
+    teams.find(t => t.code === tn || t.name === tn)?.code || tn
+  )
 
   const canRespond = (teamCode: string) => {
     if (isAdmin) return true
-    return userTeamCodes.includes(teamCode) || userTeamCodeLegacy === teamCode
+    return (
+      userTeamCodes.includes(teamCode) ||
+      userTeamCodeLegacy === teamCode ||
+      userTeamNameCode === teamCode ||
+      userTeamNamesCodes.includes(teamCode)
+    )
   }
 
   const abrirParecer = (teamCode: string) => {
     const existing = responses[teamCode] || {}
+    // Mescla itens padrão com os que já existem salvo no banco
+    // Os itens padrão aparecem pré-marcados conforme já estavam salvos
+    const savedChecklist = existing.checklist || {}
+    const defaultItems   = getChecklistItems(mov.type, teamCode)
+    // Garante que todos os itens padrão existam no checklist (false se não marcado)
+    const mergedChecklist: Record<string, boolean> = { ...savedChecklist }
+    defaultItems.forEach(item => {
+      if (!(item in mergedChecklist)) mergedChecklist[item] = false
+    })
     setParecerForm({
-      comment: existing.comment || '',
-      checklist: existing.checklist || {},
+      comment:   existing.comment || '',
+      checklist: mergedChecklist,
     })
     setParecerAtivo(teamCode)
   }
@@ -1160,12 +1182,12 @@ function DetalheModal({ mov, teams, setores, isAdmin, user, onClose, onSave }: {
                     <button onClick={() => setParecerAtivo(null)} style={S.iconBtn}><X size={15} /></button>
                   </div>
 
-                  {/* Checklist de itens */}
-                  {getChecklistItems(mov.type, parecerAtivo).length > 0 && (
+                  {/* Checklist de itens — mostra todos os itens (padrão + salvos) */}
+                  {Object.keys(parecerForm.checklist).length > 0 && (
                     <div style={{ marginBottom: 14 }}>
                       <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Checklist</p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {getChecklistItems(mov.type, parecerAtivo).map(item => {
+                        {Object.keys(parecerForm.checklist).map(item => {
                           const checked = parecerForm.checklist[item] === true
                           return (
                             <label key={item} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 12px', background: checked ? '#f0fdf4' : 'var(--surface)', borderRadius: 8, border: `1px solid ${checked ? '#86efac' : 'var(--border)'}`, transition: 'all 0.15s' }}>
