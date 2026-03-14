@@ -465,7 +465,7 @@ function LoginComponent({ setCurrentUser, setView, setActiveTeamId }: any) {
 }
 
 
-function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+function ChangePasswordModal({ onClose, currentUser }: { onClose: () => void; currentUser: any }) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -488,11 +488,36 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Verifica se a senha atual está correta
+      const { data: userCheck, error: checkErr } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', currentUser.email)
+        .eq('password', currentPassword)
+        .single();
+
+      if (checkErr || !userCheck) {
+        setError('Senha atual incorreta.');
+        setLoading(false);
+        return;
+      }
+
+      // Atualiza a senha no Supabase
+      const { error: updateErr } = await supabase
+        .from('users')
+        .update({ password: newPassword })
+        .eq('id', userCheck.id);
+
+      if (updateErr) {
+        setError('Erro ao salvar nova senha: ' + updateErr.message);
+        setLoading(false);
+        return;
+      }
+
       alert('Senha alterada com sucesso!');
       onClose();
     } catch (err) {
-      setError('Erro ao alterar senha');
+      setError('Erro inesperado ao alterar senha');
     } finally {
       setLoading(false);
     }
@@ -1228,7 +1253,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
         )}
       </div>
 
-      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} currentUser={currentUser} />}
       {showNewMovement && movementType && (
         <NewMovementModal
           movementType={movementType}
