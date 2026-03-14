@@ -627,20 +627,6 @@ function GerenciarMovimentacoes({ user }: { user: User }) {
     alert('Movimentação criada e notificações enviadas!')
   }
 
-  const atualizarStatus = async (id: string, status: string) => {
-    await supabase.from('movements').update({ status }).eq('id', id)
-    loadAll(); setDetalhe(d => d ? { ...d, status } : null)
-  }
-
-  const excluir = async (id: string) => {
-    if (!confirm('Excluir esta movimentação?')) return
-    await supabase.from('movement_teams').delete().eq('movement_id', id)
-    await supabase.from('team_responses').delete().eq('movement_id', id)
-    await supabase.from('movimentacoes_setores').delete().eq('movimentacao_id', id)
-    await supabase.from('movements').delete().eq('id', id)
-    loadAll(); setDetalhe(null)
-  }
-
   const diasRestantes = (d?: string) => {
     if (!d) return null
     return Math.ceil((new Date(d + 'T00:00:00').getTime() - new Date().setHours(0,0,0,0)) / 86400000)
