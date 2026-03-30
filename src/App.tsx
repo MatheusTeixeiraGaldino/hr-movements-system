@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight } from 'lucide-react';
 import { supabase } from './lib/supabase';
-import RelatorioView from './components/RelatorioView';
 
 type UserRole = 'admin' | 'responsavel' | 'team_member';
 type MovementType = 'demissao' | 'transferencia' | 'alteracao' | 'promocao';
@@ -290,10 +289,7 @@ export default function App() {
         <nav style={{ flex: 1, padding: '12px 10px', overflowY: 'auto' }}>
           <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '0 8px 8px' }}>Menu</p>
           {[
-           { id: 'dashboard', label: 'Dashboard', icon: '▦' },
-            ...(currentUser.role === 'admin' || currentUser.role === 'responsavel' ? [
-              { id: 'relatorio', label: 'Relatório', icon: '📊' },
-            ] : []),
+            { id: 'dashboard', label: 'Dashboard', icon: '▦' },
             ...(currentUser.role === 'admin' ? [
               { id: 'setores', label: 'Setores & Emails', icon: '✉' },
               { id: 'usuarios', label: 'Usuários', icon: '👤' },
