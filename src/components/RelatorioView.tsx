@@ -57,29 +57,21 @@ function buildRows(movements: Movement[], currentUser: CurrentUser) {
       return m.created_by === currentUser.name;
     })
     .map((m) => {
-      const respondidas = m.selected_teams.filter(
-        (id) => m.responses[id]?.status === 'completed'
-      );
-      const pendentes = m.selected_teams.filter(
-        (id) => m.responses[id]?.status !== 'completed'
-      );
-
+      const respondidas = m.selected_teams.filter((id) => m.responses[id]?.status === 'completed');
+      const pendentes = m.selected_teams.filter((id) => m.responses[id]?.status !== 'completed');
       const statusLabel = pendentes.length === 0 ? 'Aprovado' : 'Pendente';
-      const pendentesNomes = pendentes.map((id) => TEAMS_MAP[id] || id).join(', ');
-      const respondidasNomes = respondidas.map((id) => TEAMS_MAP[id] || id).join(', ');
-
       return {
         _id: m.id,
         _type: m.type,
         _teams: m.selected_teams,
+        _status: statusLabel,
         Nome: m.employee_name,
         Tipo: MOVEMENT_TYPE_MAP[m.type] || m.type,
         'Criado por': m.created_by,
         'Data de criação': new Date(m.created_at).toLocaleDateString('pt-BR'),
         Status: statusLabel,
-        'Faltam parecer': pendentes.length === 0 ? '—' : pendentesNomes,
-        'Com pareceres emitidos': respondidas.length === 0 ? '—' : respondidasNomes,
-        _pendentes: pendentes.length,
+        'Faltam parecer': pendentes.length === 0 ? '—' : pendentes.map((id) => TEAMS_MAP[id] || id).join(', '),
+        'Com pareceres emitidos': respondidas.length === 0 ? '—' : respondidas.map((id) => TEAMS_MAP[id] || id).join(', '),
       };
     });
 }
@@ -91,36 +83,50 @@ interface RelatorioViewProps {
 }
 
 export default function RelatorioView({ currentUser, movements, loading }: RelatorioViewProps) {
-  const [filterStatus, setFilterStatus] = useState<'all' | 'Aprovado' | 'Pendente'>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterTeam, setFilterTeam] = useState<string>('all');
   const [exporting, setExporting] = useState(false);
 
-  const rows = useMemo(() => buildRows(movements, currentUser), [movements, currentUser]);
+  const allRows = useMemo(() => buildRows(movements, currentUser), [movements, currentUser]);
 
-  const filtered = useMemo(() => {
-    return rows.filter((r) => {
-      if (filterStatus !== 'all' && r.Status !== filterStatus) return false;
+  // Cada coluna de filtro conta sobre os OUTROS dois filtros ativos,
+  // para que os contadores se atualizem conforme a seleção dos demais.
+  const rowsForStatus = useMemo(() =>
+    allRows.filter(r => {
       if (filterType !== 'all' && r._type !== filterType) return false;
       if (filterTeam !== 'all' && !r._teams.includes(filterTeam)) return false;
       return true;
-    });
-  }, [rows, filterStatus, filterType, filterTeam]);
+    }), [allRows, filterType, filterTeam]);
+
+  const rowsForType = useMemo(() =>
+    allRows.filter(r => {
+      if (filterStatus !== 'all' && r._status !== filterStatus) return false;
+      if (filterTeam !== 'all' && !r._teams.includes(filterTeam)) return false;
+      return true;
+    }), [allRows, filterStatus, filterTeam]);
+
+  const rowsForTeam = useMemo(() =>
+    allRows.filter(r => {
+      if (filterStatus !== 'all' && r._status !== filterStatus) return false;
+      if (filterType !== 'all' && r._type !== filterType) return false;
+      return true;
+    }), [allRows, filterStatus, filterType]);
+
+  const filtered = useMemo(() =>
+    allRows.filter(r => {
+      if (filterStatus !== 'all' && r._status !== filterStatus) return false;
+      if (filterType !== 'all' && r._type !== filterType) return false;
+      if (filterTeam !== 'all' && !r._teams.includes(filterTeam)) return false;
+      return true;
+    }), [allRows, filterStatus, filterType, filterTeam]);
 
   const handleExport = () => {
     setExporting(true);
     try {
-      const exportData = filtered.map(({ _id, _type, _teams, _pendentes, ...rest }) => rest);
+      const exportData = filtered.map(({ _id, _type, _teams, _status, ...rest }) => rest);
       const ws = XLSX.utils.json_to_sheet(exportData);
-      ws['!cols'] = [
-        { wch: 30 },
-        { wch: 20 },
-        { wch: 25 },
-        { wch: 18 },
-        { wch: 12 },
-        { wch: 45 },
-        { wch: 45 },
-      ];
+      ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 25 }, { wch: 18 }, { wch: 12 }, { wch: 45 }, { wch: 45 }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Movimentações');
       const today = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
@@ -132,6 +138,13 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
       setExporting(false);
     }
   };
+
+  const btnClass = (active: boolean) =>
+    `py-1.5 px-3 rounded-lg text-sm font-medium border transition text-left ${
+      active
+        ? 'bg-blue-100 text-blue-800 border-blue-400 border-2'
+        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+    }`;
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
@@ -148,58 +161,44 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
           disabled={exporting || filtered.length === 0}
           className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium"
         >
-          {exporting ? (
-            <><Loader2 className="w-4 h-4 animate-spin" />Exportando...</>
-          ) : (
-            <><FileSpreadsheet className="w-4 h-4" />Exportar Excel</>
-          )}
+          {exporting
+            ? <><Loader2 className="w-4 h-4 animate-spin" />Exportando...</>
+            : <><FileSpreadsheet className="w-4 h-4" />Exportar Excel</>}
         </button>
       </div>
 
-      {/* Filtros */}
+      {/* Filtros intercalados */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-lg border">
 
-        {/* Filtro Status */}
+        {/* Status */}
         <div>
           <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Status</label>
           <div className="flex flex-col gap-1.5">
-            {(['all', 'Pendente', 'Aprovado'] as const).map((opt) => {
-              const count = opt === 'all' ? rows.length : rows.filter((r) => r.Status === opt).length;
-              const active = filterStatus === opt;
-              const colorMap: Record<string, string> = {
-                all: active ? 'bg-blue-100 text-blue-800 border-blue-400 border-2' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
-                Pendente: active ? 'bg-yellow-100 text-yellow-800 border-yellow-400 border-2' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
-                Aprovado: active ? 'bg-green-100 text-green-800 border-green-400 border-2' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
-              };
-              const labelMap: Record<string, string> = {
-                all: `Todas (${count})`,
-                Pendente: `⏳ Pendentes (${count})`,
-                Aprovado: `✓ Aprovadas (${count})`,
-              };
+            <button onClick={() => setFilterStatus('all')} className={btnClass(filterStatus === 'all')}>
+              Todos ({rowsForStatus.length})
+            </button>
+            {(['Pendente', 'Aprovado'] as const).map((opt) => {
+              const count = rowsForStatus.filter(r => r._status === opt).length;
               return (
-                <button key={opt} onClick={() => setFilterStatus(opt)}
-                  className={`py-1.5 px-3 rounded-lg text-sm font-medium border transition text-left ${colorMap[opt]}`}>
-                  {labelMap[opt]}
+                <button key={opt} onClick={() => setFilterStatus(filterStatus === opt ? 'all' : opt)} className={btnClass(filterStatus === opt)}>
+                  {opt === 'Pendente' ? '⏳' : '✓'} {opt} ({count})
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Filtro Tipo */}
+        {/* Tipo */}
         <div>
           <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Tipo</label>
           <div className="flex flex-col gap-1.5">
-            <button onClick={() => setFilterType('all')}
-              className={`py-1.5 px-3 rounded-lg text-sm font-medium border transition text-left ${filterType === 'all' ? 'bg-blue-100 text-blue-800 border-blue-400 border-2' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>
-              Todos ({rows.length})
+            <button onClick={() => setFilterType('all')} className={btnClass(filterType === 'all')}>
+              Todos ({rowsForType.length})
             </button>
             {MOVEMENT_TYPES.map((t) => {
-              const count = rows.filter((r) => r._type === t.id).length;
-              const active = filterType === t.id;
+              const count = rowsForType.filter(r => r._type === t.id).length;
               return (
-                <button key={t.id} onClick={() => setFilterType(t.id)}
-                  className={`py-1.5 px-3 rounded-lg text-sm font-medium border transition text-left ${active ? 'bg-blue-100 text-blue-800 border-blue-400 border-2' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>
+                <button key={t.id} onClick={() => setFilterType(filterType === t.id ? 'all' : t.id)} className={btnClass(filterType === t.id)}>
                   {t.label} ({count})
                 </button>
               );
@@ -207,21 +206,18 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
           </div>
         </div>
 
-        {/* Filtro Equipe */}
+        {/* Equipe */}
         <div>
           <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Equipe</label>
-          <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto pr-1">
-            <button onClick={() => setFilterTeam('all')}
-              className={`py-1.5 px-3 rounded-lg text-sm font-medium border transition text-left ${filterTeam === 'all' ? 'bg-blue-100 text-blue-800 border-blue-400 border-2' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>
-              Todas as equipes
+          <div className="flex flex-col gap-1.5 max-h-60 overflow-y-auto pr-1">
+            <button onClick={() => setFilterTeam('all')} className={btnClass(filterTeam === 'all')}>
+              Todas ({rowsForTeam.length})
             </button>
             {TEAMS_LIST.map((t) => {
-              const count = rows.filter((r) => r._teams.includes(t.id)).length;
+              const count = rowsForTeam.filter(r => r._teams.includes(t.id)).length;
               if (count === 0) return null;
-              const active = filterTeam === t.id;
               return (
-                <button key={t.id} onClick={() => setFilterTeam(t.id)}
-                  className={`py-1.5 px-3 rounded-lg text-sm font-medium border transition text-left ${active ? 'bg-blue-100 text-blue-800 border-blue-400 border-2' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>
+                <button key={t.id} onClick={() => setFilterTeam(filterTeam === t.id ? 'all' : t.id)} className={btnClass(filterTeam === t.id)}>
                   {t.name} ({count})
                 </button>
               );
@@ -246,9 +242,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
             <thead>
               <tr className="bg-gray-50 text-left">
                 {['Nome', 'Tipo', 'Criado por', 'Data de criação', 'Status', 'Faltam parecer', 'Com pareceres emitidos'].map((col) => (
-                  <th key={col} className="px-3 py-3 font-semibold text-gray-700 border-b border-gray-200 whitespace-nowrap">
-                    {col}
-                  </th>
+                  <th key={col} className="px-3 py-3 font-semibold text-gray-700 border-b border-gray-200 whitespace-nowrap">{col}</th>
                 ))}
               </tr>
             </thead>
