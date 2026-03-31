@@ -1,6 +1,6 @@
 // src/components/RelatorioView.tsx
 import { useMemo, useState } from 'react';
-import { Loader2, FileSpreadsheet } from 'lucide-react';
+import { Loader2, FileSpreadsheet, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface Movement {
@@ -54,8 +54,8 @@ interface Row {
   _id: string;
   _type: string;
   _teams: string[];
-  _status: string; // status geral (todos responderam ou não)
-  _teamStatus: Record<string, 'completed' | 'pending'>; // status por equipe
+  _status: string;
+  _teamStatus: Record<string, 'completed' | 'pending'>;
   Nome: string;
   Tipo: string;
   'Criado por': string;
@@ -75,13 +75,10 @@ function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
       const respondidas = m.selected_teams.filter((id) => m.responses[id]?.status === 'completed');
       const pendentes = m.selected_teams.filter((id) => m.responses[id]?.status !== 'completed');
       const statusLabel = pendentes.length === 0 ? 'Aprovado' : 'Pendente';
-
-      // mapa de status por equipe para uso no filtro
       const teamStatus: Record<string, 'completed' | 'pending'> = {};
       m.selected_teams.forEach(id => {
         teamStatus[id] = m.responses[id]?.status === 'completed' ? 'completed' : 'pending';
       });
-
       return {
         _id: m.id,
         _type: m.type,
@@ -99,38 +96,96 @@ function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
     });
 }
 
-/**
- * Decide se uma row passa no filtro combinado de equipe + status.
- *
- * Sem equipe selecionada (filterTeam === 'all'):
- *   - usa o status geral da movimentação (todos responderam = Aprovado)
- *
- * Com equipe selecionada:
- *   - a movimentação precisa incluir aquela equipe
- *   - filterStatus 'all'     → passa sempre (independente do parecer da equipe)
- *   - filterStatus 'Aprovado' → passa só se aquela equipe JÁ deu o parecer
- *   - filterStatus 'Pendente' → passa só se aquela equipe AINDA NÃO deu o parecer
- */
 function matchesTeamStatus(row: Row, filterTeam: string, filterStatus: string): boolean {
   if (filterTeam === 'all') {
-    // sem filtro de equipe: usa status geral
     if (filterStatus !== 'all' && row._status !== filterStatus) return false;
     return true;
   }
-
-  // a movimentação precisa envolver a equipe
   if (!row._teams.includes(filterTeam)) return false;
-
   if (filterStatus === 'all') return true;
-
   const teamResponded = row._teamStatus[filterTeam] === 'completed';
-
   if (filterStatus === 'Aprovado') return teamResponded;
   if (filterStatus === 'Pendente') return !teamResponded;
-
   return true;
 }
 
+// ── PDF generation via browser print ────────────────────────────────────────
+function generatePDF(rows: Row[], filterTeam: string, filterStatus: string, today: string) {
+  const teamLabel = filterTeam === 'all' ? 'Todas as equipes' : (TEAMS_MAP[filterTeam] ?? filterTeam);
+  const statusLabel = filterStatus === 'all' ? 'Todos' : filterStatus;
+
+  const rowsHtml = rows.map((row, i) => `
+    <tr style="background:${i % 2 === 0 ? '#fff' : '#f9fafb'}">
+      <td>${row.Nome}</td>
+      <td>${row.Tipo}</td>
+      <td>${row['Criado por']}</td>
+      <td>${row['Data de criação']}</td>
+      <td style="color:${row.Status === 'Aprovado' ? '#166534' : '#92400e'};font-weight:600">
+        ${row.Status === 'Aprovado' ? '✓ Aprovado' : '⏳ Pendente'}
+      </td>
+      <td style="color:${row['Com pareceres emitidos'] === '—' ? '#9ca3af' : '#166534'}">${row['Com pareceres emitidos']}</td>
+    </tr>
+  `).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Relatório de Movimentações — ${today}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #111; padding: 24px; }
+    h1 { font-size: 16px; margin-bottom: 4px; }
+    .meta { font-size: 10px; color: #555; margin-bottom: 16px; display: flex; gap: 24px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    th { background: #1e3a5f; color: white; padding: 7px 8px; text-align: left; white-space: nowrap; }
+    td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    tfoot td { font-weight: 700; background: #f3f4f6; padding: 7px 8px; border-top: 2px solid #d1d5db; }
+    @page { size: A4 landscape; margin: 15mm; }
+    @media print {
+      body { padding: 0; }
+      button { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Relatório de Movimentações</h1>
+  <div class="meta">
+    <span>Gerado em: <strong>${today}</strong></span>
+    <span>Equipe: <strong>${teamLabel}</strong></span>
+    <span>Status: <strong>${statusLabel}</strong></span>
+    <span>Total: <strong>${rows.length} registro${rows.length !== 1 ? 's' : ''}</strong></span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Nome</th>
+        <th>Tipo</th>
+        <th>Criado por</th>
+        <th>Data de criação</th>
+        <th>Status</th>
+        <th>Com pareceres emitidos</th>
+      </tr>
+    </thead>
+    <tbody>${rowsHtml}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="6">${rows.length} movimentação${rows.length !== 1 ? 'ões' : ''} — Relatório gerado em ${today}</td>
+      </tr>
+    </tfoot>
+  </table>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  if (!win) { alert('Permita pop-ups para gerar o PDF.'); return; }
+  win.document.write(html);
+  win.document.close();
+  win.onload = () => { win.focus(); win.print(); };
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
 interface RelatorioViewProps {
   currentUser: CurrentUser;
   movements: Movement[];
@@ -145,35 +200,24 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
 
   const allRows = useMemo(() => buildRows(movements, currentUser), [movements, currentUser]);
 
-  // ── Contadores intercalados ──────────────────────────────────────────
-  // Cada coluna conta considerando os outros dois filtros já ativos.
-
-  // Para contar status: aplica filtro de tipo e equipe (com a lógica especial de equipe+status)
   const rowsForStatusCount = useMemo(() =>
     allRows.filter(r => {
       if (filterType !== 'all' && r._type !== filterType) return false;
-      // usa filterTeam mas ignora filterStatus (estamos contando por status)
       if (filterTeam !== 'all' && !r._teams.includes(filterTeam)) return false;
       return true;
     }), [allRows, filterType, filterTeam]);
 
-  // Para contar tipos: aplica filtro de status+equipe
   const rowsForTypeCount = useMemo(() =>
-    allRows.filter(r => {
-      if (!matchesTeamStatus(r, filterTeam, filterStatus)) return false;
-      return true;
-    }), [allRows, filterTeam, filterStatus]);
+    allRows.filter(r => matchesTeamStatus(r, filterTeam, filterStatus)),
+    [allRows, filterTeam, filterStatus]);
 
-  // Para contar equipes: aplica filtro de tipo e status geral
   const rowsForTeamCount = useMemo(() =>
     allRows.filter(r => {
       if (filterType !== 'all' && r._type !== filterType) return false;
-      // sem filtro de equipe, usa status geral
       if (filterStatus !== 'all' && r._status !== filterStatus) return false;
       return true;
     }), [allRows, filterType, filterStatus]);
 
-  // ── Resultado final ──────────────────────────────────────────────────
   const filtered = useMemo(() =>
     allRows.filter(r => {
       if (filterType !== 'all' && r._type !== filterType) return false;
@@ -181,8 +225,12 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
       return true;
     }), [allRows, filterType, filterTeam, filterStatus]);
 
-  // ── Export ───────────────────────────────────────────────────────────
-  const handleExport = () => {
+  // Aprovadas dentro dos filtros atuais (para o botão PDF)
+  const approvedFiltered = useMemo(() =>
+    filtered.filter(r => r._status === 'Aprovado'),
+    [filtered]);
+
+  const handleExportExcel = () => {
     setExporting(true);
     try {
       const exportData = filtered.map(({ _id, _type, _teams, _status, _teamStatus, ...rest }) => rest);
@@ -200,6 +248,15 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
     }
   };
 
+  const handleExportPDF = () => {
+    if (approvedFiltered.length === 0) {
+      alert('Nenhuma movimentação aprovada nos filtros atuais.');
+      return;
+    }
+    const today = new Date().toLocaleDateString('pt-BR');
+    generatePDF(approvedFiltered, filterTeam, filterStatus, today);
+  };
+
   const btnClass = (active: boolean) =>
     `py-1.5 px-3 rounded-lg text-sm font-medium border transition text-left ${
       active
@@ -207,9 +264,9 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
         : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
     }`;
 
-  // legenda explicativa quando equipe está selecionada
   const showTeamStatusHint = filterTeam !== 'all';
   const selectedTeamName = TEAMS_LIST.find(t => t.id === filterTeam)?.name ?? '';
+  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || filterTeam !== 'all';
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
@@ -221,19 +278,30 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
             {currentUser.role === 'admin' ? 'Todas as movimentações do sistema' : 'Movimentações que você criou'}
           </p>
         </div>
-        <button
-          onClick={handleExport}
-          disabled={exporting || filtered.length === 0}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium"
-        >
-          {exporting
-            ? <><Loader2 className="w-4 h-4 animate-spin" />Exportando...</>
-            : <><FileSpreadsheet className="w-4 h-4" />Exportar Excel</>}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleExportPDF}
+            disabled={approvedFiltered.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium"
+            title={`Gerar PDF com ${approvedFiltered.length} movimentação(ões) aprovada(s)`}
+          >
+            <FileText className="w-4 h-4" />
+            PDF Aprovadas ({approvedFiltered.length})
+          </button>
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting || filtered.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium"
+          >
+            {exporting
+              ? <><Loader2 className="w-4 h-4 animate-spin" />Exportando...</>
+              : <><FileSpreadsheet className="w-4 h-4" />Exportar Excel</>}
+          </button>
+        </div>
       </div>
 
       {/* Botão limpar filtros */}
-      {(filterStatus !== 'all' || filterType !== 'all' || filterTeam !== 'all') && (
+      {hasActiveFilters && (
         <div className="flex justify-end mb-3">
           <button
             onClick={() => { setFilterStatus('all'); setFilterType('all'); setFilterTeam('all'); }}
@@ -244,16 +312,16 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
         </div>
       )}
 
-      {/* Hint quando equipe selecionada */}
+      {/* Hint equipe selecionada */}
       {showTeamStatusHint && (
         <div className="mb-4 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
-          <strong>{selectedTeamName}</strong> selecionada —
-          {' '}Status <strong>Aprovado</strong> mostra movimentações em que essa equipe já deu o parecer;
-          {' '}Status <strong>Pendente</strong> mostra onde ainda não deu.
+          <strong>{selectedTeamName}</strong> selecionada —{' '}
+          Status <strong>Aprovado</strong> mostra movimentações em que essa equipe já deu o parecer;{' '}
+          Status <strong>Pendente</strong> mostra onde ainda não deu.
         </div>
       )}
 
-      {/* Filtros intercalados */}
+      {/* Filtros */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-lg border">
 
         {/* Status */}
@@ -264,18 +332,13 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
               Todos ({rowsForStatusCount.length})
             </button>
             {(['Pendente', 'Aprovado'] as const).map((opt) => {
-              // contar usando a lógica correta por equipe
               const count = rowsForStatusCount.filter(r => {
                 if (filterTeam === 'all') return r._status === opt;
                 const teamResponded = r._teamStatus[filterTeam] === 'completed';
                 return opt === 'Aprovado' ? teamResponded : !teamResponded;
               }).length;
               return (
-                <button
-                  key={opt}
-                  onClick={() => setFilterStatus(filterStatus === opt ? 'all' : opt)}
-                  className={btnClass(filterStatus === opt)}
-                >
+                <button key={opt} onClick={() => setFilterStatus(filterStatus === opt ? 'all' : opt)} className={btnClass(filterStatus === opt)}>
                   {opt === 'Pendente' ? '⏳' : '✓'} {opt} ({count})
                 </button>
               );
@@ -293,11 +356,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
             {MOVEMENT_TYPES.map((t) => {
               const count = rowsForTypeCount.filter(r => r._type === t.id).length;
               return (
-                <button
-                  key={t.id}
-                  onClick={() => setFilterType(filterType === t.id ? 'all' : t.id)}
-                  className={btnClass(filterType === t.id)}
-                >
+                <button key={t.id} onClick={() => setFilterType(filterType === t.id ? 'all' : t.id)} className={btnClass(filterType === t.id)}>
                   {t.label} ({count})
                 </button>
               );
@@ -316,11 +375,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
               const count = rowsForTeamCount.filter(r => r._teams.includes(t.id)).length;
               if (count === 0) return null;
               return (
-                <button
-                  key={t.id}
-                  onClick={() => setFilterTeam(filterTeam === t.id ? 'all' : t.id)}
-                  className={btnClass(filterTeam === t.id)}
-                >
+                <button key={t.id} onClick={() => setFilterTeam(filterTeam === t.id ? 'all' : t.id)} className={btnClass(filterTeam === t.id)}>
                   {t.name} ({count})
                 </button>
               );
