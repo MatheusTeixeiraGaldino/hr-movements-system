@@ -232,6 +232,18 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
         </button>
       </div>
 
+      {/* Botão limpar filtros */}
+      {(filterStatus !== 'all' || filterType !== 'all' || filterTeam !== 'all') && (
+        <div className="flex justify-end mb-3">
+          <button
+            onClick={() => { setFilterStatus('all'); setFilterType('all'); setFilterTeam('all'); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 border border-red-200 bg-red-50 rounded-lg hover:bg-red-100 transition"
+          >
+            ✕ Limpar filtros
+          </button>
+        </div>
+      )}
+
       {/* Hint quando equipe selecionada */}
       {showTeamStatusHint && (
         <div className="mb-4 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
