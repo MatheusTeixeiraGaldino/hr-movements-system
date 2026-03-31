@@ -50,7 +50,22 @@ const MOVEMENT_TYPES = [
 
 const MOVEMENT_TYPE_MAP: Record<string, string> = Object.fromEntries(MOVEMENT_TYPES.map(t => [t.id, t.label]));
 
-function buildRows(movements: Movement[], currentUser: CurrentUser) {
+interface Row {
+  _id: string;
+  _type: string;
+  _teams: string[];
+  _status: string; // status geral (todos responderam ou não)
+  _teamStatus: Record<string, 'completed' | 'pending'>; // status por equipe
+  Nome: string;
+  Tipo: string;
+  'Criado por': string;
+  'Data de criação': string;
+  Status: string;
+  'Faltam parecer': string;
+  'Com pareceres emitidos': string;
+}
+
+function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
   return movements
     .filter((m) => {
       if (currentUser.role === 'admin') return true;
@@ -60,11 +75,19 @@ function buildRows(movements: Movement[], currentUser: CurrentUser) {
       const respondidas = m.selected_teams.filter((id) => m.responses[id]?.status === 'completed');
       const pendentes = m.selected_teams.filter((id) => m.responses[id]?.status !== 'completed');
       const statusLabel = pendentes.length === 0 ? 'Aprovado' : 'Pendente';
+
+      // mapa de status por equipe para uso no filtro
+      const teamStatus: Record<string, 'completed' | 'pending'> = {};
+      m.selected_teams.forEach(id => {
+        teamStatus[id] = m.responses[id]?.status === 'completed' ? 'completed' : 'pending';
+      });
+
       return {
         _id: m.id,
         _type: m.type,
         _teams: m.selected_teams,
         _status: statusLabel,
+        _teamStatus: teamStatus,
         Nome: m.employee_name,
         Tipo: MOVEMENT_TYPE_MAP[m.type] || m.type,
         'Criado por': m.created_by,
@@ -74,6 +97,38 @@ function buildRows(movements: Movement[], currentUser: CurrentUser) {
         'Com pareceres emitidos': respondidas.length === 0 ? '—' : respondidas.map((id) => TEAMS_MAP[id] || id).join(', '),
       };
     });
+}
+
+/**
+ * Decide se uma row passa no filtro combinado de equipe + status.
+ *
+ * Sem equipe selecionada (filterTeam === 'all'):
+ *   - usa o status geral da movimentação (todos responderam = Aprovado)
+ *
+ * Com equipe selecionada:
+ *   - a movimentação precisa incluir aquela equipe
+ *   - filterStatus 'all'     → passa sempre (independente do parecer da equipe)
+ *   - filterStatus 'Aprovado' → passa só se aquela equipe JÁ deu o parecer
+ *   - filterStatus 'Pendente' → passa só se aquela equipe AINDA NÃO deu o parecer
+ */
+function matchesTeamStatus(row: Row, filterTeam: string, filterStatus: string): boolean {
+  if (filterTeam === 'all') {
+    // sem filtro de equipe: usa status geral
+    if (filterStatus !== 'all' && row._status !== filterStatus) return false;
+    return true;
+  }
+
+  // a movimentação precisa envolver a equipe
+  if (!row._teams.includes(filterTeam)) return false;
+
+  if (filterStatus === 'all') return true;
+
+  const teamResponded = row._teamStatus[filterTeam] === 'completed';
+
+  if (filterStatus === 'Aprovado') return teamResponded;
+  if (filterStatus === 'Pendente') return !teamResponded;
+
+  return true;
 }
 
 interface RelatorioViewProps {
@@ -90,41 +145,47 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
 
   const allRows = useMemo(() => buildRows(movements, currentUser), [movements, currentUser]);
 
-  // Cada coluna de filtro conta sobre os OUTROS dois filtros ativos,
-  // para que os contadores se atualizem conforme a seleção dos demais.
-  const rowsForStatus = useMemo(() =>
+  // ── Contadores intercalados ──────────────────────────────────────────
+  // Cada coluna conta considerando os outros dois filtros já ativos.
+
+  // Para contar status: aplica filtro de tipo e equipe (com a lógica especial de equipe+status)
+  const rowsForStatusCount = useMemo(() =>
     allRows.filter(r => {
       if (filterType !== 'all' && r._type !== filterType) return false;
+      // usa filterTeam mas ignora filterStatus (estamos contando por status)
       if (filterTeam !== 'all' && !r._teams.includes(filterTeam)) return false;
       return true;
     }), [allRows, filterType, filterTeam]);
 
-  const rowsForType = useMemo(() =>
+  // Para contar tipos: aplica filtro de status+equipe
+  const rowsForTypeCount = useMemo(() =>
     allRows.filter(r => {
-      if (filterStatus !== 'all' && r._status !== filterStatus) return false;
-      if (filterTeam !== 'all' && !r._teams.includes(filterTeam)) return false;
+      if (!matchesTeamStatus(r, filterTeam, filterStatus)) return false;
       return true;
-    }), [allRows, filterStatus, filterTeam]);
+    }), [allRows, filterTeam, filterStatus]);
 
-  const rowsForTeam = useMemo(() =>
+  // Para contar equipes: aplica filtro de tipo e status geral
+  const rowsForTeamCount = useMemo(() =>
     allRows.filter(r => {
-      if (filterStatus !== 'all' && r._status !== filterStatus) return false;
       if (filterType !== 'all' && r._type !== filterType) return false;
+      // sem filtro de equipe, usa status geral
+      if (filterStatus !== 'all' && r._status !== filterStatus) return false;
       return true;
-    }), [allRows, filterStatus, filterType]);
+    }), [allRows, filterType, filterStatus]);
 
+  // ── Resultado final ──────────────────────────────────────────────────
   const filtered = useMemo(() =>
     allRows.filter(r => {
-      if (filterStatus !== 'all' && r._status !== filterStatus) return false;
       if (filterType !== 'all' && r._type !== filterType) return false;
-      if (filterTeam !== 'all' && !r._teams.includes(filterTeam)) return false;
+      if (!matchesTeamStatus(r, filterTeam, filterStatus)) return false;
       return true;
-    }), [allRows, filterStatus, filterType, filterTeam]);
+    }), [allRows, filterType, filterTeam, filterStatus]);
 
+  // ── Export ───────────────────────────────────────────────────────────
   const handleExport = () => {
     setExporting(true);
     try {
-      const exportData = filtered.map(({ _id, _type, _teams, _status, ...rest }) => rest);
+      const exportData = filtered.map(({ _id, _type, _teams, _status, _teamStatus, ...rest }) => rest);
       const ws = XLSX.utils.json_to_sheet(exportData);
       ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 25 }, { wch: 18 }, { wch: 12 }, { wch: 45 }, { wch: 45 }];
       const wb = XLSX.utils.book_new();
@@ -145,6 +206,10 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
         ? 'bg-blue-100 text-blue-800 border-blue-400 border-2'
         : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
     }`;
+
+  // legenda explicativa quando equipe está selecionada
+  const showTeamStatusHint = filterTeam !== 'all';
+  const selectedTeamName = TEAMS_LIST.find(t => t.id === filterTeam)?.name ?? '';
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
@@ -167,6 +232,15 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
         </button>
       </div>
 
+      {/* Hint quando equipe selecionada */}
+      {showTeamStatusHint && (
+        <div className="mb-4 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+          <strong>{selectedTeamName}</strong> selecionada —
+          {' '}Status <strong>Aprovado</strong> mostra movimentações em que essa equipe já deu o parecer;
+          {' '}Status <strong>Pendente</strong> mostra onde ainda não deu.
+        </div>
+      )}
+
       {/* Filtros intercalados */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-lg border">
 
@@ -175,12 +249,21 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
           <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Status</label>
           <div className="flex flex-col gap-1.5">
             <button onClick={() => setFilterStatus('all')} className={btnClass(filterStatus === 'all')}>
-              Todos ({rowsForStatus.length})
+              Todos ({rowsForStatusCount.length})
             </button>
             {(['Pendente', 'Aprovado'] as const).map((opt) => {
-              const count = rowsForStatus.filter(r => r._status === opt).length;
+              // contar usando a lógica correta por equipe
+              const count = rowsForStatusCount.filter(r => {
+                if (filterTeam === 'all') return r._status === opt;
+                const teamResponded = r._teamStatus[filterTeam] === 'completed';
+                return opt === 'Aprovado' ? teamResponded : !teamResponded;
+              }).length;
               return (
-                <button key={opt} onClick={() => setFilterStatus(filterStatus === opt ? 'all' : opt)} className={btnClass(filterStatus === opt)}>
+                <button
+                  key={opt}
+                  onClick={() => setFilterStatus(filterStatus === opt ? 'all' : opt)}
+                  className={btnClass(filterStatus === opt)}
+                >
                   {opt === 'Pendente' ? '⏳' : '✓'} {opt} ({count})
                 </button>
               );
@@ -193,12 +276,16 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
           <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Tipo</label>
           <div className="flex flex-col gap-1.5">
             <button onClick={() => setFilterType('all')} className={btnClass(filterType === 'all')}>
-              Todos ({rowsForType.length})
+              Todos ({rowsForTypeCount.length})
             </button>
             {MOVEMENT_TYPES.map((t) => {
-              const count = rowsForType.filter(r => r._type === t.id).length;
+              const count = rowsForTypeCount.filter(r => r._type === t.id).length;
               return (
-                <button key={t.id} onClick={() => setFilterType(filterType === t.id ? 'all' : t.id)} className={btnClass(filterType === t.id)}>
+                <button
+                  key={t.id}
+                  onClick={() => setFilterType(filterType === t.id ? 'all' : t.id)}
+                  className={btnClass(filterType === t.id)}
+                >
                   {t.label} ({count})
                 </button>
               );
@@ -211,13 +298,17 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
           <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Equipe</label>
           <div className="flex flex-col gap-1.5 max-h-60 overflow-y-auto pr-1">
             <button onClick={() => setFilterTeam('all')} className={btnClass(filterTeam === 'all')}>
-              Todas ({rowsForTeam.length})
+              Todas ({rowsForTeamCount.length})
             </button>
             {TEAMS_LIST.map((t) => {
-              const count = rowsForTeam.filter(r => r._teams.includes(t.id)).length;
+              const count = rowsForTeamCount.filter(r => r._teams.includes(t.id)).length;
               if (count === 0) return null;
               return (
-                <button key={t.id} onClick={() => setFilterTeam(filterTeam === t.id ? 'all' : t.id)} className={btnClass(filterTeam === t.id)}>
+                <button
+                  key={t.id}
+                  onClick={() => setFilterTeam(filterTeam === t.id ? 'all' : t.id)}
+                  className={btnClass(filterTeam === t.id)}
+                >
                   {t.name} ({count})
                 </button>
               );
