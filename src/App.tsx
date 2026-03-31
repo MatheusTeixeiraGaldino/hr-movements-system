@@ -289,8 +289,8 @@ export default function App() {
         {/* Nav */}
         <nav style={{ flex: 1, padding: '12px 10px', overflowY: 'auto' }}>
           <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '0 8px 8px' }}>Menu</p>
-         { id: 'dashboard', label: 'Dashboard', icon: '▦' },
-            ...(currentUser.role === 'admin' || currentUser.role === 'responsavel' ? [
+        { id: 'dashboard', label: 'Dashboard', icon: '▦' },
+            ...((['admin', 'responsavel'] as string[]).includes(currentUser.role) ? [
               { id: 'relatorio', label: 'Relatório', icon: '📊' },
             ] : []),
             ...(currentUser.role === 'admin' ? [
