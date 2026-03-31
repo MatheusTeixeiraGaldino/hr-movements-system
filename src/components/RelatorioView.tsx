@@ -3,8 +3,8 @@
 // Exporta tabela para Excel com colunas:
 // Nome | Criado por | Data de criação | Status | Faltam parecer | Com pareceres emitidos
 
-import React, { useMemo, useState } from 'react';
-import { Download, Loader2, FileSpreadsheet } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Loader2, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 // ─── tipos mínimos necessários ────────────────────────────────
