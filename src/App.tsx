@@ -289,8 +289,9 @@ export default function App() {
         {/* Nav */}
         <nav style={{ flex: 1, padding: '12px 10px', overflowY: 'auto' }}>
           <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '0 8px 8px' }}>Menu</p>
-        { id: 'dashboard', label: 'Dashboard', icon: '▦' },
-            ...((['admin', 'responsavel'] as string[]).includes(currentUser.role) ? [
+          {[
+            { id: 'dashboard', label: 'Dashboard', icon: '▦' },
+            ...(((['admin', 'responsavel'] as string[]).includes(currentUser.role)) ? [
               { id: 'relatorio', label: 'Relatório', icon: '📊' },
             ] : []),
             ...(currentUser.role === 'admin' ? [
@@ -377,6 +378,13 @@ export default function App() {
         )}
         {view === 'usuarios' && currentUser.role === 'admin' && (
           <UsuariosView />
+        )}
+        {view === 'relatorio' && ((['admin', 'responsavel'] as string[]).includes(currentUser.role)) && (
+          <RelatorioView
+            currentUser={currentUser}
+            movements={movements}
+            loading={loading}
+          />
         )}
       </main>
     </div>
@@ -491,7 +499,6 @@ function ChangePasswordModal({ onClose, currentUser }: { onClose: () => void; cu
 
     setLoading(true);
     try {
-      // Verifica se a senha atual está correta
       const { data: userCheck, error: checkErr } = await supabase
         .from('users')
         .select('id')
@@ -505,7 +512,6 @@ function ChangePasswordModal({ onClose, currentUser }: { onClose: () => void; cu
         return;
       }
 
-      // Atualiza a senha no Supabase
       const { error: updateErr } = await supabase
         .from('users')
         .update({ password: newPassword })
@@ -559,8 +565,6 @@ function ChangePasswordModal({ onClose, currentUser }: { onClose: () => void; cu
   );
 }
 
-// Substitua a função RegisterUserModal no seu App.tsx por esta versão corrigida
-
 function RegisterUserModal({ onClose }: { onClose: () => void }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -594,7 +598,6 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
         TEAMS.find(t => t.id === id)?.name || ''
       );
 
-      // CORREÇÃO: Usar o método correto do Supabase para inserir arrays
       const { error: insertError } = await supabase
         .from('users')
         .insert({
@@ -611,7 +614,6 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
 
       if (insertError) {
         console.error('Erro ao inserir:', insertError);
-        
         if (insertError.code === '23505') {
           setError('Este email já está cadastrado');
         } else if (insertError.message) {
@@ -642,43 +644,18 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
         <form onSubmit={handleRegister} className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label>
-            <input 
-              type="text" 
-              value={formData.name} 
-              onChange={(e) => setFormData({...formData, name: e.target.value})} 
-              className="w-full border rounded-lg px-3 py-2 text-sm" 
-              required 
-              disabled={loading} 
-            />
+            <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" required disabled={loading} />
           </div>
-          
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">E-mail *</label>
-              <input 
-                type="email" 
-                value={formData.email} 
-                onChange={(e) => setFormData({...formData, email: e.target.value})} 
-                className="w-full border rounded-lg px-3 py-2 text-sm" 
-                required 
-                disabled={loading} 
-              />
+              <input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" required disabled={loading} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Senha *</label>
-              <input 
-                type="password" 
-                value={formData.password} 
-                onChange={(e) => setFormData({...formData, password: e.target.value})} 
-                className="w-full border rounded-lg px-3 py-2 text-sm" 
-                required 
-                minLength={6} 
-                placeholder="Mínimo 6 caracteres" 
-                disabled={loading} 
-              />
+              <input type="password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" required minLength={6} placeholder="Mínimo 6 caracteres" disabled={loading} />
             </div>
           </div>
-          
           <div className="border-t pt-3">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Equipes * ({selectedTeamIds.length} selecionada{selectedTeamIds.length !== 1 ? 's' : ''})
@@ -688,146 +665,51 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
             )}
             <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto border rounded-lg p-2 bg-gray-50">
               {TEAMS.map(t => (
-                <label 
-                  key={t.id} 
-                  className={`flex items-center gap-2 p-2 border rounded cursor-pointer transition text-xs ${
-                    selectedTeamIds.includes(t.id) 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                >
-                  <input 
-                    type="checkbox" 
-                    checked={selectedTeamIds.includes(t.id)} 
-                    onChange={() => {
-                      setSelectedTeamIds(prev => 
-                        prev.includes(t.id) 
-                          ? prev.filter(id => id !== t.id) 
-                          : [...prev, t.id]
-                      );
-                    }}
-                    className="w-3 h-3" 
-                    disabled={loading}
-                  />
+                <label key={t.id} className={`flex items-center gap-2 p-2 border rounded cursor-pointer transition text-xs ${selectedTeamIds.includes(t.id) ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
+                  <input type="checkbox" checked={selectedTeamIds.includes(t.id)} onChange={() => { setSelectedTeamIds(prev => prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]); }} className="w-3 h-3" disabled={loading} />
                   <span className="text-xs">{t.name}</span>
                 </label>
               ))}
             </div>
           </div>
-
           <div className="border-t pt-3">
             <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Usuário *</label>
             <div className="grid grid-cols-3 gap-2">
               <label className="flex items-start gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
-                <input 
-                  type="radio" 
-                  name="role" 
-                  value="team_member" 
-                  checked={formData.role === 'team_member'} 
-                  onChange={(e) => setFormData({ 
-                    ...formData, 
-                    role: e.target.value as UserRole,
-                    can_manage_demissoes: false,
-                    can_manage_transferencias: false 
-                  })} 
-                  className="w-4 h-4 mt-0.5" 
-                  disabled={loading} 
-                />
-                <div>
-                  <p className="font-medium text-sm">Membro da Equipe</p>
-                  <p className="text-xs text-gray-600">Responde pareceres</p>
-                </div>
+                <input type="radio" name="role" value="team_member" checked={formData.role === 'team_member'} onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole, can_manage_demissoes: false, can_manage_transferencias: false })} className="w-4 h-4 mt-0.5" disabled={loading} />
+                <div><p className="font-medium text-sm">Membro da Equipe</p><p className="text-xs text-gray-600">Responde pareceres</p></div>
               </label>
               <label className="flex items-start gap-2 p-2 border-2 border-blue-200 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100">
-                <input 
-                  type="radio" 
-                  name="role" 
-                  value="responsavel" 
-                  checked={formData.role === 'responsavel'} 
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole })} 
-                  className="w-4 h-4 mt-0.5" 
-                  disabled={loading} 
-                />
-                <div>
-                  <p className="font-medium text-sm">Responsável</p>
-                  <p className="text-xs text-gray-600">Cria movimentações</p>
-                </div>
+                <input type="radio" name="role" value="responsavel" checked={formData.role === 'responsavel'} onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole })} className="w-4 h-4 mt-0.5" disabled={loading} />
+                <div><p className="font-medium text-sm">Responsável</p><p className="text-xs text-gray-600">Cria movimentações</p></div>
               </label>
               <label className="flex items-start gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
-                <input 
-                  type="radio" 
-                  name="role" 
-                  value="admin" 
-                  checked={formData.role === 'admin'} 
-                  onChange={(e) => setFormData({...formData, role: e.target.value as UserRole})} 
-                  className="w-4 h-4 mt-0.5" 
-                  disabled={loading} 
-                />
-                <div>
-                  <p className="font-medium text-sm">Administrador</p>
-                  <p className="text-xs text-gray-600">Acesso total</p>
-                </div>
+                <input type="radio" name="role" value="admin" checked={formData.role === 'admin'} onChange={(e) => setFormData({...formData, role: e.target.value as UserRole})} className="w-4 h-4 mt-0.5" disabled={loading} />
+                <div><p className="font-medium text-sm">Administrador</p><p className="text-xs text-gray-600">Acesso total</p></div>
               </label>
             </div>
           </div>
-
           {(formData.role === 'admin' || formData.role === 'responsavel') && (
             <div className="border-t pt-3">
               <label className="block text-sm font-medium text-gray-700 mb-2">Permissões</label>
               <div className="grid grid-cols-2 gap-2">
                 <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
-                  <input 
-                    type="checkbox" 
-                    checked={formData.can_manage_demissoes} 
-                    onChange={(e) => setFormData({...formData, can_manage_demissoes: e.target.checked})} 
-                    className="w-4 h-4" 
-                    disabled={loading} 
-                  />
+                  <input type="checkbox" checked={formData.can_manage_demissoes} onChange={(e) => setFormData({...formData, can_manage_demissoes: e.target.checked})} className="w-4 h-4" disabled={loading} />
                   <span className="text-sm">Demissões</span>
                 </label>
                 <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
-                  <input 
-                    type="checkbox" 
-                    checked={formData.can_manage_transferencias} 
-                    onChange={(e) => setFormData({...formData, can_manage_transferencias: e.target.checked})} 
-                    className="w-4 h-4" 
-                    disabled={loading} 
-                  />
+                  <input type="checkbox" checked={formData.can_manage_transferencias} onChange={(e) => setFormData({...formData, can_manage_transferencias: e.target.checked})} className="w-4 h-4" disabled={loading} />
                   <span className="text-sm">Transferências/Alterações</span>
                 </label>
               </div>
             </div>
           )}
-
-          {error && (
-            <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">
-              {error}
-            </div>
-          )}
-          
+          {error && <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm">{error}</div>}
           <div className="flex gap-2 pt-2 sticky bottom-0 bg-white border-t mt-3">
-            <button 
-              type="submit" 
-              disabled={loading || selectedTeamIds.length === 0} 
-              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 flex items-center justify-center gap-2 text-sm"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Cadastrando...
-                </>
-              ) : (
-                'Cadastrar Usuário'
-              )}
+            <button type="submit" disabled={loading || selectedTeamIds.length === 0} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 flex items-center justify-center gap-2 text-sm">
+              {loading ? <><Loader2 className="w-4 h-4 animate-spin" />Cadastrando...</> : 'Cadastrar Usuário'}
             </button>
-            <button 
-              type="button" 
-              onClick={onClose} 
-              className="px-6 py-2 bg-gray-300 rounded-lg hover:bg-gray-400 text-sm"
-              disabled={loading}
-            >
-              Cancelar
-            </button>
+            <button type="button" onClick={onClose} className="px-6 py-2 bg-gray-300 rounded-lg hover:bg-gray-400 text-sm" disabled={loading}>Cancelar</button>
           </div>
         </form>
       </div>
@@ -870,12 +752,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
     setLoadingCreate(true);
     try {
       const responsesObj = selectedTeams.reduce((acc, teamId) => ({ ...acc, [teamId]: { status: 'pending', checklist: {}, attachments: [] } }), {});
-      
-      const detailsWithObservation = {
-        ...formData,
-        observation: formData.observation || ''
-      };
-      
+      const detailsWithObservation = { ...formData, observation: formData.observation || '' };
       const newMovement: any = {
         type: movementType!,
         employee_name: formData.employeeName,
@@ -886,105 +763,43 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
         details: detailsWithObservation
       };
 
-      if (formData.deadline) {
-        newMovement.deadline = formData.deadline;
-      }
+      if (formData.deadline) newMovement.deadline = formData.deadline;
 
       const { error } = await supabase.from('movements').insert([newMovement]);
       if (error) throw error;
 
-      const { data: usersData } = await supabase
-        .from('users')
-        .select('email, name, team_ids, team_names')
-        .overlaps('team_ids', selectedTeams);
+      const { data: usersData } = await supabase.from('users').select('email, name, team_ids, team_names').overlaps('team_ids', selectedTeams);
 
-      // Enviar emails para equipes (sistema original)
       if (usersData && usersData.length > 0) {
-        const expandedRecipients = usersData.flatMap((user: any) => 
-          user.team_ids
-            .map((teamId: string, index: number) => {
-              if (selectedTeams.includes(teamId)) {
-                return {
-                  email: user.email,
-                  name: user.name,
-                  team_id: teamId,
-                  team_name: user.team_names[index]
-                };
-              }
-              return null;
-            })
-            .filter((item: any) => item !== null)
+        const expandedRecipients = usersData.flatMap((user: any) =>
+          user.team_ids.map((teamId: string, index: number) => {
+            if (selectedTeams.includes(teamId)) return { email: user.email, name: user.name, team_id: teamId, team_name: user.team_names[index] };
+            return null;
+          }).filter((item: any) => item !== null)
         );
-
         fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'movement_created',
-            movement: {
-              employee_name: formData.employeeName,
-              type: movementType!,
-              movimento_tipo: MOVEMENT_TYPES[movementType as MovementType].label,
-              created_by: currentUser?.name || '',
-              deadline: formData.deadline,
-              selected_teams: selectedTeams
-            },
-            recipients: expandedRecipients,
-            email_type: 'created'
-          })
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'movement_created', movement: { employee_name: formData.employeeName, type: movementType!, movimento_tipo: MOVEMENT_TYPES[movementType as MovementType].label, created_by: currentUser?.name || '', deadline: formData.deadline, selected_teams: selectedTeams }, recipients: expandedRecipients, email_type: 'created' })
         }).catch(e => console.error('Webhook erro:', e));
       }
 
-      // Enviar emails para setores selecionados (funcionalidade nova)
       if (selectedSetorIds.length > 0) {
         try {
-          const { data: emailsData } = await supabase
-            .from('emails_setor')
-            .select('*, setores(nome)')
-            .in('setor_id', selectedSetorIds)
-            .eq('ativo', true);
-
+          const { data: emailsData } = await supabase.from('emails_setor').select('*, setores(nome)').in('setor_id', selectedSetorIds).eq('ativo', true);
           if (emailsData && emailsData.length > 0) {
             const tipoLabel = MOVEMENT_TYPES[movementType as MovementType].label;
-            const prazoFmt  = formData.deadline ? new Date(formData.deadline + 'T00:00:00').toLocaleDateString('pt-BR') : null;
-
+            const prazoFmt = formData.deadline ? new Date(formData.deadline + 'T00:00:00').toLocaleDateString('pt-BR') : null;
             fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                action: 'movement_created',
-                movement: {
-                  employee_name: formData.employeeName,
-                  type: movementType!,
-                  tipo_label: tipoLabel,
-                  email_subject: `${tipoLabel} do colaborador ${formData.employeeName}`,
-                  created_by: currentUser?.name || '',
-                  deadline: formData.deadline,
-                  deadline_fmt: prazoFmt,
-                  observation: formData.observation || '',
-                  response_link: `${window.location.origin}/responder/`,
-                  selected_teams: selectedTeams
-                },
-                recipients: emailsData.map((e: any) => ({
-                  email: e.email,
-                  name: e.nome,
-                  setor_name: e.setores?.nome
-                })),
-                email_type: 'setor_notification'
-              })
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'movement_created', movement: { employee_name: formData.employeeName, type: movementType!, tipo_label: tipoLabel, email_subject: `${tipoLabel} do colaborador ${formData.employeeName}`, created_by: currentUser?.name || '', deadline: formData.deadline, deadline_fmt: prazoFmt, observation: formData.observation || '', response_link: `${window.location.origin}/responder/`, selected_teams: selectedTeams }, recipients: emailsData.map((e: any) => ({ email: e.email, name: e.nome, setor_name: e.setores?.nome })), email_type: 'setor_notification' })
             }).catch(e => console.error('Webhook setores erro:', e));
           }
-        } catch (err) {
-          console.error('Erro ao buscar emails dos setores:', err);
-        }
+        } catch (err) { console.error('Erro ao buscar emails dos setores:', err); }
       }
 
       alert('Movimentação criada!');
       await loadMovements();
-      setShowNewMovement(false);
-      setMovementType(null);
-      setFormData({});
-      setSelectedTeams([]);
+      setShowNewMovement(false); setMovementType(null); setFormData({}); setSelectedTeams([]);
     } catch (err: any) {
       alert(`Erro: ${err.message}`);
     } finally {
@@ -993,33 +808,23 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
   };
 
   const myMovs = movements.filter((m: Movement) => {
-    if (isAdmin) {
-      return m.created_by === currentUser?.name || m.selected_teams.some((t: string) => currentUser?.team_ids.includes(t));
-    }
+    if (isAdmin) return m.created_by === currentUser?.name || m.selected_teams.some((t: string) => currentUser?.team_ids.includes(t));
     return m.selected_teams.includes(activeTeamId);
   });
-  
+
   const pending = myMovs.filter((m: Movement) => {
-    if (m.created_by === currentUser?.name && !m.selected_teams.includes(activeTeamId)) {
-      return m.status !== 'completed';
-    }
+    if (m.created_by === currentUser?.name && !m.selected_teams.includes(activeTeamId)) return m.status !== 'completed';
     return m.responses[activeTeamId]?.status === 'pending';
   });
-  
+
   const completed = myMovs.filter((m: Movement) => {
-    if (m.created_by === currentUser?.name && !m.selected_teams.includes(activeTeamId)) {
-      return m.status === 'completed';
-    }
+    if (m.created_by === currentUser?.name && !m.selected_teams.includes(activeTeamId)) return m.status === 'completed';
     return m.responses[activeTeamId]?.status === 'completed';
   });
 
   const getFilteredMovements = () => {
     let filtered = showCompleted ? completed : pending;
-    
-    if (filterType !== 'all') {
-      filtered = filtered.filter((m: Movement) => m.type === filterType);
-    }
-    
+    if (filterType !== 'all') filtered = filtered.filter((m: Movement) => m.type === filterType);
     return filtered;
   };
 
@@ -1046,9 +851,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
       {isDashboardReminderActive() && (
         <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded">
           <AlertCircle className="w-5 h-5 text-blue-600 inline mr-2" />
-          <span className="font-medium text-blue-800">
-            Lembrete: Para garantir o processamento no mesmo mês, faça o cadastro das movimentações até o dia 20. Cadastros após essa data podem seguir para o mês seguinte.
-          </span>
+          <span className="font-medium text-blue-800">Lembrete: Para garantir o processamento no mesmo mês, faça o cadastro das movimentações até o dia 20. Cadastros após essa data podem seguir para o mês seguinte.</span>
         </div>
       )}
       {pending.length > 0 && (
@@ -1062,7 +865,6 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold">Dashboard - {showCompleted ? 'Respondidas' : 'Pendentes'}</h2>
           <div className="flex gap-2">
-            
             <button onClick={() => setShowChangePassword(true)} className="flex items-center gap-2 px-3 py-2 border rounded-lg text-sm"><Settings className="w-4 h-4" />Senha</button>
           </div>
         </div>
@@ -1098,114 +900,35 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
         )}
 
         <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => setShowCompleted(false)}
-            className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${
-              !showCompleted 
-                ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-400' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            ⏳ Pendentes ({pending.length})
-          </button>
-          <button
-            onClick={() => setShowCompleted(true)}
-            className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${
-              showCompleted 
-                ? 'bg-green-100 text-green-800 border-2 border-green-400' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            ✓ Respondidas ({completed.length})
-          </button>
+          <button onClick={() => setShowCompleted(false)} className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${!showCompleted ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-400' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>⏳ Pendentes ({pending.length})</button>
+          <button onClick={() => setShowCompleted(true)} className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${showCompleted ? 'bg-green-100 text-green-800 border-2 border-green-400' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>✓ Respondidas ({completed.length})</button>
         </div>
 
         <div className="mb-6">
           <h3 className="font-semibold mb-3">Filtrar por Tipo</h3>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <button
-              onClick={() => setFilterType('all')}
-              className={`p-3 border-2 rounded-lg transition ${
-                filterType === 'all'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <div className="text-center">
-                <p className="text-2xl font-bold">{showCompleted ? completed.length : pending.length}</p>
-                <p className="text-xs font-medium mt-1">Todas</p>
-              </div>
+            <button onClick={() => setFilterType('all')} className={`p-3 border-2 rounded-lg transition ${filterType === 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
+              <div className="text-center"><p className="text-2xl font-bold">{showCompleted ? completed.length : pending.length}</p><p className="text-xs font-medium mt-1">Todas</p></div>
             </button>
-            
-            <button
-              onClick={() => setFilterType('demissao')}
-              className={`p-3 border-2 rounded-lg transition ${
-                filterType === 'demissao'
-                  ? 'border-red-500 bg-red-50 text-red-700'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <div className="text-center">
-                <UserX className="w-6 h-6 mx-auto mb-1 text-red-600" />
-                <p className="text-xl font-bold">{getCountByType('demissao', showCompleted)}</p>
-                <p className="text-xs font-medium">Demissões</p>
-              </div>
+            <button onClick={() => setFilterType('demissao')} className={`p-3 border-2 rounded-lg transition ${filterType === 'demissao' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
+              <div className="text-center"><UserX className="w-6 h-6 mx-auto mb-1 text-red-600" /><p className="text-xl font-bold">{getCountByType('demissao', showCompleted)}</p><p className="text-xs font-medium">Demissões</p></div>
             </button>
-
-            <button
-              onClick={() => setFilterType('transferencia')}
-              className={`p-3 border-2 rounded-lg transition ${
-                filterType === 'transferencia'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <div className="text-center">
-                <Users className="w-6 h-6 mx-auto mb-1 text-blue-600" />
-                <p className="text-xl font-bold">{getCountByType('transferencia', showCompleted)}</p>
-                <p className="text-xs font-medium">Transferências</p>
-              </div>
+            <button onClick={() => setFilterType('transferencia')} className={`p-3 border-2 rounded-lg transition ${filterType === 'transferencia' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
+              <div className="text-center"><Users className="w-6 h-6 mx-auto mb-1 text-blue-600" /><p className="text-xl font-bold">{getCountByType('transferencia', showCompleted)}</p><p className="text-xs font-medium">Transferências</p></div>
             </button>
-
-            <button
-              onClick={() => setFilterType('alteracao')}
-              className={`p-3 border-2 rounded-lg transition ${
-                filterType === 'alteracao'
-                  ? 'border-green-500 bg-green-50 text-green-700'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <div className="text-center">
-                <TrendingUp className="w-6 h-6 mx-auto mb-1 text-green-600" />
-                <p className="text-xl font-bold">{getCountByType('alteracao', showCompleted)}</p>
-                <p className="text-xs font-medium">Alterações</p>
-              </div>
+            <button onClick={() => setFilterType('alteracao')} className={`p-3 border-2 rounded-lg transition ${filterType === 'alteracao' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
+              <div className="text-center"><TrendingUp className="w-6 h-6 mx-auto mb-1 text-green-600" /><p className="text-xl font-bold">{getCountByType('alteracao', showCompleted)}</p><p className="text-xs font-medium">Alterações</p></div>
             </button>
-
-            <button
-              onClick={() => setFilterType('promocao')}
-              className={`p-3 border-2 rounded-lg transition ${
-                filterType === 'promocao'
-                  ? 'border-purple-500 bg-purple-50 text-purple-700'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <div className="text-center">
-                <TrendingUp className="w-6 h-6 mx-auto mb-1 text-purple-600" />
-                <p className="text-xl font-bold">{getCountByType('promocao', showCompleted)}</p>
-                <p className="text-xs font-medium">Promoções</p>
-              </div>
+            <button onClick={() => setFilterType('promocao')} className={`p-3 border-2 rounded-lg transition ${filterType === 'promocao' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
+              <div className="text-center"><TrendingUp className="w-6 h-6 mx-auto mb-1 text-purple-600" /><p className="text-xl font-bold">{getCountByType('promocao', showCompleted)}</p><p className="text-xs font-medium">Promoções</p></div>
             </button>
           </div>
         </div>
 
         <h3 className="font-semibold mb-3">
-          {filterType === 'all' 
-            ? `Todas as Movimentações ${showCompleted ? 'Respondidas' : 'Pendentes'}`
-            : `${MOVEMENT_TYPES[filterType as MovementType].label} ${showCompleted ? 'Respondidas' : 'Pendentes'}`
-          } ({filteredMovements.length})
+          {filterType === 'all' ? `Todas as Movimentações ${showCompleted ? 'Respondidas' : 'Pendentes'}` : `${MOVEMENT_TYPES[filterType as MovementType].label} ${showCompleted ? 'Respondidas' : 'Pendentes'}`} ({filteredMovements.length})
         </h3>
-        
+
         {loading ? (
           <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
         ) : (
@@ -1215,7 +938,6 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
               const prog = getProgress(m);
               const myResp = m.responses[activeTeamId];
               const overdue = isOverdue(m.deadline);
-
               return (
                 <div key={m.id} className={`border rounded-lg p-4 hover:bg-gray-50 cursor-pointer ${overdue && !showCompleted ? 'border-red-300 bg-red-50' : ''}`} onClick={() => { setSelectedMovement(m); setView('detail'); }}>
                   <div className="flex justify-between mb-2">
@@ -1238,18 +960,8 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
             })}
             {filteredMovements.length === 0 && (
               <div className="text-center py-12 bg-gray-50 rounded-lg">
-                <p className="text-gray-500 text-lg">
-                  {showCompleted 
-                    ? '🎉 Nenhuma movimentação respondida ainda'
-                    : '✅ Nenhuma movimentação pendente'
-                  }
-                </p>
-                <p className="text-gray-400 text-sm mt-2">
-                  {showCompleted 
-                    ? 'Quando você responder movimentações, elas aparecerão aqui'
-                    : 'Você está em dia com todas as suas tarefas!'
-                  }
-                </p>
+                <p className="text-gray-500 text-lg">{showCompleted ? '🎉 Nenhuma movimentação respondida ainda' : '✅ Nenhuma movimentação pendente'}</p>
+                <p className="text-gray-400 text-sm mt-2">{showCompleted ? 'Quando você responder movimentações, elas aparecerão aqui' : 'Você está em dia com todas as suas tarefas!'}</p>
               </div>
             )}
           </div>
@@ -1259,17 +971,12 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} currentUser={currentUser} />}
       {showNewMovement && movementType && (
         <NewMovementModal
-          movementType={movementType}
-          formData={formData}
-          setFormData={setFormData}
-          selectedTeams={selectedTeams}
-          setSelectedTeams={setSelectedTeams}
-          selectedSetorIds={selectedSetorIds}
-          setSelectedSetorIds={setSelectedSetorIds}
+          movementType={movementType} formData={formData} setFormData={setFormData}
+          selectedTeams={selectedTeams} setSelectedTeams={setSelectedTeams}
+          selectedSetorIds={selectedSetorIds} setSelectedSetorIds={setSelectedSetorIds}
           loading={loadingCreate}
           onClose={() => { setShowNewMovement(false); setMovementType(null); setFormData({}); setSelectedTeams([]); setSelectedSetorIds([]); }}
-          onSubmit={handleCreate}
-          isPost20th={isPost20th}
+          onSubmit={handleCreate} isPost20th={isPost20th}
         />
       )}
     </div>
@@ -1287,9 +994,7 @@ function NewMovementModal({ movementType, formData, setFormData, selectedTeams, 
         {isPost20th() && ['transferencia', 'alteracao', 'promocao'].includes(movementType) && (
           <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6 rounded">
             <AlertCircle className="w-5 h-5 text-red-600 inline mr-2" />
-            <span className="font-medium text-red-800">
-              Lembrete: Movimentações cadastradas após o dia 20 podem ser processadas no mês seguinte.
-            </span>
+            <span className="font-medium text-red-800">Lembrete: Movimentações cadastradas após o dia 20 podem ser processadas no mês seguinte.</span>
           </div>
         )}
         <div className="space-y-4 max-h-[70vh] overflow-y-auto">
@@ -1297,7 +1002,6 @@ function NewMovementModal({ movementType, formData, setFormData, selectedTeams, 
             <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Colaborador *</label>
             <input type="text" placeholder="Digite o nome completo" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, employeeName: e.target.value})} />
           </div>
-
           {movementType === 'demissao' && (
             <>
               <div>
@@ -1314,7 +1018,6 @@ function NewMovementModal({ movementType, formData, setFormData, selectedTeams, 
               </div>
             </>
           )}
-
           {movementType !== 'demissao' && (
             <>
               <div className="grid grid-cols-2 gap-4">
@@ -1343,74 +1046,44 @@ function NewMovementModal({ movementType, formData, setFormData, selectedTeams, 
               </div>
             </>
           )}
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Data Limite para Respostas</label>
             <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, deadline: e.target.value})} />
           </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Observações Gerais</label>
             <textarea placeholder="Digite observações adicionais..." className="w-full border rounded-lg px-3 py-2 h-24" onChange={(e) => setFormData({...formData, observation: e.target.value})} />
           </div>
-
           <div className="border-t pt-4">
             <label className="block text-sm font-medium text-gray-700 mb-3">Selecione as Equipes * ({selectedTeams.length} selecionadas)</label>
             <div className="grid grid-cols-2 gap-2">
               {TEAMS.map(t => (
                 <label key={t.id} className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer ${selectedTeams.includes(t.id) ? 'border-blue-500 bg-blue-50' : ''}`}>
-                  <input 
-                    type="checkbox" 
-                    checked={selectedTeams.includes(t.id)} 
-                    onChange={() => setSelectedTeams((prev: string[]) => prev.includes(t.id) ? prev.filter((id: string) => id !== t.id) : [...prev, t.id])} 
-                    className="w-4 h-4" 
-                  />
+                  <input type="checkbox" checked={selectedTeams.includes(t.id)} onChange={() => setSelectedTeams((prev: string[]) => prev.includes(t.id) ? prev.filter((id: string) => id !== t.id) : [...prev, t.id])} className="w-4 h-4" />
                   <span className="text-sm">{t.name}</span>
                 </label>
               ))}
             </div>
           </div>
-
-          {/* Setor do funcionário para envio de email */}
-          <SetorEmailSelector
-            selectedSetorIds={selectedSetorIds}
-            setSelectedSetorIds={setSelectedSetorIds}
-          />
-
-          <button 
-            onClick={onSubmit} 
-            disabled={!formData.employeeName || selectedTeams.length === 0 || loading} 
-            className="w-full bg-blue-600 text-white py-2.5 rounded-lg disabled:bg-gray-300 flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Criando...
-              </>
-            ) : (
-              'Criar Movimentação'
-            )}
+          <SetorEmailSelector selectedSetorIds={selectedSetorIds} setSelectedSetorIds={setSelectedSetorIds} />
+          <button onClick={onSubmit} disabled={!formData.employeeName || selectedTeams.length === 0 || loading} className="w-full bg-blue-600 text-white py-2.5 rounded-lg disabled:bg-gray-300 flex items-center justify-center gap-2">
+            {loading ? <><Loader2 className="w-5 h-5 animate-spin" />Criando...</> : 'Criar Movimentação'}
           </button>
         </div>
       </div>
     </div>
   );
 }
-// Adicione este componente final ao App.tsx
 
 function DetailView({ currentUser, selectedMovement, setView, setSelectedMovement, loadMovements, activeTeamId }: any) {
   const [comment, setComment] = useState('');
   const [loadingSub, setLoadingSub] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState(selectedMovement.details);
-  const [checklist, setChecklist] = useState<Record<string, boolean>>(
-    selectedMovement.responses[activeTeamId]?.checklist || {}
-  );
+  const [checklist, setChecklist] = useState<Record<string, boolean>>(selectedMovement.responses[activeTeamId]?.checklist || {});
   const [isEditingResponse, setIsEditingResponse] = useState(false);
   const [showHistory, setShowHistory] = useState<string | null>(null);
-  const [attachments, setAttachments] = useState<Attachment[]>(
-    selectedMovement.responses[activeTeamId]?.attachments || []
-  );
+  const [attachments, setAttachments] = useState<Attachment[]>(selectedMovement.responses[activeTeamId]?.attachments || []);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [editSelectedTeams, setEditSelectedTeams] = useState<string[]>(selectedMovement.selected_teams);
 
@@ -1431,21 +1104,15 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   };
 
   const handleChecklistToggle = (item: string) => {
-    setChecklist(prev => ({
-      ...prev,
-      [item]: !prev[item]
-    }));
+    setChecklist(prev => ({ ...prev, [item]: !prev[item] }));
   };
 
   const handleAddAttachment = async (file: File) => {
     setUploadingFile(true);
     try {
       const attachment = await uploadFile(file, selectedMovement.id, activeTeamId);
-      if (attachment) {
-        setAttachments(prev => [...prev, attachment]);
-      } else {
-        alert('Erro ao fazer upload do arquivo');
-      }
+      if (attachment) { setAttachments(prev => [...prev, attachment]); }
+      else { alert('Erro ao fazer upload do arquivo'); }
     } catch (error) {
       alert('Erro ao fazer upload do arquivo');
     } finally {
@@ -1455,62 +1122,26 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
 
   const handleRemoveAttachment = async (attachment: Attachment) => {
     if (!confirm('Deseja remover este arquivo?')) return;
-    
     const success = await deleteFile(attachment.url);
-    if (success) {
-      setAttachments(prev => prev.filter(a => a.url !== attachment.url));
-    } else {
-      alert('Erro ao remover arquivo');
-    }
+    if (success) { setAttachments(prev => prev.filter(a => a.url !== attachment.url)); }
+    else { alert('Erro ao remover arquivo'); }
   };
 
   const allChecklistCompleted = userTeamChecklist.length > 0 && userTeamChecklist.every(checkItem => checklist[checkItem]);
 
   const handleSubmit = async () => {
-    if (!comment.trim()) {
-      alert('Por favor, adicione um comentário');
-      return;
-    }
-    
-    if (userTeamChecklist.length > 0 && !allChecklistCompleted) {
-      alert('Por favor, complete todos os itens do checklist antes de enviar');
-      return;
-    }
-
+    if (!comment.trim()) { alert('Por favor, adicione um comentário'); return; }
+    if (userTeamChecklist.length > 0 && !allChecklistCompleted) { alert('Por favor, complete todos os itens do checklist antes de enviar'); return; }
     setLoadingSub(true);
     try {
       const now = new Date();
       const action = hasResponded ? 'updated' : 'created';
-      
       const existingHistory = myResp?.history || [];
-      const newHistoryEntry = {
-        user_name: currentUser.name,
-        user_email: currentUser.email,
-        action: action,
-        date: now.toISOString().split('T')[0],
-        timestamp: now.toISOString()
-      };
-      
-      const updated = { 
-        ...selectedMovement.responses, 
-        [activeTeamId!]: { 
-          status: 'completed', 
-          comment: comment.trim(), 
-          date: now.toISOString().split('T')[0],
-          checklist: checklist,
-          attachments: attachments,
-          history: [...existingHistory, newHistoryEntry]
-        } 
-      };
-      
+      const newHistoryEntry = { user_name: currentUser.name, user_email: currentUser.email, action: action, date: now.toISOString().split('T')[0], timestamp: now.toISOString() };
+      const updated = { ...selectedMovement.responses, [activeTeamId!]: { status: 'completed', comment: comment.trim(), date: now.toISOString().split('T')[0], checklist: checklist, attachments: attachments, history: [...existingHistory, newHistoryEntry] } };
       const allDone = selectedMovement.selected_teams.every((id: string) => updated[id]?.status === 'completed');
-      const { error } = await supabase.from('movements').update({ 
-        responses: updated, 
-        status: allDone ? 'completed' : 'in_progress' 
-      }).eq('id', selectedMovement.id);
-      
+      const { error } = await supabase.from('movements').update({ responses: updated, status: allDone ? 'completed' : 'in_progress' }).eq('id', selectedMovement.id);
       if (error) throw error;
-      
       alert(hasResponded ? 'Parecer atualizado com sucesso!' : 'Parecer enviado com sucesso!');
       await loadMovements();
       setView('dashboard');
@@ -1526,120 +1157,29 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
     setLoadingSub(true);
     try {
       const updatedResponses = { ...selectedMovement.responses };
-      
-      editSelectedTeams.forEach(teamId => {
-        if (!updatedResponses[teamId]) {
-          updatedResponses[teamId] = {
-            status: 'pending',
-            checklist: {},
-            attachments: []
-          };
-        }
-      });
-      
-      Object.keys(updatedResponses).forEach(teamId => {
-        if (!editSelectedTeams.includes(teamId)) {
-          delete updatedResponses[teamId];
-        }
-      });
-
+      editSelectedTeams.forEach(teamId => { if (!updatedResponses[teamId]) { updatedResponses[teamId] = { status: 'pending', checklist: {}, attachments: [] }; } });
+      Object.keys(updatedResponses).forEach(teamId => { if (!editSelectedTeams.includes(teamId)) { delete updatedResponses[teamId]; } });
       const allDone = editSelectedTeams.every(id => updatedResponses[id]?.status === 'completed');
-      
-      const { error } = await supabase.from('movements').update({ 
-        details: editData,
-        employee_name: editData.employeeName || selectedMovement.employee_name,
-        selected_teams: editSelectedTeams,
-        responses: updatedResponses,
+      const { error } = await supabase.from('movements').update({
+        details: editData, employee_name: editData.employeeName || selectedMovement.employee_name,
+        selected_teams: editSelectedTeams, responses: updatedResponses,
         status: allDone ? 'completed' : (Object.values(updatedResponses).some((r: any) => r.status === 'completed') ? 'in_progress' : 'pending')
       }).eq('id', selectedMovement.id);
-      
       if (error) throw error;
 
       const newTeams = editSelectedTeams.filter(id => !selectedMovement.selected_teams.includes(id));
-      
       if (newTeams.length > 0) {
-        const { data: newUsersData } = await supabase
-          .from('users')
-          .select('email, name, team_ids, team_names')
-          .overlaps('team_ids', newTeams);
-
+        const { data: newUsersData } = await supabase.from('users').select('email, name, team_ids, team_names').overlaps('team_ids', newTeams);
         if (newUsersData && newUsersData.length > 0) {
-          const expandedRecipients = newUsersData.flatMap((user: any) => 
-            user.team_ids
-              .map((teamId: string, index: number) => {
-                if (newTeams.includes(teamId)) {
-                  return {
-                    email: user.email,
-                    name: user.name,
-                    team_id: teamId,
-                    team_name: user.team_names[index]
-                  };
-                }
-                return null;
-              })
-              .filter((item: any) => item !== null)
-          );
-
-          fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'movement_created',
-              movement: {
-                employee_name: editData.employeeName || selectedMovement.employee_name,
-                type: selectedMovement.type,
-                movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label,
-                created_by: selectedMovement.created_by,
-                deadline: selectedMovement.deadline,
-                selected_teams: newTeams
-              },
-              recipients: expandedRecipients,
-              email_type: 'created'
-            })
-          }).catch(e => console.error('Webhook erro:', e));
+          const expandedRecipients = newUsersData.flatMap((user: any) => user.team_ids.map((teamId: string, index: number) => { if (newTeams.includes(teamId)) return { email: user.email, name: user.name, team_id: teamId, team_name: user.team_names[index] }; return null; }).filter((item: any) => item !== null));
+          fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'movement_created', movement: { employee_name: editData.employeeName || selectedMovement.employee_name, type: selectedMovement.type, movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label, created_by: selectedMovement.created_by, deadline: selectedMovement.deadline, selected_teams: newTeams }, recipients: expandedRecipients, email_type: 'created' }) }).catch(e => console.error('Webhook erro:', e));
         }
       }
 
-      const { data: usersData } = await supabase
-        .from('users')
-        .select('email, name, team_ids, team_names')
-        .overlaps('team_ids', editSelectedTeams);
-
+      const { data: usersData } = await supabase.from('users').select('email, name, team_ids, team_names').overlaps('team_ids', editSelectedTeams);
       if (usersData && usersData.length > 0) {
-        const expandedRecipients = usersData.flatMap((user: any) => 
-          user.team_ids
-            .map((teamId: string, index: number) => {
-              if (editSelectedTeams.includes(teamId)) {
-                return {
-                  email: user.email,
-                  name: user.name,
-                  team_id: teamId,
-                  team_name: user.team_names[index]
-                };
-              }
-              return null;
-            })
-            .filter((item: any) => item !== null)
-        );
-
-        fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'movement_updated',
-            movement: {
-              employee_name: editData.employeeName || selectedMovement.employee_name,
-              type: selectedMovement.type,
-              movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label,
-              created_by: selectedMovement.created_by,
-              deadline: selectedMovement.deadline,
-              selected_teams: editSelectedTeams
-            },
-            recipients: expandedRecipients,
-            updated_by: currentUser?.name || '',
-            email_type: 'updated'
-          })
-        }).catch(e => console.error('Webhook erro:', e));
+        const expandedRecipients = usersData.flatMap((user: any) => user.team_ids.map((teamId: string, index: number) => { if (editSelectedTeams.includes(teamId)) return { email: user.email, name: user.name, team_id: teamId, team_name: user.team_names[index] }; return null; }).filter((item: any) => item !== null));
+        fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'movement_updated', movement: { employee_name: editData.employeeName || selectedMovement.employee_name, type: selectedMovement.type, movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label, created_by: selectedMovement.created_by, deadline: selectedMovement.deadline, selected_teams: editSelectedTeams }, recipients: expandedRecipients, updated_by: currentUser?.name || '', email_type: 'updated' }) }).catch(e => console.error('Webhook erro:', e));
       }
 
       alert('Movimentação atualizada!');
@@ -1694,112 +1234,54 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
             <label className="block text-sm font-medium mb-2">Nome do Colaborador</label>
             <input type="text" value={editData.employeeName || selectedMovement.employee_name} onChange={(e) => setEditData({...editData, employeeName: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
           </div>
-          
           {selectedMovement.type === 'demissao' && (
             <>
-              <div>
-                <label className="block text-sm font-medium mb-2">Data do Desligamento</label>
-                <input type="date" value={editData.dismissalDate || ''} onChange={(e) => setEditData({...editData, dismissalDate: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Empresa</label>
-                <input type="text" value={editData.company || ''} onChange={(e) => setEditData({...editData, company: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Setor</label>
-                <input type="text" value={editData.sector || ''} onChange={(e) => setEditData({...editData, sector: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-              </div>
+              <div><label className="block text-sm font-medium mb-2">Data do Desligamento</label><input type="date" value={editData.dismissalDate || ''} onChange={(e) => setEditData({...editData, dismissalDate: e.target.value})} className="w-full border rounded-lg px-3 py-2" /></div>
+              <div><label className="block text-sm font-medium mb-2">Empresa</label><input type="text" value={editData.company || ''} onChange={(e) => setEditData({...editData, company: e.target.value})} className="w-full border rounded-lg px-3 py-2" /></div>
+              <div><label className="block text-sm font-medium mb-2">Setor</label><input type="text" value={editData.sector || ''} onChange={(e) => setEditData({...editData, sector: e.target.value})} className="w-full border rounded-lg px-3 py-2" /></div>
             </>
           )}
-
           {selectedMovement.type !== 'demissao' && (
             <>
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Setor Atual</label>
-                  <input type="text" value={editData.oldSector || ''} onChange={(e) => setEditData({...editData, oldSector: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Setor Destino</label>
-                  <input type="text" value={editData.newSector || ''} onChange={(e) => setEditData({...editData, newSector: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-                </div>
+                <div><label className="block text-sm font-medium mb-2">Setor Atual</label><input type="text" value={editData.oldSector || ''} onChange={(e) => setEditData({...editData, oldSector: e.target.value})} className="w-full border rounded-lg px-3 py-2" /></div>
+                <div><label className="block text-sm font-medium mb-2">Setor Destino</label><input type="text" value={editData.newSector || ''} onChange={(e) => setEditData({...editData, newSector: e.target.value})} className="w-full border rounded-lg px-3 py-2" /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Função Atual</label>
-                  <input type="text" value={editData.oldPosition || ''} onChange={(e) => setEditData({...editData, oldPosition: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Função Destino</label>
-                  <input type="text" value={editData.newPosition || ''} onChange={(e) => setEditData({...editData, newPosition: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-                </div>
+                <div><label className="block text-sm font-medium mb-2">Função Atual</label><input type="text" value={editData.oldPosition || ''} onChange={(e) => setEditData({...editData, oldPosition: e.target.value})} className="w-full border rounded-lg px-3 py-2" /></div>
+                <div><label className="block text-sm font-medium mb-2">Função Destino</label><input type="text" value={editData.newPosition || ''} onChange={(e) => setEditData({...editData, newPosition: e.target.value})} className="w-full border rounded-lg px-3 py-2" /></div>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Data da Mudança</label>
-                <input type="date" value={editData.changeDate || ''} onChange={(e) => setEditData({...editData, changeDate: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
-              </div>
+              <div><label className="block text-sm font-medium mb-2">Data da Mudança</label><input type="date" value={editData.changeDate || ''} onChange={(e) => setEditData({...editData, changeDate: e.target.value})} className="w-full border rounded-lg px-3 py-2" /></div>
             </>
           )}
-
           <div className="border-t pt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Equipes Selecionadas ({editSelectedTeams.length} selecionadas)
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-3">Equipes Selecionadas ({editSelectedTeams.length} selecionadas)</label>
             <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-3">
-              <p className="text-xs text-blue-800 mb-2">
-                ℹ️ <strong>Importante:</strong> Ao adicionar novas equipes, elas receberão notificação por email. 
-                Ao remover equipes, suas respostas serão perdidas.
-              </p>
+              <p className="text-xs text-blue-800 mb-2">ℹ️ <strong>Importante:</strong> Ao adicionar novas equipes, elas receberão notificação por email. Ao remover equipes, suas respostas serão perdidas.</p>
             </div>
             <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
               {TEAMS.map(t => {
                 const wasOriginallySelected = selectedMovement.selected_teams.includes(t.id);
                 const hasResponse = selectedMovement.responses[t.id]?.status === 'completed';
                 const isSelected = editSelectedTeams.includes(t.id);
-                
                 return (
-                  <label 
-                    key={t.id} 
-                    className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer transition ${
-                      isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                    } ${hasResponse && !isSelected ? 'opacity-50' : ''}`}
-                  >
-                    <input 
-                      type="checkbox" 
-                      checked={isSelected} 
-                      onChange={() => {
-                        if (hasResponse && isSelected) {
-                          if (!confirm(`A equipe "${t.name}" já respondeu esta movimentação. Tem certeza que deseja removê-la? A resposta será perdida.`)) {
-                            return;
-                          }
-                        }
-                        setEditSelectedTeams((prev: string[]) => 
-                          prev.includes(t.id) 
-                            ? prev.filter((id: string) => id !== t.id) 
-                            : [...prev, t.id]
-                        );
-                      }}
-                      className="w-4 h-4" 
-                    />
+                  <label key={t.id} className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer transition ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'} ${hasResponse && !isSelected ? 'opacity-50' : ''}`}>
+                    <input type="checkbox" checked={isSelected} onChange={() => {
+                      if (hasResponse && isSelected) { if (!confirm(`A equipe "${t.name}" já respondeu esta movimentação. Tem certeza que deseja removê-la? A resposta será perdida.`)) return; }
+                      setEditSelectedTeams((prev: string[]) => prev.includes(t.id) ? prev.filter((id: string) => id !== t.id) : [...prev, t.id]);
+                    }} className="w-4 h-4" />
                     <div className="flex-1">
                       <span className="text-sm">{t.name}</span>
-                      {hasResponse && (
-                        <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">✓ Respondida</span>
-                      )}
-                      {!wasOriginallySelected && isSelected && (
-                        <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">Nova</span>
-                      )}
+                      {hasResponse && <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">✓ Respondida</span>}
+                      {!wasOriginallySelected && isSelected && <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">Nova</span>}
                     </div>
                   </label>
                 );
               })}
             </div>
           </div>
-
           <div className="flex gap-2 pt-4">
-            <button onClick={handleUpdate} disabled={loadingSub || editSelectedTeams.length === 0} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300">
-              {loadingSub ? 'Salvando...' : 'Salvar'}
-            </button>
+            <button onClick={handleUpdate} disabled={loadingSub || editSelectedTeams.length === 0} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300">{loadingSub ? 'Salvando...' : 'Salvar'}</button>
             <button onClick={() => { setIsEditing(false); setEditSelectedTeams(selectedMovement.selected_teams); }} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
           </div>
         </div>
@@ -1807,38 +1289,13 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
         <div className="bg-gray-50 rounded-lg p-4 mb-6">
           <h3 className="font-semibold mb-3">Informações da Movimentação</h3>
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <span className="text-gray-600 font-medium">Criado por:</span>
-              <p className="text-gray-900">{selectedMovement.created_by}</p>
-            </div>
-            <div>
-              <span className="text-gray-600 font-medium">Data de criação:</span>
-              <p className="text-gray-900">{new Date(selectedMovement.created_at).toLocaleDateString('pt-BR')}</p>
-            </div>
-            {selectedMovement.deadline && (
-              <div>
-                <span className="text-gray-600 font-medium">Prazo limite:</span>
-                <p className="text-gray-900">{new Date(selectedMovement.deadline).toLocaleDateString('pt-BR')}</p>
-              </div>
-            )}
+            <div><span className="text-gray-600 font-medium">Criado por:</span><p className="text-gray-900">{selectedMovement.created_by}</p></div>
+            <div><span className="text-gray-600 font-medium">Data de criação:</span><p className="text-gray-900">{new Date(selectedMovement.created_at).toLocaleDateString('pt-BR')}</p></div>
+            {selectedMovement.deadline && <div><span className="text-gray-600 font-medium">Prazo limite:</span><p className="text-gray-900">{new Date(selectedMovement.deadline).toLocaleDateString('pt-BR')}</p></div>}
             {Object.entries(selectedMovement.details).map(([key, value]) => {
-              const labels: any = {
-                dismissalDate: 'Data do Desligamento',
-                company: 'Empresa',
-                sector: 'Setor',
-                oldSector: 'Setor Atual',
-                newSector: 'Setor Destino',
-                oldPosition: 'Função Atual',
-                newPosition: 'Função Destino',
-                changeDate: 'Data da Mudança'
-              };
+              const labels: any = { dismissalDate: 'Data do Desligamento', company: 'Empresa', sector: 'Setor', oldSector: 'Setor Atual', newSector: 'Setor Destino', oldPosition: 'Função Atual', newPosition: 'Função Destino', changeDate: 'Data da Mudança' };
               if (key === 'observation') return null;
-              return (
-                <div key={key}>
-                  <span className="text-gray-600 font-medium">{labels[key] || key}:</span>
-                  <p className="text-gray-900">{typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/) ? new Date(value).toLocaleDateString('pt-BR') : String(value)}</p>
-                </div>
-              );
+              return (<div key={key}><span className="text-gray-600 font-medium">{labels[key] || key}:</span><p className="text-gray-900">{typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/) ? new Date(value).toLocaleDateString('pt-BR') : String(value)}</p></div>);
             })}
           </div>
           {(selectedMovement.details?.observation || selectedMovement.observation) && (
@@ -1856,53 +1313,33 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           const team = TEAMS.find(t => t.id === id);
           const resp = selectedMovement.responses[id];
           const isMine = id === activeTeamId;
-          
-          if (!isAdmin && !isMine) {
-            return null;
-          }
-          
+          if (!isAdmin && !isMine) return null;
           return (
             <div key={id} className={`border rounded-lg p-4 ${isMine ? 'border-blue-500 bg-blue-50' : ''}`}>
               <div className="flex justify-between mb-2">
                 <span className="font-medium">{team?.name} {isMine && '(Sua Equipe)'}</span>
                 <div className="flex items-center gap-2">
-                  <span className={`text-xs px-2 py-1 rounded ${resp?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                    {resp?.status === 'completed' ? '✓ Respondido' : '⏳ Pendente'}
-                  </span>
+                  <span className={`text-xs px-2 py-1 rounded ${resp?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{resp?.status === 'completed' ? '✓ Respondido' : '⏳ Pendente'}</span>
                   {resp?.history && resp.history.length > 0 && (
-                    <button
-                      onClick={() => setShowHistory(showHistory === id ? null : id)}
-                      className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded flex items-center gap-1"
-                    >
-                      <Clock className="w-3 h-3" />
-                      Histórico
+                    <button onClick={() => setShowHistory(showHistory === id ? null : id)} className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded flex items-center gap-1">
+                      <Clock className="w-3 h-3" />Histórico
                     </button>
                   )}
                 </div>
               </div>
-              
               {showHistory === id && resp?.history && (
                 <div className="mb-3 bg-gray-50 border rounded p-3">
                   <p className="text-xs font-semibold text-gray-600 mb-2">Histórico de Alterações:</p>
                   <div className="space-y-2">
                     {resp.history.map((entry: any, idx: number) => (
                       <div key={idx} className="text-xs bg-white p-2 rounded border">
-                        <div className="flex justify-between">
-                          <span className="font-medium text-gray-900">{entry.user_name}</span>
-                          <span className="text-gray-500">{new Date(entry.timestamp).toLocaleString('pt-BR')}</span>
-                        </div>
-                        <div className="text-gray-600 mt-1">
-                          <span className={`inline-block px-2 py-0.5 rounded ${entry.action === 'created' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
-                            {entry.action === 'created' ? 'Criou o parecer' : 'Atualizou o parecer'}
-                          </span>
-                          <span className="ml-2">({entry.user_email})</span>
-                        </div>
+                        <div className="flex justify-between"><span className="font-medium text-gray-900">{entry.user_name}</span><span className="text-gray-500">{new Date(entry.timestamp).toLocaleString('pt-BR')}</span></div>
+                        <div className="text-gray-600 mt-1"><span className={`inline-block px-2 py-0.5 rounded ${entry.action === 'created' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{entry.action === 'created' ? 'Criou o parecer' : 'Atualizou o parecer'}</span><span className="ml-2">({entry.user_email})</span></div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
-              
               {resp?.checklist && Object.keys(resp.checklist).length > 0 && (
                 <div className="mt-3 bg-white p-3 rounded border">
                   <p className="text-xs font-semibold text-gray-600 mb-2">Checklist:</p>
@@ -1916,26 +1353,16 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                   </div>
                 </div>
               )}
-
               {resp?.attachments && resp.attachments.length > 0 && (
                 <div className="mt-3 bg-white p-3 rounded border">
                   <p className="text-xs font-semibold text-gray-600 mb-2">Anexos ({resp.attachments.length}):</p>
-                  <AttachmentManager
-                    attachments={resp.attachments}
-                    onAdd={() => {}}
-                    onRemove={() => {}}
-                    disabled={true}
-                  />
+                  <AttachmentManager attachments={resp.attachments} onAdd={() => {}} onRemove={() => {}} disabled={true} />
                 </div>
               )}
-              
               {resp?.comment && (
                 <div className="mt-2">
                   <p className="text-sm bg-white p-3 rounded border">{resp.comment}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Respondido em {new Date(resp.date!).toLocaleDateString('pt-BR')}
-                    {resp.history && resp.history.length > 1 && ' (editado)'}
-                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Respondido em {new Date(resp.date!).toLocaleDateString('pt-BR')}{resp.history && resp.history.length > 1 && ' (editado)'}</p>
                 </div>
               )}
             </div>
@@ -1947,64 +1374,28 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
         <div className="border-t pt-6">
           {userTeamChecklist.length > 0 && (
             <div className="mb-6">
-              <h3 className="font-semibold mb-3 flex items-center gap-2">
-                <CheckSquare className="w-5 h-5" />
-                Checklist de Verificação
-              </h3>
+              <h3 className="font-semibold mb-3 flex items-center gap-2"><CheckSquare className="w-5 h-5" />Checklist de Verificação</h3>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
                 {userTeamChecklist.map((checkItem: string) => (
                   <label key={checkItem} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
-                    <input
-                      type="checkbox"
-                      checked={checklist[checkItem] || false}
-                      onChange={() => handleChecklistToggle(checkItem)}
-                      className="mt-1 w-5 h-5 rounded border-gray-300"
-                    />
+                    <input type="checkbox" checked={checklist[checkItem] || false} onChange={() => handleChecklistToggle(checkItem)} className="mt-1 w-5 h-5 rounded border-gray-300" />
                     <span className="text-sm flex-1">{checkItem}</span>
                   </label>
                 ))}
-                <div className="mt-4 pt-3 border-t border-blue-200">
-                  <p className="text-xs text-gray-600">
-                    {userTeamChecklist.filter((itm: string) => checklist[itm]).length} de {userTeamChecklist.length} itens concluídos
-                  </p>
-                </div>
+                <div className="mt-4 pt-3 border-t border-blue-200"><p className="text-xs text-gray-600">{userTeamChecklist.filter((itm: string) => checklist[itm]).length} de {userTeamChecklist.length} itens concluídos</p></div>
               </div>
             </div>
           )}
-
           <div className="mb-6">
-            <AttachmentManager
-              attachments={attachments}
-              onAdd={handleAddAttachment}
-              onRemove={handleRemoveAttachment}
-              disabled={uploadingFile}
-            />
-            {uploadingFile && (
-              <div className="flex items-center gap-2 text-sm text-blue-600 mt-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Fazendo upload do arquivo...
-              </div>
-            )}
+            <AttachmentManager attachments={attachments} onAdd={handleAddAttachment} onRemove={handleRemoveAttachment} disabled={uploadingFile} />
+            {uploadingFile && <div className="flex items-center gap-2 text-sm text-blue-600 mt-2"><Loader2 className="w-4 h-4 animate-spin" />Fazendo upload do arquivo...</div>}
           </div>
-          
           <h3 className="font-semibold mb-3">Adicionar Parecer</h3>
-          <textarea 
-            value={comment} 
-            onChange={(e) => setComment(e.target.value)} 
-            placeholder="Digite seu parecer sobre esta movimentação..." 
-            className="w-full border rounded-lg p-3 h-32" 
-            disabled={loadingSub} 
-          />
-          <button 
-            onClick={handleSubmit} 
-            disabled={!comment.trim() || loadingSub || uploadingFile || (userTeamChecklist.length > 0 && !allChecklistCompleted)} 
-            className="mt-3 bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2"
-          >
+          <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Digite seu parecer sobre esta movimentação..." className="w-full border rounded-lg p-3 h-32" disabled={loadingSub} />
+          <button onClick={handleSubmit} disabled={!comment.trim() || loadingSub || uploadingFile || (userTeamChecklist.length > 0 && !allChecklistCompleted)} className="mt-3 bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2">
             {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Enviando...</> : 'Enviar Parecer'}
           </button>
-          {userTeamChecklist.length > 0 && !allChecklistCompleted && (
-            <p className="text-sm text-red-600 mt-2">Complete todos os itens do checklist antes de enviar</p>
-          )}
+          {userTeamChecklist.length > 0 && !allChecklistCompleted && <p className="text-sm text-red-600 mt-2">Complete todos os itens do checklist antes de enviar</p>}
         </div>
       )}
 
@@ -2012,12 +1403,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
         <div className="border-t pt-6 space-y-3">
           <div className="bg-green-50 p-4 rounded flex items-center justify-between">
             <span className="text-green-800 font-medium">✓ Você já respondeu esta movimentação</span>
-            <button
-              onClick={handleStartEdit}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-            >
-              Editar Parecer
-            </button>
+            <button onClick={handleStartEdit} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">Editar Parecer</button>
           </div>
         </div>
       )}
@@ -2026,131 +1412,58 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
         <div className="border-t pt-6">
           {userTeamChecklist.length > 0 && (
             <div className="mb-6">
-              <h3 className="font-semibold mb-3 flex items-center gap-2">
-                <CheckSquare className="w-5 h-5" />
-                Checklist de Verificação
-              </h3>
+              <h3 className="font-semibold mb-3 flex items-center gap-2"><CheckSquare className="w-5 h-5" />Checklist de Verificação</h3>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
                 {userTeamChecklist.map((checkItem: string) => (
                   <label key={checkItem} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
-                    <input
-                      type="checkbox"
-                      checked={checklist[checkItem] || false}
-                      onChange={() => handleChecklistToggle(checkItem)}
-                      className="mt-1 w-5 h-5 rounded border-gray-300"
-                    />
+                    <input type="checkbox" checked={checklist[checkItem] || false} onChange={() => handleChecklistToggle(checkItem)} className="mt-1 w-5 h-5 rounded border-gray-300" />
                     <span className="text-sm flex-1">{checkItem}</span>
                   </label>
                 ))}
-                <div className="mt-4 pt-3 border-t border-blue-200">
-                  <p className="text-xs text-gray-600">
-                    {userTeamChecklist.filter((itm: string) => checklist[itm]).length} de {userTeamChecklist.length} itens concluídos
-                  </p>
-                </div>
+                <div className="mt-4 pt-3 border-t border-blue-200"><p className="text-xs text-gray-600">{userTeamChecklist.filter((itm: string) => checklist[itm]).length} de {userTeamChecklist.length} itens concluídos</p></div>
               </div>
             </div>
           )}
-
           <div className="mb-6">
-            <AttachmentManager
-              attachments={attachments}
-              onAdd={handleAddAttachment}
-              onRemove={handleRemoveAttachment}
-              disabled={uploadingFile}
-            />
-            {uploadingFile && (
-              <div className="flex items-center gap-2 text-sm text-blue-600 mt-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Fazendo upload do arquivo...
-              </div>
-            )}
+            <AttachmentManager attachments={attachments} onAdd={handleAddAttachment} onRemove={handleRemoveAttachment} disabled={uploadingFile} />
+            {uploadingFile && <div className="flex items-center gap-2 text-sm text-blue-600 mt-2"><Loader2 className="w-4 h-4 animate-spin" />Fazendo upload do arquivo...</div>}
           </div>
-          
           <h3 className="font-semibold mb-3">Editar Parecer</h3>
-          <textarea 
-            value={comment} 
-            onChange={(e) => setComment(e.target.value)} 
-            placeholder="Digite seu parecer sobre esta movimentação..." 
-            className="w-full border rounded-lg p-3 h-32" 
-            disabled={loadingSub} 
-          />
+          <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Digite seu parecer sobre esta movimentação..." className="w-full border rounded-lg p-3 h-32" disabled={loadingSub} />
           <div className="flex gap-2 mt-3">
-            <button 
-              onClick={handleSubmit} 
-              disabled={!comment.trim() || loadingSub || uploadingFile || (userTeamChecklist.length > 0 && !allChecklistCompleted)} 
-              className="bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2"
-            >
+            <button onClick={handleSubmit} disabled={!comment.trim() || loadingSub || uploadingFile || (userTeamChecklist.length > 0 && !allChecklistCompleted)} className="bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2">
               {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Salvando...</> : 'Salvar Alterações'}
             </button>
-            <button
-              onClick={() => {
-                setIsEditingResponse(false);
-                setComment('');
-                setChecklist(myResp?.checklist || {});
-                setAttachments(myResp?.attachments || []);
-              }}
-              className="px-6 py-2.5 bg-gray-300 rounded-lg hover:bg-gray-400"
-              disabled={loadingSub}
-            >
-              Cancelar
-            </button>
+            <button onClick={() => { setIsEditingResponse(false); setComment(''); setChecklist(myResp?.checklist || {}); setAttachments(myResp?.attachments || []); }} className="px-6 py-2.5 bg-gray-300 rounded-lg hover:bg-gray-400" disabled={loadingSub}>Cancelar</button>
           </div>
-          {userTeamChecklist.length > 0 && !allChecklistCompleted && (
-            <p className="text-sm text-red-600 mt-2">Complete todos os itens do checklist antes de salvar</p>
-          )}
+          {userTeamChecklist.length > 0 && !allChecklistCompleted && <p className="text-sm text-red-600 mt-2">Complete todos os itens do checklist antes de salvar</p>}
         </div>
       )}
     </div>
   );
 }
 
-// ─── Seletor de Setores para o formulário de nova movimentação ───
-function SetorEmailSelector({ selectedSetorIds, setSelectedSetorIds }: {
-  selectedSetorIds: string[];
-  setSelectedSetorIds: (ids: string[]) => void;
-}) {
+function SetorEmailSelector({ selectedSetorIds, setSelectedSetorIds }: { selectedSetorIds: string[]; setSelectedSetorIds: (ids: string[]) => void; }) {
   const [setores, setSetores] = useState<Setor[]>([]);
 
   useEffect(() => {
-    supabase.from('setores').select('*').eq('ativo', true).order('nome').then(({ data }) => {
-      if (data) setSetores(data);
-    });
+    supabase.from('setores').select('*').eq('ativo', true).order('nome').then(({ data }) => { if (data) setSetores(data); });
   }, []);
 
   if (setores.length === 0) return null;
 
-  const toggle = (id: string) =>
-    setSelectedSetorIds(
-      selectedSetorIds.includes(id)
-        ? selectedSetorIds.filter(s => s !== id)
-        : [...selectedSetorIds, id]
-    );
+  const toggle = (id: string) => setSelectedSetorIds(selectedSetorIds.includes(id) ? selectedSetorIds.filter(s => s !== id) : [...selectedSetorIds, id]);
 
   return (
     <div className="border-t pt-4 mt-2">
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        Setor do Funcionário para Notificação por E-mail
-        <span className="text-gray-400 font-normal ml-1">(opcional)</span>
-      </label>
-      <p className="text-xs text-gray-500 mb-3">
-        Os e-mails cadastrados nos setores selecionados receberão notificação desta movimentação.
-      </p>
+      <label className="block text-sm font-medium text-gray-700 mb-1">Setor do Funcionário para Notificação por E-mail<span className="text-gray-400 font-normal ml-1">(opcional)</span></label>
+      <p className="text-xs text-gray-500 mb-3">Os e-mails cadastrados nos setores selecionados receberão notificação desta movimentação.</p>
       <div className="grid grid-cols-2 gap-2">
         {setores.map(s => {
           const sel = selectedSetorIds.includes(s.id);
           return (
-            <label
-              key={s.id}
-              className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer transition ${
-                sel ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={sel}
-                onChange={() => toggle(s.id)}
-                className="w-4 h-4"
-              />
+            <label key={s.id} className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-pointer transition ${sel ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}>
+              <input type="checkbox" checked={sel} onChange={() => toggle(s.id)} className="w-4 h-4" />
               <span className="text-sm">{s.nome}</span>
             </label>
           );
@@ -2159,10 +1472,6 @@ function SetorEmailSelector({ selectedSetorIds, setSelectedSetorIds }: {
     </div>
   );
 }
-
-// ═══════════════════════════════════════════════════
-// SETORES & EMAILS — módulo novo para notificações
-// ═══════════════════════════════════════════════════
 
 interface Setor {
   id: string;
@@ -2182,33 +1491,27 @@ interface EmailSetor {
 }
 
 function SetoresView() {
-  const [setores,       setSetores]       = useState<Setor[]>([]);
-  const [emails,        setEmails]        = useState<EmailSetor[]>([]);
-  const [expandido,     setExpandido]     = useState<string | null>(null);
+  const [setores, setSetores] = useState<Setor[]>([]);
+  const [emails, setEmails] = useState<EmailSetor[]>([]);
+  const [expandido, setExpandido] = useState<string | null>(null);
   const [showFormSetor, setShowFormSetor] = useState(false);
-  const [editando,      setEditando]      = useState<Setor | null>(null);
+  const [editando, setEditando] = useState<Setor | null>(null);
   const [showFormEmail, setShowFormEmail] = useState<string | null>(null);
-  const [formSetor,     setFormSetor]     = useState({ nome: '', descricao: '' });
-  const [formEmail,     setFormEmail]     = useState({ nome: '', email: '' });
+  const [formSetor, setFormSetor] = useState({ nome: '', descricao: '' });
+  const [formEmail, setFormEmail] = useState({ nome: '', email: '' });
 
   useEffect(() => { loadAll(); }, []);
 
   const loadAll = async () => {
-    const [{ data: s }, { data: e }] = await Promise.all([
-      supabase.from('setores').select('*').order('nome'),
-      supabase.from('emails_setor').select('*').order('nome'),
-    ]);
+    const [{ data: s }, { data: e }] = await Promise.all([supabase.from('setores').select('*').order('nome'), supabase.from('emails_setor').select('*').order('nome')]);
     if (s) setSetores(s);
     if (e) setEmails(e);
   };
 
   const salvarSetor = async () => {
     if (!formSetor.nome.trim()) { alert('Informe o nome do setor'); return; }
-    if (editando) {
-      await supabase.from('setores').update({ nome: formSetor.nome.trim(), descricao: formSetor.descricao }).eq('id', editando.id);
-    } else {
-      await supabase.from('setores').insert({ nome: formSetor.nome.trim(), descricao: formSetor.descricao, ativo: true });
-    }
+    if (editando) { await supabase.from('setores').update({ nome: formSetor.nome.trim(), descricao: formSetor.descricao }).eq('id', editando.id); }
+    else { await supabase.from('setores').insert({ nome: formSetor.nome.trim(), descricao: formSetor.descricao, ativo: true }); }
     setShowFormSetor(false); setEditando(null); setFormSetor({ nome: '', descricao: '' }); loadAll();
   };
 
@@ -2242,10 +1545,7 @@ function SetoresView() {
           <h2 className="text-xl font-bold">Setores & Emails</h2>
           <p className="text-sm text-gray-600 mt-1">Gerencie os setores e emails para notificações de movimentações</p>
         </div>
-        <button
-          onClick={() => { setEditando(null); setFormSetor({ nome: '', descricao: '' }); setShowFormSetor(true); }}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
+        <button onClick={() => { setEditando(null); setFormSetor({ nome: '', descricao: '' }); setShowFormSetor(true); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
           <Plus className="w-4 h-4" /> Novo Setor
         </button>
       </div>
@@ -2254,16 +1554,8 @@ function SetoresView() {
         <div className="bg-gray-50 border rounded-lg p-4 mb-6">
           <h3 className="font-semibold mb-4">{editando ? 'Editar Setor' : 'Novo Setor'}</h3>
           <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
-              <input value={formSetor.nome} onChange={e => setFormSetor({ ...formSetor, nome: e.target.value })}
-                placeholder="Ex: Recursos Humanos" className="w-full border rounded-lg px-3 py-2" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
-              <input value={formSetor.descricao} onChange={e => setFormSetor({ ...formSetor, descricao: e.target.value })}
-                placeholder="Opcional" className="w-full border rounded-lg px-3 py-2" />
-            </div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label><input value={formSetor.nome} onChange={e => setFormSetor({ ...formSetor, nome: e.target.value })} placeholder="Ex: Recursos Humanos" className="w-full border rounded-lg px-3 py-2" /></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label><input value={formSetor.descricao} onChange={e => setFormSetor({ ...formSetor, descricao: e.target.value })} placeholder="Opcional" className="w-full border rounded-lg px-3 py-2" /></div>
           </div>
           <div className="flex gap-2">
             <button onClick={() => { setShowFormSetor(false); setEditando(null); }} className="px-4 py-2 border rounded-lg hover:bg-gray-100">Cancelar</button>
@@ -2279,47 +1571,26 @@ function SetoresView() {
           return (
             <div key={setor.id} className={`border rounded-lg overflow-hidden transition-all ${exp ? 'border-blue-300' : 'border-gray-200'}`}>
               <div className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50" onClick={() => setExpandido(exp ? null : setor.id)}>
-                <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
-                  <Building2 className="w-5 h-5 text-blue-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-gray-900">{setor.nome}</p>
-                  {setor.descricao && <p className="text-xs text-gray-500">{setor.descricao}</p>}
-                </div>
+                <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0"><Building2 className="w-5 h-5 text-blue-600" /></div>
+                <div className="flex-1"><p className="font-semibold text-gray-900">{setor.nome}</p>{setor.descricao && <p className="text-xs text-gray-500">{setor.descricao}</p>}</div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${emailsSetor.length > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
-                    {emailsSetor.length} email{emailsSetor.length !== 1 ? 's' : ''}
-                  </span>
-                  <button onClick={e => { e.stopPropagation(); setEditando(setor); setFormSetor({ nome: setor.nome, descricao: setor.descricao || '' }); setShowFormSetor(true); }}
-                    className="p-1.5 text-gray-400 hover:text-blue-600 rounded"><Settings className="w-4 h-4" /></button>
+                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${emailsSetor.length > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>{emailsSetor.length} email{emailsSetor.length !== 1 ? 's' : ''}</span>
+                  <button onClick={e => { e.stopPropagation(); setEditando(setor); setFormSetor({ nome: setor.nome, descricao: setor.descricao || '' }); setShowFormSetor(true); }} className="p-1.5 text-gray-400 hover:text-blue-600 rounded"><Settings className="w-4 h-4" /></button>
                   <button onClick={e => excluirSetor(setor.id, e)} className="p-1.5 text-gray-400 hover:text-red-600 rounded"><Trash2 className="w-4 h-4" /></button>
                   <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${exp ? 'rotate-90' : ''}`} />
                 </div>
               </div>
-
               {exp && (
                 <div className="border-t bg-gray-50 p-4">
                   <div className="flex justify-between items-center mb-3">
                     <p className="text-sm font-semibold text-gray-700">E-mails para notificação</p>
-                    <button onClick={() => setShowFormEmail(showFormEmail === setor.id ? null : setor.id)}
-                      className="flex items-center gap-1 text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                      <Plus className="w-3 h-3" /> Adicionar
-                    </button>
+                    <button onClick={() => setShowFormEmail(showFormEmail === setor.id ? null : setor.id)} className="flex items-center gap-1 text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700"><Plus className="w-3 h-3" /> Adicionar</button>
                   </div>
-
                   {showFormEmail === setor.id && (
                     <div className="bg-white border rounded-lg p-3 mb-3">
                       <div className="grid grid-cols-2 gap-3 mb-3">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Nome *</label>
-                          <input value={formEmail.nome} onChange={e => setFormEmail({ ...formEmail, nome: e.target.value })}
-                            placeholder="Nome do responsável" className="w-full border rounded px-2 py-1.5 text-sm" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">E-mail *</label>
-                          <input type="email" value={formEmail.email} onChange={e => setFormEmail({ ...formEmail, email: e.target.value })}
-                            placeholder="email@empresa.com" className="w-full border rounded px-2 py-1.5 text-sm" />
-                        </div>
+                        <div><label className="block text-xs font-medium text-gray-700 mb-1">Nome *</label><input value={formEmail.nome} onChange={e => setFormEmail({ ...formEmail, nome: e.target.value })} placeholder="Nome do responsável" className="w-full border rounded px-2 py-1.5 text-sm" /></div>
+                        <div><label className="block text-xs font-medium text-gray-700 mb-1">E-mail *</label><input type="email" value={formEmail.email} onChange={e => setFormEmail({ ...formEmail, email: e.target.value })} placeholder="email@empresa.com" className="w-full border rounded px-2 py-1.5 text-sm" /></div>
                       </div>
                       <div className="flex gap-2">
                         <button onClick={() => { setShowFormEmail(null); setFormEmail({ nome: '', email: '' }); }} className="text-xs px-3 py-1.5 border rounded hover:bg-gray-100">Cancelar</button>
@@ -2327,32 +1598,17 @@ function SetoresView() {
                       </div>
                     </div>
                   )}
-
                   {emailsSetor.length === 0 ? (
-                    <div className="text-center py-6 text-gray-400">
-                      <Mail className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                      <p className="text-sm">Nenhum e-mail cadastrado</p>
-                    </div>
+                    <div className="text-center py-6 text-gray-400"><Mail className="w-8 h-8 mx-auto mb-2 opacity-30" /><p className="text-sm">Nenhum e-mail cadastrado</p></div>
                   ) : (
                     <div className="space-y-2">
                       {emailsSetor.map(em => (
                         <div key={em.id} className="flex items-center gap-3 bg-white border rounded-lg px-3 py-2">
-                          <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${em.ativo ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                            <Mail className={`w-3.5 h-3.5 ${em.ativo ? 'text-blue-600' : 'text-gray-400'}`} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900">{em.nome}</p>
-                            <p className="text-xs text-gray-500">{em.email}</p>
-                          </div>
-                          <span className={`text-xs px-2 py-0.5 rounded-full border flex-shrink-0 ${em.ativo ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>
-                            {em.ativo ? 'Ativo' : 'Inativo'}
-                          </span>
-                          <button onClick={() => toggleEmailAtivo(em.id, em.ativo)} className="p-1 text-gray-400 hover:text-blue-600 rounded" title={em.ativo ? 'Desativar' : 'Ativar'}>
-                            {em.ativo ? <X className="w-3.5 h-3.5" /> : <CheckSquare className="w-3.5 h-3.5" />}
-                          </button>
-                          <button onClick={() => excluirEmail(em.id)} className="p-1 text-gray-400 hover:text-red-600 rounded">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${em.ativo ? 'bg-blue-100' : 'bg-gray-100'}`}><Mail className={`w-3.5 h-3.5 ${em.ativo ? 'text-blue-600' : 'text-gray-400'}`} /></div>
+                          <div className="flex-1 min-w-0"><p className="text-sm font-medium text-gray-900">{em.nome}</p><p className="text-xs text-gray-500">{em.email}</p></div>
+                          <span className={`text-xs px-2 py-0.5 rounded-full border flex-shrink-0 ${em.ativo ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}>{em.ativo ? 'Ativo' : 'Inativo'}</span>
+                          <button onClick={() => toggleEmailAtivo(em.id, em.ativo)} className="p-1 text-gray-400 hover:text-blue-600 rounded" title={em.ativo ? 'Desativar' : 'Ativar'}>{em.ativo ? <X className="w-3.5 h-3.5" /> : <CheckSquare className="w-3.5 h-3.5" />}</button>
+                          <button onClick={() => excluirEmail(em.id)} className="p-1 text-gray-400 hover:text-red-600 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
                       ))}
                     </div>
@@ -2362,22 +1618,13 @@ function SetoresView() {
             </div>
           );
         })}
-
         {setores.length === 0 && (
-          <div className="text-center py-12 text-gray-400">
-            <Building2 className="w-12 h-12 mx-auto mb-3 opacity-20" />
-            <p className="font-medium">Nenhum setor cadastrado</p>
-            <p className="text-sm mt-1">Clique em "Novo Setor" para começar</p>
-          </div>
+          <div className="text-center py-12 text-gray-400"><Building2 className="w-12 h-12 mx-auto mb-3 opacity-20" /><p className="font-medium">Nenhum setor cadastrado</p><p className="text-sm mt-1">Clique em "Novo Setor" para começar</p></div>
         )}
       </div>
     </div>
   );
 }
-
-// ═══════════════════════════════════════════════════
-// USUÁRIOS — gerenciamento de usuários para admin
-// ═══════════════════════════════════════════════════
 
 interface UsuarioEdit {
   id: string;
@@ -2391,87 +1638,62 @@ interface UsuarioEdit {
 }
 
 function UsuariosView() {
-  const [usuarios,      setUsuarios]      = useState<UsuarioEdit[]>([]);
-  const [loading,       setLoading]       = useState(true);
-  const [editando,      setEditando]      = useState<UsuarioEdit | null>(null);
-  const [saving,        setSaving]        = useState(false);
-  const [formEdit,      setFormEdit]      = useState<Partial<UsuarioEdit>>({});
+  const [usuarios, setUsuarios] = useState<UsuarioEdit[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editando, setEditando] = useState<UsuarioEdit | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [formEdit, setFormEdit] = useState<Partial<UsuarioEdit>>({});
   const [showCadastrar, setShowCadastrar] = useState(false);
-  const [resetando,     setResetando]     = useState<UsuarioEdit | null>(null);
-  const [novaSenha,     setNovaSenha]     = useState('');
-  const [savingReset,   setSavingReset]   = useState(false);
+  const [resetando, setResetando] = useState<UsuarioEdit | null>(null);
+  const [novaSenha, setNovaSenha] = useState('');
+  const [savingReset, setSavingReset] = useState(false);
 
   useEffect(() => { loadUsuarios(); }, []);
 
   const loadUsuarios = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('users')
-      .select('id, name, email, role, can_manage_demissoes, can_manage_transferencias, team_ids, team_names')
-      .order('name');
+    const { data } = await supabase.from('users').select('id, name, email, role, can_manage_demissoes, can_manage_transferencias, team_ids, team_names').order('name');
     if (data) setUsuarios(data as UsuarioEdit[]);
     setLoading(false);
   };
 
   const abrirEditar = (u: UsuarioEdit) => {
     setEditando(u);
-    setFormEdit({
-      role:                   u.role,
-      can_manage_demissoes:   u.can_manage_demissoes,
-      can_manage_transferencias: u.can_manage_transferencias,
-      team_ids:               u.team_ids || [],
-      team_names:             u.team_names || [],
-    });
+    setFormEdit({ role: u.role, can_manage_demissoes: u.can_manage_demissoes, can_manage_transferencias: u.can_manage_transferencias, team_ids: u.team_ids || [], team_names: u.team_names || [] });
   };
 
   const toggleTeam = (teamId: string, teamName: string) => {
     setFormEdit(f => {
-      const ids   = f.team_ids || [];
+      const ids = f.team_ids || [];
       const names = f.team_names || [];
-      const sel   = ids.includes(teamId);
-      return {
-        ...f,
-        team_ids:   sel ? ids.filter(id => id !== teamId)       : [...ids, teamId],
-        team_names: sel ? names.filter(n => n !== teamName)     : [...names, teamName],
-      };
+      const sel = ids.includes(teamId);
+      return { ...f, team_ids: sel ? ids.filter(id => id !== teamId) : [...ids, teamId], team_names: sel ? names.filter(n => n !== teamName) : [...names, teamName] };
     });
   };
 
   const salvar = async () => {
     if (!editando) return;
     setSaving(true);
-    const { error } = await supabase.from('users').update({
-      role:                     formEdit.role,
-      can_manage_demissoes:     formEdit.can_manage_demissoes,
-      can_manage_transferencias:formEdit.can_manage_transferencias,
-      team_ids:                 formEdit.team_ids,
-      team_names:               formEdit.team_names,
-    }).eq('id', editando.id);
+    const { error } = await supabase.from('users').update({ role: formEdit.role, can_manage_demissoes: formEdit.can_manage_demissoes, can_manage_transferencias: formEdit.can_manage_transferencias, team_ids: formEdit.team_ids, team_names: formEdit.team_names }).eq('id', editando.id);
     if (error) { alert('Erro: ' + error.message); setSaving(false); return; }
     setUsuarios(prev => prev.map(u => u.id === editando.id ? { ...u, ...formEdit } as UsuarioEdit : u));
-    setEditando(null);
-    setSaving(false);
+    setEditando(null); setSaving(false);
   };
 
   const resetarSenha = async () => {
     if (!resetando || !novaSenha.trim()) return;
     if (novaSenha.length < 4) { alert('A senha deve ter pelo menos 4 caracteres'); return; }
     setSavingReset(true);
-    const { error } = await supabase
-      .from('users')
-      .update({ password: novaSenha.trim() })
-      .eq('id', resetando.id);
+    const { error } = await supabase.from('users').update({ password: novaSenha.trim() }).eq('id', resetando.id);
     if (error) { alert('Erro ao resetar senha: ' + error.message); setSavingReset(false); return; }
     alert(`Senha de ${resetando.name} atualizada com sucesso!`);
-    setResetando(null);
-    setNovaSenha('');
-    setSavingReset(false);
+    setResetando(null); setNovaSenha(''); setSavingReset(false);
   };
 
   const ROLE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; desc: string }> = {
-    admin:       { label: 'Administrador', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', desc: 'Acesso total ao sistema' },
-    responsavel: { label: 'Responsável',   color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', desc: 'Cria movimentações' },
-    team_member: { label: 'Membro',        color: '#059669', bg: '#ecfdf5', border: '#a7f3d0', desc: 'Responde pareceres' },
+    admin: { label: 'Administrador', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', desc: 'Acesso total ao sistema' },
+    responsavel: { label: 'Responsável', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', desc: 'Cria movimentações' },
+    team_member: { label: 'Membro', color: '#059669', bg: '#ecfdf5', border: '#a7f3d0', desc: 'Responde pareceres' },
   };
 
   return (
@@ -2481,72 +1703,34 @@ function UsuariosView() {
           <h2 className="text-xl font-bold">Usuários</h2>
           <p className="text-sm text-gray-500 mt-1">Gerencie acessos, funções e equipes de cada usuário</p>
         </div>
-        <button onClick={() => setShowCadastrar(true)} style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px',
-          borderRadius: 9, border: 'none', background: '#4f46e5', color: 'white',
-          fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-        }}>
+        <button onClick={() => setShowCadastrar(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 9, border: 'none', background: '#4f46e5', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
           <UserPlus className="w-4 h-4" /> Novo Usuário
         </button>
       </div>
 
-      {/* Modal cadastrar usuário */}
-      {showCadastrar && (
-        <RegisterUserModal onClose={() => { setShowCadastrar(false); loadUsuarios(); }} />
-      )}
+      {showCadastrar && <RegisterUserModal onClose={() => { setShowCadastrar(false); loadUsuarios(); }} />}
 
-      {/* Modal reset de senha */}
       {resetando && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
-        }} onClick={e => e.target === e.currentTarget && setResetando(null)}>
-          <div style={{
-            background: 'white', borderRadius: 16, padding: 28,
-            width: '100%', maxWidth: 420,
-            boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-          }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={e => e.target === e.currentTarget && setResetando(null)}>
+          <div style={{ background: 'white', borderRadius: 16, padding: 28, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <div>
                 <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Resetar Senha</p>
                 <h3 style={{ fontSize: 17, fontWeight: 700, color: '#0f172a', marginTop: 3 }}>{resetando.name}</h3>
                 <p style={{ fontSize: 12, color: '#64748b', marginTop: 1 }}>{resetando.email}</p>
               </div>
-              <button onClick={() => { setResetando(null); setNovaSenha(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={() => { setResetando(null); setNovaSenha(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}><X className="w-5 h-5" /></button>
             </div>
             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 9, padding: '10px 14px', marginBottom: 18 }}>
               <p style={{ fontSize: 12, color: '#92400e' }}>⚠️ A senha atual será substituída pela senha temporária definida abaixo. Informe o usuário para alterá-la após o login.</p>
             </div>
             <div style={{ marginBottom: 18 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
-                Nova Senha Temporária
-              </label>
-              <input
-                type="text"
-                value={novaSenha}
-                onChange={e => setNovaSenha(e.target.value)}
-                placeholder="Digite a senha temporária..."
-                style={{
-                  width: '100%', padding: '10px 14px', borderRadius: 9, fontSize: 14,
-                  border: '1.5px solid #e2e8f0', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
-                }}
-                onFocus={e => (e.target.style.borderColor = '#4f46e5')}
-                onBlur={e => (e.target.style.borderColor = '#e2e8f0')}
-              />
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Nova Senha Temporária</label>
+              <input type="text" value={novaSenha} onChange={e => setNovaSenha(e.target.value)} placeholder="Digite a senha temporária..." style={{ width: '100%', padding: '10px 14px', borderRadius: 9, fontSize: 14, border: '1.5px solid #e2e8f0', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} onFocus={e => (e.target.style.borderColor = '#4f46e5')} onBlur={e => (e.target.style.borderColor = '#e2e8f0')} />
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => { setResetando(null); setNovaSenha(''); }} style={{
-                padding: '9px 18px', borderRadius: 9, border: '1px solid #e2e8f0',
-                background: 'white', color: '#334155', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit',
-              }}>Cancelar</button>
-              <button onClick={resetarSenha} disabled={savingReset || !novaSenha.trim()} style={{
-                padding: '9px 18px', borderRadius: 9, border: 'none',
-                background: '#dc2626', color: 'white', cursor: (savingReset || !novaSenha.trim()) ? 'not-allowed' : 'pointer',
-                fontSize: 13, fontWeight: 700, opacity: (savingReset || !novaSenha.trim()) ? 0.65 : 1,
-                fontFamily: 'inherit',
-              }}>
+              <button onClick={() => { setResetando(null); setNovaSenha(''); }} style={{ padding: '9px 18px', borderRadius: 9, border: '1px solid #e2e8f0', background: 'white', color: '#334155', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Cancelar</button>
+              <button onClick={resetarSenha} disabled={savingReset || !novaSenha.trim()} style={{ padding: '9px 18px', borderRadius: 9, border: 'none', background: '#dc2626', color: 'white', cursor: (savingReset || !novaSenha.trim()) ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700, opacity: (savingReset || !novaSenha.trim()) ? 0.65 : 1, fontFamily: 'inherit' }}>
                 {savingReset ? 'Salvando...' : 'Confirmar Reset'}
               </button>
             </div>
@@ -2554,29 +1738,17 @@ function UsuariosView() {
         </div>
       )}
 
-      {/* Modal de edição */}
       {editando && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
-        }} onClick={e => e.target === e.currentTarget && setEditando(null)}>
-          <div style={{
-            background: 'white', borderRadius: 16, padding: 28,
-            width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-          }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={e => e.target === e.currentTarget && setEditando(null)}>
+          <div style={{ background: 'white', borderRadius: 16, padding: 28, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 }}>
               <div>
                 <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Editar Usuário</p>
                 <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{editando.name}</h3>
                 <p style={{ fontSize: 13, color: '#64748b', marginTop: 1 }}>{editando.email}</p>
               </div>
-              <button onClick={() => setEditando(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}>
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={() => setEditando(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}><X className="w-5 h-5" /></button>
             </div>
-
-            {/* Tipo de acesso */}
             <div style={{ marginBottom: 20 }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Tipo de Acesso</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
@@ -2584,16 +1756,7 @@ function UsuariosView() {
                   const cfg = ROLE_CONFIG[role];
                   const sel = formEdit.role === role;
                   return (
-                    <button key={role} onClick={() => setFormEdit(f => ({
-                      ...f, role,
-                      can_manage_demissoes: role === 'team_member' ? false : f.can_manage_demissoes,
-                      can_manage_transferencias: role === 'team_member' ? false : f.can_manage_transferencias,
-                    }))} style={{
-                      padding: '10px 8px', borderRadius: 10, cursor: 'pointer', textAlign: 'center',
-                      border: `2px solid ${sel ? cfg.color : '#e2e8f0'}`,
-                      background: sel ? cfg.bg : 'white',
-                      transition: 'all 0.15s', fontFamily: 'inherit',
-                    }}>
+                    <button key={role} onClick={() => setFormEdit(f => ({ ...f, role, can_manage_demissoes: role === 'team_member' ? false : f.can_manage_demissoes, can_manage_transferencias: role === 'team_member' ? false : f.can_manage_transferencias }))} style={{ padding: '10px 8px', borderRadius: 10, cursor: 'pointer', textAlign: 'center', border: `2px solid ${sel ? cfg.color : '#e2e8f0'}`, background: sel ? cfg.bg : 'white', transition: 'all 0.15s', fontFamily: 'inherit' }}>
                       <p style={{ fontSize: 12, fontWeight: 700, color: sel ? cfg.color : '#334155' }}>{cfg.label}</p>
                       <p style={{ fontSize: 10, color: sel ? cfg.color : '#94a3b8', marginTop: 2 }}>{cfg.desc}</p>
                     </button>
@@ -2601,40 +1764,22 @@ function UsuariosView() {
                 })}
               </div>
             </div>
-
-            {/* Permissões de criação */}
             {(formEdit.role === 'admin' || formEdit.role === 'responsavel') && (
               <div style={{ marginBottom: 20, padding: '14px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
                 <p style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Pode Cadastrar</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {[
-                    { key: 'can_manage_demissoes', label: 'Demissões', desc: 'Pode criar movimentações de demissão' },
-                    { key: 'can_manage_transferencias', label: 'Transferências / Alterações / Promoções', desc: 'Pode criar os demais tipos' },
-                  ].map(({ key, label, desc }) => {
+                  {[{ key: 'can_manage_demissoes', label: 'Demissões', desc: 'Pode criar movimentações de demissão' }, { key: 'can_manage_transferencias', label: 'Transferências / Alterações / Promoções', desc: 'Pode criar os demais tipos' }].map(({ key, label, desc }) => {
                     const checked = formEdit[key as keyof typeof formEdit] as boolean;
                     return (
-                      <label key={key} style={{
-                        display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
-                        padding: '10px 12px', borderRadius: 8,
-                        background: checked ? '#eff6ff' : 'white',
-                        border: `1px solid ${checked ? '#bfdbfe' : '#e2e8f0'}`,
-                        transition: 'all 0.15s',
-                      }}>
-                        <input type="checkbox" checked={checked}
-                          onChange={e => setFormEdit(f => ({ ...f, [key]: e.target.checked }))}
-                          style={{ width: 16, height: 16, marginTop: 2, cursor: 'pointer', accentColor: '#4f46e5', flexShrink: 0 }} />
-                        <div>
-                          <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{label}</p>
-                          <p style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{desc}</p>
-                        </div>
+                      <label key={key} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: '10px 12px', borderRadius: 8, background: checked ? '#eff6ff' : 'white', border: `1px solid ${checked ? '#bfdbfe' : '#e2e8f0'}`, transition: 'all 0.15s' }}>
+                        <input type="checkbox" checked={checked} onChange={e => setFormEdit(f => ({ ...f, [key]: e.target.checked }))} style={{ width: 16, height: 16, marginTop: 2, cursor: 'pointer', accentColor: '#4f46e5', flexShrink: 0 }} />
+                        <div><p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{label}</p><p style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{desc}</p></div>
                       </label>
                     );
                   })}
                 </div>
               </div>
             )}
-
-            {/* Equipes */}
             <div style={{ marginBottom: 22 }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Equipes Vinculadas</p>
               <p style={{ fontSize: 11, color: '#64748b', marginBottom: 10 }}>O usuário verá e responderá movimentações dessas equipes.</p>
@@ -2642,18 +1787,8 @@ function UsuariosView() {
                 {TEAMS.map(t => {
                   const sel = (formEdit.team_ids || []).includes(t.id);
                   return (
-                    <button key={t.id} onClick={() => toggleTeam(t.id, t.name)} style={{
-                      display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px',
-                      borderRadius: 8, border: `2px solid ${sel ? '#4f46e5' : '#e2e8f0'}`,
-                      background: sel ? '#eef2ff' : 'white', cursor: 'pointer',
-                      textAlign: 'left', transition: 'all 0.15s', fontFamily: 'inherit',
-                    }}>
-                      <div style={{
-                        width: 16, height: 16, borderRadius: 4, flexShrink: 0,
-                        border: `2px solid ${sel ? '#4f46e5' : '#cbd5e1'}`,
-                        background: sel ? '#4f46e5' : 'transparent',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
+                    <button key={t.id} onClick={() => toggleTeam(t.id, t.name)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 8, border: `2px solid ${sel ? '#4f46e5' : '#e2e8f0'}`, background: sel ? '#eef2ff' : 'white', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s', fontFamily: 'inherit' }}>
+                      <div style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0, border: `2px solid ${sel ? '#4f46e5' : '#cbd5e1'}`, background: sel ? '#4f46e5' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {sel && <svg width="9" height="9" viewBox="0 0 12 12" fill="none"><polyline points="2 6 5 9 10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                       </div>
                       <span style={{ fontSize: 12, fontWeight: sel ? 700 : 400, color: sel ? '#4f46e5' : '#334155' }}>{t.name}</span>
@@ -2662,17 +1797,9 @@ function UsuariosView() {
                 })}
               </div>
             </div>
-
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setEditando(null)} style={{
-                padding: '9px 18px', borderRadius: 9, border: '1px solid #e2e8f0',
-                background: 'white', color: '#334155', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit',
-              }}>Cancelar</button>
-              <button onClick={salvar} disabled={saving} style={{
-                padding: '9px 18px', borderRadius: 9, border: 'none',
-                background: '#4f46e5', color: 'white', cursor: saving ? 'not-allowed' : 'pointer',
-                fontSize: 13, fontWeight: 700, opacity: saving ? 0.75 : 1, fontFamily: 'inherit',
-              }}>
+              <button onClick={() => setEditando(null)} style={{ padding: '9px 18px', borderRadius: 9, border: '1px solid #e2e8f0', background: 'white', color: '#334155', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Cancelar</button>
+              <button onClick={salvar} disabled={saving} style={{ padding: '9px 18px', borderRadius: 9, border: 'none', background: '#4f46e5', color: 'white', cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700, opacity: saving ? 0.75 : 1, fontFamily: 'inherit' }}>
                 {saving ? 'Salvando...' : 'Salvar Alterações'}
               </button>
             </div>
@@ -2680,7 +1807,6 @@ function UsuariosView() {
         </div>
       )}
 
-      {/* Lista de usuários */}
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
       ) : (
@@ -2688,77 +1814,31 @@ function UsuariosView() {
           {usuarios.map(u => {
             const cfg = ROLE_CONFIG[u.role] || ROLE_CONFIG.team_member;
             return (
-              <div key={u.id} style={{
-                display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px',
-                background: 'white', border: '1px solid #e2e8f0', borderRadius: 12,
-                transition: 'box-shadow 0.15s',
-              }}>
-                {/* Avatar */}
-                <div style={{
-                  width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
-                  background: cfg.bg, border: `1px solid ${cfg.border}`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 14, fontWeight: 700, color: cfg.color,
-                }}>
-                  {u.name.charAt(0).toUpperCase()}
-                </div>
-
-                {/* Info */}
+              <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, transition: 'box-shadow 0.15s' }}>
+                <div style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0, background: cfg.bg, border: `1px solid ${cfg.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: cfg.color }}>{u.name.charAt(0).toUpperCase()}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{u.name}</p>
                   <p style={{ fontSize: 12, color: '#64748b', marginTop: 1 }}>{u.email}</p>
-                  {/* Equipes */}
                   {u.team_names && u.team_names.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
-                      {u.team_names.map((tn, i) => (
-                        <span key={i} style={{
-                          fontSize: 10, padding: '2px 8px', borderRadius: 20, fontWeight: 600,
-                          background: '#eef2ff', color: '#4f46e5', border: '1px solid #c7d2fe',
-                        }}>{tn}</span>
-                      ))}
+                      {u.team_names.map((tn, i) => (<span key={i} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, fontWeight: 600, background: '#eef2ff', color: '#4f46e5', border: '1px solid #c7d2fe' }}>{tn}</span>))}
                     </div>
                   )}
                 </div>
-
-                {/* Permissões */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-                  <span style={{
-                    fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 700,
-                    background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`,
-                  }}>{cfg.label}</span>
+                  <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 700, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>{cfg.label}</span>
                   {(u.can_manage_demissoes || u.can_manage_transferencias) && (
                     <div style={{ display: 'flex', gap: 4 }}>
-                      {u.can_manage_demissoes && (
-                        <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', fontWeight: 600 }}>
-                          Demissões
-                        </span>
-                      )}
-                      {u.can_manage_transferencias && (
-                        <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', fontWeight: 600 }}>
-                          Transferências
-                        </span>
-                      )}
+                      {u.can_manage_demissoes && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', fontWeight: 600 }}>Demissões</span>}
+                      {u.can_manage_transferencias && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', fontWeight: 600 }}>Transferências</span>}
                     </div>
                   )}
                 </div>
-
-                {/* Botão editar */}
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  <button onClick={() => { setResetando(u); setNovaSenha(''); }} style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    padding: '7px 12px', borderRadius: 8, border: '1px solid #fecaca',
-                    background: '#fef2f2', color: '#dc2626', cursor: 'pointer',
-                    fontSize: 12, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.15s',
-                  }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    Senha
+                  <button onClick={() => { setResetando(u); setNovaSenha(''); }} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.15s' }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Senha
                   </button>
-                  <button onClick={() => abrirEditar(u)} style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    padding: '7px 12px', borderRadius: 8, border: '1px solid #e2e8f0',
-                    background: 'white', color: '#334155', cursor: 'pointer',
-                    fontSize: 12, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.15s',
-                  }}>
+                  <button onClick={() => abrirEditar(u)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', color: '#334155', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.15s' }}>
                     <Settings className="w-3.5 h-3.5" /> Editar
                   </button>
                 </div>
@@ -2766,10 +1846,7 @@ function UsuariosView() {
             );
           })}
           {usuarios.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '48px 0', color: '#94a3b8' }}>
-              <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p>Nenhum usuário encontrado</p>
-            </div>
+            <div style={{ textAlign: 'center', padding: '48px 0', color: '#94a3b8' }}><Users className="w-10 h-10 mx-auto mb-3 opacity-30" /><p>Nenhum usuário encontrado</p></div>
           )}
         </div>
       )}
