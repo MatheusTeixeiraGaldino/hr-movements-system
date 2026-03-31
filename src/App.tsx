@@ -1086,11 +1086,14 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   const [attachments, setAttachments] = useState<Attachment[]>(selectedMovement.responses[activeTeamId]?.attachments || []);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [editSelectedTeams, setEditSelectedTeams] = useState<string[]>(selectedMovement.selected_teams);
+  const [editType, setEditType] = useState<MovementType>(selectedMovement.type as MovementType);
 
   const isMyTeam = selectedMovement.selected_teams.includes(activeTeamId);
   const myResp = activeTeamId ? selectedMovement.responses[activeTeamId] : null;
   const hasResponded = myResp?.status === 'completed';
   const isAdmin = currentUser?.role === 'admin';
+  const isResponsavel = currentUser?.role === 'responsavel';
+  const canEdit = isAdmin || (isResponsavel && selectedMovement.created_by === currentUser?.name);
 
   const userTeamChecklist: string[] = CHECKLISTS[selectedMovement.type as MovementType]?.[activeTeamId || ''] || [];
 
@@ -1161,6 +1164,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
       Object.keys(updatedResponses).forEach(teamId => { if (!editSelectedTeams.includes(teamId)) { delete updatedResponses[teamId]; } });
       const allDone = editSelectedTeams.every(id => updatedResponses[id]?.status === 'completed');
       const { error } = await supabase.from('movements').update({
+        type: editType,
         details: editData, employee_name: editData.employeeName || selectedMovement.employee_name,
         selected_teams: editSelectedTeams, responses: updatedResponses,
         status: allDone ? 'completed' : (Object.values(updatedResponses).some((r: any) => r.status === 'completed') ? 'in_progress' : 'pending')
@@ -1217,10 +1221,10 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           <p className="text-gray-600">{MOVEMENT_TYPES[selectedMovement.type as MovementType].label}</p>
         </div>
         <div className="flex gap-2">
-          {isAdmin && !isEditing && (
+          {canEdit && !isEditing && (
             <>
               <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Editar</button>
-              <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Excluir</button>
+              {isAdmin && <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Excluir</button>}
             </>
           )}
           <button onClick={() => { setView('dashboard'); setSelectedMovement(null); }} className="text-gray-600 hover:text-gray-900">← Voltar</button>
@@ -1230,18 +1234,36 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
       {isEditing ? (
         <div className="bg-gray-50 rounded-lg p-4 mb-6 space-y-4">
           <h3 className="font-semibold mb-3">Editar Informações</h3>
+
+          {/* Tipo de movimentação */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Tipo de Movimentação</label>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {(Object.entries(MOVEMENT_TYPES) as [MovementType, { label: string; icon: any }][]).map(([key, val]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setEditType(key)}
+                  className={`p-3 border-2 rounded-lg text-sm font-medium transition ${editType === key ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  {val.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium mb-2">Nome do Colaborador</label>
             <input type="text" value={editData.employeeName || selectedMovement.employee_name} onChange={(e) => setEditData({...editData, employeeName: e.target.value})} className="w-full border rounded-lg px-3 py-2" />
           </div>
-          {selectedMovement.type === 'demissao' && (
+          {editType === 'demissao' && (
             <>
               <div><label className="block text-sm font-medium mb-2">Data do Desligamento</label><input type="date" value={editData.dismissalDate || ''} onChange={(e) => setEditData({...editData, dismissalDate: e.target.value})} className="w-full border rounded-lg px-3 py-2" /></div>
               <div><label className="block text-sm font-medium mb-2">Empresa</label><input type="text" value={editData.company || ''} onChange={(e) => setEditData({...editData, company: e.target.value})} className="w-full border rounded-lg px-3 py-2" /></div>
               <div><label className="block text-sm font-medium mb-2">Setor</label><input type="text" value={editData.sector || ''} onChange={(e) => setEditData({...editData, sector: e.target.value})} className="w-full border rounded-lg px-3 py-2" /></div>
             </>
           )}
-          {selectedMovement.type !== 'demissao' && (
+          {editType !== 'demissao' && (
             <>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium mb-2">Setor Atual</label><input type="text" value={editData.oldSector || ''} onChange={(e) => setEditData({...editData, oldSector: e.target.value})} className="w-full border rounded-lg px-3 py-2" /></div>
@@ -1282,7 +1304,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           </div>
           <div className="flex gap-2 pt-4">
             <button onClick={handleUpdate} disabled={loadingSub || editSelectedTeams.length === 0} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300">{loadingSub ? 'Salvando...' : 'Salvar'}</button>
-            <button onClick={() => { setIsEditing(false); setEditSelectedTeams(selectedMovement.selected_teams); }} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
+            <button onClick={() => { setIsEditing(false); setEditSelectedTeams(selectedMovement.selected_teams); setEditType(selectedMovement.type as MovementType); }} className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400">Cancelar</button>
           </div>
         </div>
       ) : (
@@ -1313,7 +1335,8 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           const team = TEAMS.find(t => t.id === id);
           const resp = selectedMovement.responses[id];
           const isMine = id === activeTeamId;
-          if (!isAdmin && !isMine) return null;
+          if (!isAdmin && !isResponsavel && !isMine) return null;
+          if (isResponsavel && !isMine && selectedMovement.created_by !== currentUser?.name) return null;
           return (
             <div key={id} className={`border rounded-lg p-4 ${isMine ? 'border-blue-500 bg-blue-50' : ''}`}>
               <div className="flex justify-between mb-2">
