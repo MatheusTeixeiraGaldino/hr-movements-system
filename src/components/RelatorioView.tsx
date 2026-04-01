@@ -1,6 +1,6 @@
 // src/components/RelatorioView.tsx
-import { useMemo, useState } from 'react';
-import { Loader2, FileSpreadsheet, FileText, Printer } from 'lucide-react';
+import { useMemo, useState, useRef, useEffect } from 'react';
+import { Loader2, FileSpreadsheet, FileText, Printer, ChevronDown, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface Movement {
@@ -360,6 +360,108 @@ function printMovementPDF(m: Movement) {
   win.onload = () => { win.focus(); win.print(); };
 }
 
+// ─── MultiSelect dropdown ────────────────────────────────────────────────────
+interface MultiSelectOption { value: string; label: string; count: number; }
+interface MultiSelectProps {
+  label: string;
+  selected: Set<string>;
+  onToggle: (value: string) => void;
+  onClear: () => void;
+  options: MultiSelectOption[];
+  totalCount: number;
+}
+
+function MultiSelect({ label, selected, onToggle, onClear, options, totalCount }: MultiSelectProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const hasSelection = selected.size > 0;
+  const displayLabel = hasSelection
+    ? options.filter(o => selected.has(o.value)).map(o => o.label).join(', ')
+    : `Todos (${totalCount})`;
+
+  return (
+    <div ref={ref} className="relative">
+      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">{label}</label>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-sm transition ${
+          hasSelection
+            ? 'border-blue-400 bg-blue-50 text-blue-800 font-medium'
+            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+        }`}
+      >
+        <span className="truncate text-left">{displayLabel}</span>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {hasSelection && (
+            <span
+              onClick={e => { e.stopPropagation(); onClear(); }}
+              className="text-blue-400 hover:text-red-500 cursor-pointer"
+              title="Limpar seleção"
+            >
+              <X className="w-3.5 h-3.5" />
+            </span>
+          )}
+          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+          {/* opção "Todos" */}
+          <button
+            type="button"
+            onClick={() => { onClear(); setOpen(false); }}
+            className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-gray-50 transition ${
+              !hasSelection ? 'bg-blue-50 text-blue-800 font-medium' : 'text-gray-700'
+            }`}
+          >
+            <span>Todos</span>
+            <span className="text-xs text-gray-400">{totalCount}</span>
+          </button>
+          <div className="border-t border-gray-100" />
+          <div className="max-h-52 overflow-y-auto">
+            {options.map(opt => {
+              const checked = selected.has(opt.value);
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => onToggle(opt.value)}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 transition ${
+                    checked ? 'bg-blue-50 text-blue-800' : 'text-gray-700'
+                  }`}
+                >
+                  <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${
+                    checked ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
+                  }`}>
+                    {checked && (
+                      <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+                        <polyline points="2 6 5 9 10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                  </div>
+                  <span className="flex-1 text-left">{opt.label}</span>
+                  <span className="text-xs text-gray-400 flex-shrink-0">{opt.count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Row builder ──────────────────────────────────────────────────────────────
 interface Row {
   _id: string;
@@ -368,6 +470,8 @@ interface Row {
   _status: string;
   _teamStatus: Record<string, 'completed' | 'pending'>;
   _movement: Movement;
+  _createdAt: Date;      // data de criação como Date para comparação
+  _approvedAt: Date | null; // maior data de parecer (null se não aprovado)
   Nome: string;
   Tipo: string;
   'Criado por': string;
@@ -386,9 +490,29 @@ function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
       const statusLabel = pendentes.length === 0 ? 'Aprovado' : 'Pendente';
       const teamStatus: Record<string, 'completed' | 'pending'> = {};
       m.selected_teams.forEach(id => { teamStatus[id] = m.responses[id]?.status === 'completed' ? 'completed' : 'pending'; });
+
+      // maior data/hora entre todos os pareceres emitidos (data de aprovação final)
+      let approvedAt: Date | null = null;
+      if (pendentes.length === 0) {
+        const timestamps = m.selected_teams
+          .map(id => {
+            const resp = m.responses[id];
+            const hist = resp?.history || [];
+            if (hist.length > 0) return new Date(hist[hist.length - 1].timestamp);
+            if (resp?.date) return new Date(resp.date);
+            return null;
+          })
+          .filter((d): d is Date => d !== null && !isNaN(d.getTime()));
+        if (timestamps.length > 0) {
+          approvedAt = new Date(Math.max(...timestamps.map(d => d.getTime())));
+        }
+      }
+
       return {
         _id: m.id, _type: m.type, _teams: m.selected_teams,
         _status: statusLabel, _teamStatus: teamStatus, _movement: m,
+        _createdAt: new Date(m.created_at),
+        _approvedAt: approvedAt,
         Nome: m.employee_name,
         Tipo: MOVEMENT_TYPE_MAP[m.type] || m.type,
         'Criado por': m.created_by,
@@ -400,17 +524,26 @@ function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
     });
 }
 
-function matchesTeamStatus(row: Row, filterTeam: string, filterStatus: string): boolean {
-  if (filterTeam === 'all') {
-    if (filterStatus !== 'all' && row._status !== filterStatus) return false;
+function matchesTeamStatus(row: Row, filterTeams: Set<string>, filterStatuses: Set<string>): boolean {
+  // sem filtro de equipe: usa status geral da movimentação
+  if (filterTeams.size === 0) {
+    if (filterStatuses.size > 0 && !filterStatuses.has(row._status)) return false;
     return true;
   }
-  if (!row._teams.includes(filterTeam)) return false;
-  if (filterStatus === 'all') return true;
-  const done = row._teamStatus[filterTeam] === 'completed';
-  if (filterStatus === 'Aprovado') return done;
-  if (filterStatus === 'Pendente') return !done;
-  return true;
+  // a movimentação precisa conter pelo menos uma das equipes filtradas
+  const hasTeam = [...filterTeams].some(t => row._teams.includes(t));
+  if (!hasTeam) return false;
+
+  if (filterStatuses.size === 0) return true;
+
+  // verifica status para CADA equipe filtrada presente na movimentação
+  return [...filterTeams].some(teamId => {
+    if (!row._teams.includes(teamId)) return false;
+    const done = row._teamStatus[teamId] === 'completed';
+    if (filterStatuses.has('Aprovado') && done) return true;
+    if (filterStatuses.has('Pendente') && !done) return true;
+    return false;
+  });
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -421,42 +554,86 @@ interface RelatorioViewProps {
 }
 
 export default function RelatorioView({ currentUser, movements, loading }: RelatorioViewProps) {
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterType,   setFilterType]   = useState<string>('all');
-  const [filterTeam,   setFilterTeam]   = useState<string>('all');
+  const [filterStatuses, setFilterStatuses] = useState<Set<string>>(new Set());
+  const [filterTypes,    setFilterTypes]    = useState<Set<string>>(new Set());
+  const [filterTeams,    setFilterTeams]    = useState<Set<string>>(new Set());
+  const [dateCreatedStart, setDateCreatedStart] = useState<string>('');
+  const [dateCreatedEnd,   setDateCreatedEnd]   = useState<string>('');
+  const [dateApprStart,    setDateApprStart]    = useState<string>('');
+  const [dateApprEnd,      setDateApprEnd]      = useState<string>('');
   const [selected,     setSelected]     = useState<Set<string>>(new Set());
   const [exporting,    setExporting]    = useState(false);
 
+  const toggleSet = (setter: React.Dispatch<React.SetStateAction<Set<string>>>, value: string) => {
+    setter(prev => {
+      const next = new Set(prev);
+      next.has(value) ? next.delete(value) : next.add(value);
+      return next;
+    });
+  };
+
   const allRows = useMemo(() => buildRows(movements, currentUser), [movements, currentUser]);
 
+  // converte string 'YYYY-MM-DD' para Date no início/fim do dia
+  const toStart = (s: string) => s ? new Date(s + 'T00:00:00') : null;
+  const toEnd   = (s: string) => s ? new Date(s + 'T23:59:59') : null;
+
+  const matchesDateFilters = (r: Row) => {
+    const cs = toStart(dateCreatedStart);
+    const ce = toEnd(dateCreatedEnd);
+    if (cs && r._createdAt < cs) return false;
+    if (ce && r._createdAt > ce) return false;
+    const as_ = toStart(dateApprStart);
+    const ae  = toEnd(dateApprEnd);
+    if (as_ || ae) {
+      if (!r._approvedAt) return false;
+      if (as_ && r._approvedAt < as_) return false;
+      if (ae  && r._approvedAt > ae)  return false;
+    }
+    return true;
+  };
+
+  // Contadores intercalados: cada filtro conta sobre os outros dois ativos
+
+  // para status: aplica tipo + equipe (sem status)
   const rowsForStatusCount = useMemo(() =>
     allRows.filter(r => {
-      if (filterType !== 'all' && r._type !== filterType) return false;
-      if (filterTeam !== 'all' && !r._teams.includes(filterTeam)) return false;
+      if (filterTypes.size > 0 && !filterTypes.has(r._type)) return false;
+      if (filterTeams.size > 0 && ![...filterTeams].some(t => r._teams.includes(t))) return false;
+      if (!matchesDateFilters(r)) return false;
       return true;
-    }), [allRows, filterType, filterTeam]);
+    }), [allRows, filterTypes, filterTeams, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd]);
 
+  // para tipo: aplica status + equipe (sem tipo)
   const rowsForTypeCount = useMemo(() =>
-    allRows.filter(r => matchesTeamStatus(r, filterTeam, filterStatus)),
-    [allRows, filterTeam, filterStatus]);
+    allRows.filter(r => {
+      if (!matchesTeamStatus(r, filterTeams, filterStatuses)) return false;
+      if (!matchesDateFilters(r)) return false;
+      return true;
+    }), [allRows, filterTeams, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd]);
 
+  // para equipe: aplica status + tipo (sem equipe)
   const rowsForTeamCount = useMemo(() =>
     allRows.filter(r => {
-      if (filterType !== 'all' && r._type !== filterType) return false;
-      if (filterStatus !== 'all' && r._status !== filterStatus) return false;
+      if (filterTypes.size > 0 && !filterTypes.has(r._type)) return false;
+      if (filterStatuses.size > 0 && !filterStatuses.has(r._status)) return false;
+      if (!matchesDateFilters(r)) return false;
       return true;
-    }), [allRows, filterType, filterStatus]);
+    }), [allRows, filterTypes, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd]);
 
   const filtered = useMemo(() =>
     allRows.filter(r => {
-      if (filterType !== 'all' && r._type !== filterType) return false;
-      if (!matchesTeamStatus(r, filterTeam, filterStatus)) return false;
+      if (filterTypes.size > 0 && !filterTypes.has(r._type)) return false;
+      if (!matchesTeamStatus(r, filterTeams, filterStatuses)) return false;
+      if (!matchesDateFilters(r)) return false;
       return true;
-    }), [allRows, filterType, filterTeam, filterStatus]);
+    }), [allRows, filterTypes, filterTeams, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd]);
 
   // limpar seleção quando filtros mudam
   const clearFilters = () => {
-    setFilterStatus('all'); setFilterType('all'); setFilterTeam('all');
+    setFilterStatuses(new Set()); setFilterTypes(new Set()); setFilterTeams(new Set());
+    setDateCreatedStart(''); setDateCreatedEnd('');
+    setDateApprStart(''); setDateApprEnd('');
     setSelected(new Set());
   };
 
@@ -489,7 +666,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   const handleExportExcel = () => {
     setExporting(true);
     try {
-      const exportData = filtered.map(({ _id, _type, _teams, _status, _teamStatus, _movement, ...rest }) => rest);
+      const exportData = filtered.map(({ _id, _type, _teams, _status, _teamStatus, _movement, _createdAt, _approvedAt, ...rest }) => rest);
       const ws = XLSX.utils.json_to_sheet(exportData);
       ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 25 }, { wch: 18 }, { wch: 12 }, { wch: 45 }, { wch: 45 }];
       const wb = XLSX.utils.book_new();
@@ -503,15 +680,8 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
     }
   };
 
-  const btnClass = (active: boolean) =>
-    `py-1.5 px-3 rounded-lg text-sm font-medium border transition text-left ${
-      active
-        ? 'bg-blue-100 text-blue-800 border-blue-400 border-2'
-        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-    }`;
-
-  const hasActiveFilters = filterStatus !== 'all' || filterType !== 'all' || filterTeam !== 'all';
-  const selectedTeamName = TEAMS_LIST.find(t => t.id === filterTeam)?.name ?? '';
+  const hasActiveFilters = filterStatuses.size > 0 || filterTypes.size > 0 || filterTeams.size > 0
+    || !!dateCreatedStart || !!dateCreatedEnd || !!dateApprStart || !!dateApprEnd;
   const allSelected = filtered.length > 0 && selected.size === filtered.length;
   const someSelected = selected.size > 0;
 
@@ -556,77 +726,143 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
         </div>
       )}
 
-      {/* Hint equipe */}
-      {filterTeam !== 'all' && (
+      {/* Hint equipe + status */}
+      {filterTeams.size > 0 && (
         <div className="mb-4 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
-          <strong>{selectedTeamName}</strong> selecionada —{' '}
-          Status <strong>Aprovado</strong> mostra onde essa equipe já deu o parecer;{' '}
+          Equipe(s) selecionada(s) —{' '}
+          Status <strong>Aprovado</strong> mostra movimentações onde essa equipe já deu o parecer;{' '}
           Status <strong>Pendente</strong> mostra onde ainda não deu.
         </div>
       )}
 
-      {/* Filtros */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-lg border">
+      {/* Filtros — dropdowns multi-select */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 p-4 bg-gray-50 rounded-lg border">
 
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Status</label>
-          <div className="flex flex-col gap-1.5">
-            <button onClick={() => setFilterStatus('all')} className={btnClass(filterStatus === 'all')}>
-              Todos ({rowsForStatusCount.length})
-            </button>
-            {(['Pendente', 'Aprovado'] as const).map(opt => {
-              const count = rowsForStatusCount.filter(r => {
-                if (filterTeam === 'all') return r._status === opt;
-                const done = r._teamStatus[filterTeam] === 'completed';
+        {/* Status */}
+        <MultiSelect
+          label="Status"
+          selected={filterStatuses}
+          onToggle={v => toggleSet(setFilterStatuses, v)}
+          onClear={() => setFilterStatuses(new Set())}
+          options={(['Pendente', 'Aprovado'] as const).map(opt => {
+            const count = rowsForStatusCount.filter(r => {
+              if (filterTeams.size === 0) return r._status === opt;
+              return [...filterTeams].some(t => {
+                if (!r._teams.includes(t)) return false;
+                const done = r._teamStatus[t] === 'completed';
                 return opt === 'Aprovado' ? done : !done;
-              }).length;
-              return (
-                <button key={opt} onClick={() => setFilterStatus(filterStatus === opt ? 'all' : opt)} className={btnClass(filterStatus === opt)}>
-                  {opt === 'Pendente' ? '⏳' : '✓'} {opt} ({count})
-                </button>
-              );
-            })}
-          </div>
-        </div>
+              });
+            }).length;
+            return { value: opt, label: `${opt === 'Pendente' ? '⏳' : '✓'} ${opt}`, count };
+          })}
+          totalCount={rowsForStatusCount.length}
+        />
 
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Tipo</label>
-          <div className="flex flex-col gap-1.5">
-            <button onClick={() => setFilterType('all')} className={btnClass(filterType === 'all')}>
-              Todos ({rowsForTypeCount.length})
-            </button>
-            {MOVEMENT_TYPES.map(t => {
-              const count = rowsForTypeCount.filter(r => r._type === t.id).length;
-              return (
-                <button key={t.id} onClick={() => setFilterType(filterType === t.id ? 'all' : t.id)} className={btnClass(filterType === t.id)}>
-                  {t.label} ({count})
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        {/* Tipo */}
+        <MultiSelect
+          label="Tipo"
+          selected={filterTypes}
+          onToggle={v => toggleSet(setFilterTypes, v)}
+          onClear={() => setFilterTypes(new Set())}
+          options={MOVEMENT_TYPES.map(t => ({
+            value: t.id,
+            label: t.label,
+            count: rowsForTypeCount.filter(r => r._type === t.id).length,
+          }))}
+          totalCount={rowsForTypeCount.length}
+        />
 
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Equipe</label>
-          <div className="flex flex-col gap-1.5 max-h-60 overflow-y-auto pr-1">
-            <button onClick={() => setFilterTeam('all')} className={btnClass(filterTeam === 'all')}>
-              Todas ({rowsForTeamCount.length})
-            </button>
-            {TEAMS_LIST.map(t => {
-              const count = rowsForTeamCount.filter(r => r._teams.includes(t.id)).length;
-              if (count === 0) return null;
-              return (
-                <button key={t.id} onClick={() => setFilterTeam(filterTeam === t.id ? 'all' : t.id)} className={btnClass(filterTeam === t.id)}>
-                  {t.name} ({count})
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        {/* Equipe */}
+        <MultiSelect
+          label="Equipe"
+          selected={filterTeams}
+          onToggle={v => toggleSet(setFilterTeams, v)}
+          onClear={() => setFilterTeams(new Set())}
+          options={TEAMS_LIST
+            .map(t => ({
+              value: t.id,
+              label: t.name,
+              count: rowsForTeamCount.filter(r => r._teams.includes(t.id)).length,
+            }))
+            .filter(o => o.count > 0)}
+          totalCount={rowsForTeamCount.length}
+        />
 
       </div>
 
-      {/* Tabela */}
+      {/* Filtros de data */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded-lg border">
+
+        {/* Data de criação */}
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+            Data de Criação
+          </label>
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <label className="block text-xs text-gray-500 mb-1">De</label>
+              <input
+                type="date"
+                value={dateCreatedStart}
+                onChange={e => setDateCreatedStart(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400"
+              />
+            </div>
+            <span className="text-gray-400 mt-5">→</span>
+            <div className="flex-1">
+              <label className="block text-xs text-gray-500 mb-1">Até</label>
+              <input
+                type="date"
+                value={dateCreatedEnd}
+                onChange={e => setDateCreatedEnd(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400"
+              />
+            </div>
+            {(dateCreatedStart || dateCreatedEnd) && (
+              <button onClick={() => { setDateCreatedStart(''); setDateCreatedEnd(''); }}
+                className="mt-5 text-gray-400 hover:text-red-500 text-xs" title="Limpar">✕</button>
+            )}
+          </div>
+        </div>
+
+        {/* Data de aprovação */}
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+            Data de Aprovação <span className="text-gray-400 font-normal normal-case">(maior data de parecer)</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <label className="block text-xs text-gray-500 mb-1">De</label>
+              <input
+                type="date"
+                value={dateApprStart}
+                onChange={e => setDateApprStart(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400"
+              />
+            </div>
+            <span className="text-gray-400 mt-5">→</span>
+            <div className="flex-1">
+              <label className="block text-xs text-gray-500 mb-1">Até</label>
+              <input
+                type="date"
+                value={dateApprEnd}
+                onChange={e => setDateApprEnd(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400"
+              />
+            </div>
+            {(dateApprStart || dateApprEnd) && (
+              <button onClick={() => { setDateApprStart(''); setDateApprEnd(''); }}
+                className="mt-5 text-gray-400 hover:text-red-500 text-xs" title="Limpar">✕</button>
+            )}
+          </div>
+          {(dateApprStart || dateApprEnd) && (
+            <p className="text-xs text-blue-700 mt-1.5">
+              Mostrando apenas movimentações totalmente aprovadas neste período.
+            </p>
+          )}
+        </div>
+
+      </div>
       {loading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
