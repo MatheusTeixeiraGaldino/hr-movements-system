@@ -95,7 +95,6 @@ function buildMovementPDFHtml(m: Movement): string {
   const criacao = formatDate(m.created_at);
   const prazo   = m.deadline ? formatDate(m.deadline) : '—';
   const allDone = m.selected_teams.every(id => m.responses[id]?.status === 'completed');
-  const statusGeral = allDone ? 'APROVADO' : 'PENDENTE';
   const statusColor = allDone ? '#166534' : '#92400e';
   const statusBg    = allDone ? '#dcfce7' : '#fef3c7';
 
