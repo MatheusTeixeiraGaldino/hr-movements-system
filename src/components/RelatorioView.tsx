@@ -479,6 +479,7 @@ interface Row {
   Status: string;
   'Faltam parecer': string;
   'Com pareceres emitidos': string;
+  'Último Parecer': string;
 }
 
 function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
@@ -508,6 +509,21 @@ function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
         }
       }
 
+      // maior data entre TODOS os pareceres já emitidos (mesmo que pendente ainda)
+      const allTimestamps = m.selected_teams
+        .map(id => {
+          const resp = m.responses[id];
+          if (resp?.status !== 'completed') return null;
+          const hist = resp?.history || [];
+          if (hist.length > 0) return new Date(hist[hist.length - 1].timestamp);
+          if (resp?.date) return new Date(resp.date);
+          return null;
+        })
+        .filter((d): d is Date => d !== null && !isNaN(d.getTime()));
+      const lastResponseDate = allTimestamps.length > 0
+        ? formatDate(new Date(Math.max(...allTimestamps.map(d => d.getTime()))).toISOString())
+        : '—';
+
       return {
         _id: m.id, _type: m.type, _teams: m.selected_teams,
         _status: statusLabel, _teamStatus: teamStatus, _movement: m,
@@ -520,6 +536,7 @@ function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
         Status: statusLabel,
         'Faltam parecer':         pendentes.length === 0 ? '—' : pendentes.map(id => TEAMS_MAP[id] || id).join(', '),
         'Com pareceres emitidos': respondidas.length === 0 ? '—' : respondidas.map(id => TEAMS_MAP[id] || id).join(', '),
+        'Último Parecer': lastResponseDate,
       };
     });
 }
@@ -864,7 +881,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
                   <th className="px-2 py-2.5 border-b border-gray-200 w-8">
                     <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="w-3.5 h-3.5 cursor-pointer" title="Selecionar todos" />
                   </th>
-                  {['Nome', 'Tipo', 'Criado por', 'Criação', 'Status', 'Faltam', 'Responderam'].map(col => (
+                  {['Nome', 'Tipo', 'Criado por', 'Criação', 'Status', 'Último Parecer', 'Faltam', 'Responderam'].map(col => (
                     <th key={col} className="px-2 py-2.5 font-semibold text-gray-600 border-b border-gray-200 whitespace-nowrap">{col}</th>
                   ))}
                   <th className="px-2 py-2.5 font-semibold text-gray-600 border-b border-gray-200">PDF</th>
@@ -886,6 +903,11 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
                         <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${row.Status === 'Aprovado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
                           {row.Status === 'Aprovado' ? '✓' : '⏳'} {row.Status}
                         </span>
+                      </td>
+                      <td className="px-2 py-2 border-b border-gray-100 whitespace-nowrap text-gray-500">
+                        {row['Último Parecer'] === '—'
+                          ? <span className="text-gray-300">—</span>
+                          : row['Último Parecer']}
                       </td>
                       <td className="px-2 py-2 border-b border-gray-100 max-w-[120px]">
                         {row['Faltam parecer'] === '—'
