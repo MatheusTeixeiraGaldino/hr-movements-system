@@ -578,8 +578,19 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   const [dateCreatedEnd,   setDateCreatedEnd]   = useState<string>('');
   const [dateApprStart,    setDateApprStart]    = useState<string>('');
   const [dateApprEnd,      setDateApprEnd]      = useState<string>('');
+  const [sortCol,  setSortCol]  = useState<string>('');
+  const [sortDir,  setSortDir]  = useState<'asc' | 'desc'>('asc');
   const [selected,     setSelected]     = useState<Set<string>>(new Set());
   const [exporting,    setExporting]    = useState(false);
+
+  const handleSort = (col: string) => {
+    if (sortCol === col) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  };
 
   const toggleSet = (setter: React.Dispatch<React.SetStateAction<Set<string>>>, value: string) => {
     setter(prev => {
@@ -646,6 +657,35 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
       return true;
     }), [allRows, filterTypes, filterTeams, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd]);
 
+  // Map display column names → Row keys for sorting
+  const COL_KEY: Record<string, keyof Row> = {
+    'Nome':           'Nome',
+    'Tipo':           'Tipo',
+    'Criado por':     'Criado por',
+    'Criação':        'Data de criação',
+    'Status':         'Status',
+    'Último Parecer': 'Último Parecer',
+    'Faltam':         'Faltam parecer',
+    'Responderam':    'Com pareceres emitidos',
+  };
+
+  const sortedFiltered = useMemo(() => {
+    if (!sortCol || !COL_KEY[sortCol]) return filtered;
+    const key = COL_KEY[sortCol];
+    return [...filtered].sort((a, b) => {
+      const av = String(a[key] ?? '');
+      const bv = String(b[key] ?? '');
+      // treat '—' as empty so they sort last
+      const ae = av === '—' ? '' : av;
+      const be = bv === '—' ? '' : bv;
+      // try numeric/date comparison first (dd/mm/yyyy or plain numbers)
+      const aDate = ae.match(/^\d{2}\/\d{2}\/\d{4}$/) ? ae.split('/').reverse().join('-') : ae;
+      const bDate = be.match(/^\d{2}\/\d{2}\/\d{4}$/) ? be.split('/').reverse().join('-') : be;
+      const cmp = aDate.localeCompare(bDate, 'pt-BR', { numeric: true, sensitivity: 'base' });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [filtered, sortCol, sortDir]);
+
   // limpar seleção quando filtros mudam
   const clearFilters = () => {
     setFilterStatuses(new Set()); setFilterTypes(new Set()); setFilterTeams(new Set());
@@ -663,15 +703,15 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   };
 
   const toggleSelectAll = () => {
-    if (selected.size === filtered.length) {
+    if (selected.size === sortedFiltered.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(filtered.map(r => r._id)));
+      setSelected(new Set(sortedFiltered.map(r => r._id)));
     }
   };
 
   const handlePrintSelected = () => {
-    const rows = filtered.filter(r => selected.has(r._id));
+    const rows = sortedFiltered.filter(r => selected.has(r._id));
     if (rows.length === 0) { alert('Selecione ao menos uma movimentação.'); return; }
     rows.forEach(r => printMovementPDF(r._movement));
   };
@@ -683,7 +723,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   const handleExportExcel = () => {
     setExporting(true);
     try {
-      const exportData = filtered.map(({ _id, _type, _teams, _status, _teamStatus, _movement, _createdAt, _approvedAt, ...rest }) => rest);
+      const exportData = sortedFiltered.map(({ _id, _type, _teams, _status, _teamStatus, _movement, _createdAt, _approvedAt, ...rest }) => rest);
       const ws = XLSX.utils.json_to_sheet(exportData);
       ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 25 }, { wch: 18 }, { wch: 12 }, { wch: 45 }, { wch: 45 }];
       const wb = XLSX.utils.book_new();
@@ -699,7 +739,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
 
   const hasActiveFilters = filterStatuses.size > 0 || filterTypes.size > 0 || filterTeams.size > 0
     || !!dateCreatedStart || !!dateCreatedEnd || !!dateApprStart || !!dateApprEnd;
-  const allSelected = filtered.length > 0 && selected.size === filtered.length;
+  const allSelected = sortedFiltered.length > 0 && selected.size === sortedFiltered.length;
   const someSelected = selected.size > 0;
 
   return (
@@ -724,7 +764,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
           )}
           <button
             onClick={handleExportExcel}
-            disabled={exporting || filtered.length === 0}
+            disabled={exporting || sortedFiltered.length === 0}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-xs font-medium"
           >
             {exporting
@@ -869,7 +909,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
           <div className="flex justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : sortedFiltered.length === 0 ? (
           <div className="text-center py-10 bg-gray-50 rounded-lg">
             <p className="text-gray-500 text-sm">Nenhuma movimentação encontrada.</p>
           </div>
@@ -881,14 +921,28 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
                   <th className="px-2 py-2.5 border-b border-gray-200 w-8">
                     <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="w-3.5 h-3.5 cursor-pointer" title="Selecionar todos" />
                   </th>
-                  {['Nome', 'Tipo', 'Criado por', 'Criação', 'Status', 'Último Parecer', 'Faltam', 'Responderam'].map(col => (
-                    <th key={col} className="px-2 py-2.5 font-semibold text-gray-600 border-b border-gray-200 whitespace-nowrap">{col}</th>
-                  ))}
+                  {['Nome', 'Tipo', 'Criado por', 'Criação', 'Status', 'Último Parecer', 'Faltam', 'Responderam'].map(col => {
+                    const active = sortCol === col;
+                    return (
+                      <th
+                        key={col}
+                        onClick={() => handleSort(col)}
+                        className="px-2 py-2.5 font-semibold text-gray-600 border-b border-gray-200 whitespace-nowrap cursor-pointer select-none hover:bg-gray-100 transition"
+                      >
+                        <span className="flex items-center gap-1">
+                          {col}
+                          <span className={`text-xs ${active ? 'text-blue-500' : 'text-gray-300'}`}>
+                            {active ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                          </span>
+                        </span>
+                      </th>
+                    );
+                  })}
                   <th className="px-2 py-2.5 font-semibold text-gray-600 border-b border-gray-200">PDF</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((row, idx) => {
+                {sortedFiltered.map((row, idx) => {
                   const isChecked = selected.has(row._id);
                   return (
                     <tr key={row._id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} ${isChecked ? 'ring-1 ring-inset ring-blue-300' : ''}`}>
@@ -931,7 +985,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
               </tbody>
             </table>
             <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-t border-gray-100">
-              <p className="text-xs text-gray-400">{filtered.length} registro{filtered.length !== 1 ? 's' : ''}</p>
+              <p className="text-xs text-gray-400">{sortedFiltered.length} registro{sortedFiltered.length !== 1 ? 's' : ''}</p>
               {someSelected && (
                 <p className="text-xs text-blue-600 font-medium">{selected.size} selecionada{selected.size !== 1 ? 's' : ''}</p>
               )}
