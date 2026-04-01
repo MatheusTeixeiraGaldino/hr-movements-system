@@ -686,266 +686,237 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   const someSelected = selected.size > 0;
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
+    <div className="bg-white rounded-lg shadow" style={{ minWidth: 0 }}>
       {/* Cabeçalho */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-wrap justify-between items-center gap-3 p-4 border-b border-gray-100">
         <div>
-          <h2 className="text-xl font-bold">Relatório de Movimentações</h2>
-          <p className="text-sm text-gray-600 mt-1">
+          <h2 className="text-lg font-bold">Relatório de Movimentações</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
             {currentUser.role === 'admin' ? 'Todas as movimentações do sistema' : 'Movimentações que você criou'}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {someSelected && (
             <button
               onClick={handlePrintSelected}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 text-xs font-medium"
             >
-              <Printer className="w-4 h-4" />
-              Imprimir selecionadas ({selected.size})
+              <Printer className="w-3.5 h-3.5" />
+              Imprimir ({selected.size})
             </button>
           )}
           <button
             onClick={handleExportExcel}
             disabled={exporting || filtered.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-xs font-medium"
           >
             {exporting
-              ? <><Loader2 className="w-4 h-4 animate-spin" />Exportando...</>
-              : <><FileSpreadsheet className="w-4 h-4" />Exportar Excel</>}
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Exportando...</>
+              : <><FileSpreadsheet className="w-3.5 h-3.5" />Excel</>}
           </button>
         </div>
       </div>
 
-      {/* Limpar filtros */}
-      {hasActiveFilters && (
-        <div className="flex justify-end mb-3">
-          <button onClick={clearFilters} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 border border-red-200 bg-red-50 rounded-lg hover:bg-red-100 transition">
-            ✕ Limpar filtros
-          </button>
-        </div>
-      )}
-
-      {/* Hint equipe + status */}
-      {filterTeams.size > 0 && (
-        <div className="mb-4 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
-          Equipe(s) selecionada(s) —{' '}
-          Status <strong>Aprovado</strong> mostra movimentações onde essa equipe já deu o parecer;{' '}
-          Status <strong>Pendente</strong> mostra onde ainda não deu.
-        </div>
-      )}
-
-      {/* Filtros — dropdowns multi-select */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 p-4 bg-gray-50 rounded-lg border">
-
-        {/* Status */}
-        <MultiSelect
-          label="Status"
-          selected={filterStatuses}
-          onToggle={v => toggleSet(setFilterStatuses, v)}
-          onClear={() => setFilterStatuses(new Set())}
-          options={(['Pendente', 'Aprovado'] as const).map(opt => {
-            const count = rowsForStatusCount.filter(r => {
-              if (filterTeams.size === 0) return r._status === opt;
-              return [...filterTeams].some(t => {
-                if (!r._teams.includes(t)) return false;
-                const done = r._teamStatus[t] === 'completed';
-                return opt === 'Aprovado' ? done : !done;
-              });
-            }).length;
-            return { value: opt, label: `${opt === 'Pendente' ? '⏳' : '✓'} ${opt}`, count };
-          })}
-          totalCount={rowsForStatusCount.length}
-        />
-
-        {/* Tipo */}
-        <MultiSelect
-          label="Tipo"
-          selected={filterTypes}
-          onToggle={v => toggleSet(setFilterTypes, v)}
-          onClear={() => setFilterTypes(new Set())}
-          options={MOVEMENT_TYPES.map(t => ({
-            value: t.id,
-            label: t.label,
-            count: rowsForTypeCount.filter(r => r._type === t.id).length,
-          }))}
-          totalCount={rowsForTypeCount.length}
-        />
-
-        {/* Equipe */}
-        <MultiSelect
-          label="Equipe"
-          selected={filterTeams}
-          onToggle={v => toggleSet(setFilterTeams, v)}
-          onClear={() => setFilterTeams(new Set())}
-          options={TEAMS_LIST
-            .map(t => ({
-              value: t.id,
-              label: t.name,
-              count: rowsForTeamCount.filter(r => r._teams.includes(t.id)).length,
-            }))
-            .filter(o => o.count > 0)}
-          totalCount={rowsForTeamCount.length}
-        />
-
-      </div>
-
-      {/* Filtros de data */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded-lg border">
-
-        {/* Data de criação */}
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-            Data de Criação
-          </label>
-          <div className="flex items-center gap-2">
-            <div className="flex-1">
-              <label className="block text-xs text-gray-500 mb-1">De</label>
-              <input
-                type="date"
-                value={dateCreatedStart}
-                onChange={e => setDateCreatedStart(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400"
-              />
-            </div>
-            <span className="text-gray-400 mt-5">→</span>
-            <div className="flex-1">
-              <label className="block text-xs text-gray-500 mb-1">Até</label>
-              <input
-                type="date"
-                value={dateCreatedEnd}
-                onChange={e => setDateCreatedEnd(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400"
-              />
-            </div>
-            {(dateCreatedStart || dateCreatedEnd) && (
-              <button onClick={() => { setDateCreatedStart(''); setDateCreatedEnd(''); }}
-                className="mt-5 text-gray-400 hover:text-red-500 text-xs" title="Limpar">✕</button>
-            )}
+      <div className="p-4">
+        {/* Limpar filtros */}
+        {hasActiveFilters && (
+          <div className="flex justify-end mb-2">
+            <button onClick={clearFilters} className="flex items-center gap-1 px-2.5 py-1 text-xs text-red-600 border border-red-200 bg-red-50 rounded-lg hover:bg-red-100 transition">
+              ✕ Limpar filtros
+            </button>
           </div>
+        )}
+
+        {/* Hint equipe + status */}
+        {filterTeams.size > 0 && (
+          <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+            Equipe(s) selecionada(s) — <strong>Aprovado</strong>: equipe já deu o parecer; <strong>Pendente</strong>: ainda não deu.
+          </div>
+        )}
+
+        {/* Filtros — dropdowns multi-select */}
+        <div className="grid grid-cols-3 gap-3 mb-3">
+
+          {/* Status */}
+          <MultiSelect
+            label="Status"
+            selected={filterStatuses}
+            onToggle={v => toggleSet(setFilterStatuses, v)}
+            onClear={() => setFilterStatuses(new Set())}
+            options={(['Pendente', 'Aprovado'] as const).map(opt => {
+              const count = rowsForStatusCount.filter(r => {
+                if (filterTeams.size === 0) return r._status === opt;
+                return [...filterTeams].some(t => {
+                  if (!r._teams.includes(t)) return false;
+                  const done = r._teamStatus[t] === 'completed';
+                  return opt === 'Aprovado' ? done : !done;
+                });
+              }).length;
+              return { value: opt, label: `${opt === 'Pendente' ? '⏳' : '✓'} ${opt}`, count };
+            })}
+            totalCount={rowsForStatusCount.length}
+          />
+
+          {/* Tipo */}
+          <MultiSelect
+            label="Tipo"
+            selected={filterTypes}
+            onToggle={v => toggleSet(setFilterTypes, v)}
+            onClear={() => setFilterTypes(new Set())}
+            options={MOVEMENT_TYPES.map(t => ({
+              value: t.id,
+              label: t.label,
+              count: rowsForTypeCount.filter(r => r._type === t.id).length,
+            }))}
+            totalCount={rowsForTypeCount.length}
+          />
+
+          {/* Equipe */}
+          <MultiSelect
+            label="Equipe"
+            selected={filterTeams}
+            onToggle={v => toggleSet(setFilterTeams, v)}
+            onClear={() => setFilterTeams(new Set())}
+            options={TEAMS_LIST
+              .map(t => ({
+                value: t.id,
+                label: t.name,
+                count: rowsForTeamCount.filter(r => r._teams.includes(t.id)).length,
+              }))
+              .filter(o => o.count > 0)}
+            totalCount={rowsForTeamCount.length}
+          />
+
         </div>
 
-        {/* Data de aprovação */}
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-            Data de Aprovação <span className="text-gray-400 font-normal normal-case">(maior data de parecer)</span>
-          </label>
-          <div className="flex items-center gap-2">
-            <div className="flex-1">
-              <label className="block text-xs text-gray-500 mb-1">De</label>
-              <input
-                type="date"
-                value={dateApprStart}
-                onChange={e => setDateApprStart(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400"
-              />
+        {/* Filtros de data */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
+
+          {/* Data de criação */}
+          <div className="p-3 bg-gray-50 rounded-lg border">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Data de Criação</label>
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-400 mb-1">De</label>
+                <input type="date" value={dateCreatedStart} onChange={e => setDateCreatedStart(e.target.value)}
+                  className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" />
+              </div>
+              <span className="text-gray-300 text-xs mt-4">→</span>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-400 mb-1">Até</label>
+                <input type="date" value={dateCreatedEnd} onChange={e => setDateCreatedEnd(e.target.value)}
+                  className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" />
+              </div>
+              {(dateCreatedStart || dateCreatedEnd) && (
+                <button onClick={() => { setDateCreatedStart(''); setDateCreatedEnd(''); }}
+                  className="mt-4 text-gray-400 hover:text-red-500" title="Limpar">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
-            <span className="text-gray-400 mt-5">→</span>
-            <div className="flex-1">
-              <label className="block text-xs text-gray-500 mb-1">Até</label>
-              <input
-                type="date"
-                value={dateApprEnd}
-                onChange={e => setDateApprEnd(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400"
-              />
+          </div>
+
+          {/* Data de aprovação */}
+          <div className="p-3 bg-gray-50 rounded-lg border">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+              Data de Aprovação <span className="text-gray-400 font-normal normal-case">(último parecer)</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-400 mb-1">De</label>
+                <input type="date" value={dateApprStart} onChange={e => setDateApprStart(e.target.value)}
+                  className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" />
+              </div>
+              <span className="text-gray-300 text-xs mt-4">→</span>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-400 mb-1">Até</label>
+                <input type="date" value={dateApprEnd} onChange={e => setDateApprEnd(e.target.value)}
+                  className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" />
+              </div>
+              {(dateApprStart || dateApprEnd) && (
+                <button onClick={() => { setDateApprStart(''); setDateApprEnd(''); }}
+                  className="mt-4 text-gray-400 hover:text-red-500" title="Limpar">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
             {(dateApprStart || dateApprEnd) && (
-              <button onClick={() => { setDateApprStart(''); setDateApprEnd(''); }}
-                className="mt-5 text-gray-400 hover:text-red-500 text-xs" title="Limpar">✕</button>
+              <p className="text-xs text-blue-600 mt-1">Apenas movimentações totalmente aprovadas.</p>
             )}
           </div>
-          {(dateApprStart || dateApprEnd) && (
-            <p className="text-xs text-blue-700 mt-1.5">
-              Mostrando apenas movimentações totalmente aprovadas neste período.
-            </p>
-          )}
+
         </div>
 
-      </div>
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <p className="text-gray-500">Nenhuma movimentação encontrada para os filtros selecionados.</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-3 py-3 border-b border-gray-200 w-10">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleSelectAll}
-                    className="w-4 h-4 cursor-pointer"
-                    title="Selecionar todos"
-                  />
-                </th>
-                {['Nome', 'Tipo', 'Criado por', 'Data de criação', 'Status', 'Faltam parecer', 'Com pareceres emitidos'].map(col => (
-                  <th key={col} className="px-3 py-3 font-semibold text-gray-700 border-b border-gray-200 whitespace-nowrap">{col}</th>
-                ))}
-                <th className="px-3 py-3 font-semibold text-gray-700 border-b border-gray-200 whitespace-nowrap">PDF</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((row, idx) => {
-                const isChecked = selected.has(row._id);
-                return (
-                  <tr key={row._id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} ${isChecked ? 'ring-1 ring-inset ring-blue-300' : ''}`}>
-                    <td className="px-3 py-3 border-b border-gray-100">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggleSelect(row._id)}
-                        className="w-4 h-4 cursor-pointer"
-                      />
-                    </td>
-                    <td className="px-3 py-3 border-b border-gray-100 font-medium text-gray-900 whitespace-nowrap">{row.Nome}</td>
-                    <td className="px-3 py-3 border-b border-gray-100 text-gray-600 whitespace-nowrap">{row.Tipo}</td>
-                    <td className="px-3 py-3 border-b border-gray-100 text-gray-600 whitespace-nowrap">{row['Criado por']}</td>
-                    <td className="px-3 py-3 border-b border-gray-100 text-gray-600 whitespace-nowrap">{row['Data de criação']}</td>
-                    <td className="px-3 py-3 border-b border-gray-100 whitespace-nowrap">
-                      <span className={`text-xs px-2 py-1 rounded font-medium ${row.Status === 'Aprovado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                        {row.Status === 'Aprovado' ? '✓ Aprovado' : '⏳ Pendente'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 border-b border-gray-100">
-                      {row['Faltam parecer'] === '—'
-                        ? <span className="text-gray-400">—</span>
-                        : <span className="text-red-700">{row['Faltam parecer']}</span>}
-                    </td>
-                    <td className="px-3 py-3 border-b border-gray-100">
-                      {row['Com pareceres emitidos'] === '—'
-                        ? <span className="text-gray-400">—</span>
-                        : <span className="text-green-700">{row['Com pareceres emitidos']}</span>}
-                    </td>
-                    <td className="px-3 py-3 border-b border-gray-100">
-                      <button
-                        onClick={() => handlePrintOne(row)}
-                        className="flex items-center gap-1 px-2 py-1.5 text-xs text-red-600 border border-red-200 bg-red-50 rounded hover:bg-red-100 transition whitespace-nowrap"
-                        title="Gerar PDF desta movimentação"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        PDF
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <div className="flex items-center justify-between mt-3">
-            <p className="text-xs text-gray-400">{filtered.length} registro{filtered.length !== 1 ? 's' : ''}</p>
-            {someSelected && (
-              <p className="text-xs text-blue-600 font-medium">{selected.size} selecionada{selected.size !== 1 ? 's' : ''}</p>
-            )}
+        {/* Tabela */}
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
-        </div>
-      )}
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-10 bg-gray-50 rounded-lg">
+            <p className="text-gray-500 text-sm">Nenhuma movimentação encontrada.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-gray-100">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-gray-50 text-left">
+                  <th className="px-2 py-2.5 border-b border-gray-200 w-8">
+                    <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="w-3.5 h-3.5 cursor-pointer" title="Selecionar todos" />
+                  </th>
+                  {['Nome', 'Tipo', 'Criado por', 'Criação', 'Status', 'Faltam', 'Responderam'].map(col => (
+                    <th key={col} className="px-2 py-2.5 font-semibold text-gray-600 border-b border-gray-200 whitespace-nowrap">{col}</th>
+                  ))}
+                  <th className="px-2 py-2.5 font-semibold text-gray-600 border-b border-gray-200">PDF</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((row, idx) => {
+                  const isChecked = selected.has(row._id);
+                  return (
+                    <tr key={row._id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} ${isChecked ? 'ring-1 ring-inset ring-blue-300' : ''}`}>
+                      <td className="px-2 py-2 border-b border-gray-100">
+                        <input type="checkbox" checked={isChecked} onChange={() => toggleSelect(row._id)} className="w-3.5 h-3.5 cursor-pointer" />
+                      </td>
+                      <td className="px-2 py-2 border-b border-gray-100 font-medium text-gray-900 max-w-[140px] truncate" title={row.Nome}>{row.Nome}</td>
+                      <td className="px-2 py-2 border-b border-gray-100 text-gray-600 whitespace-nowrap">{row.Tipo}</td>
+                      <td className="px-2 py-2 border-b border-gray-100 text-gray-600 whitespace-nowrap">{row['Criado por']}</td>
+                      <td className="px-2 py-2 border-b border-gray-100 text-gray-500 whitespace-nowrap">{row['Data de criação']}</td>
+                      <td className="px-2 py-2 border-b border-gray-100 whitespace-nowrap">
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${row.Status === 'Aprovado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                          {row.Status === 'Aprovado' ? '✓' : '⏳'} {row.Status}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2 border-b border-gray-100 max-w-[120px]">
+                        {row['Faltam parecer'] === '—'
+                          ? <span className="text-gray-300">—</span>
+                          : <span className="text-red-600 text-xs truncate block" title={row['Faltam parecer']}>{row['Faltam parecer']}</span>}
+                      </td>
+                      <td className="px-2 py-2 border-b border-gray-100 max-w-[120px]">
+                        {row['Com pareceres emitidos'] === '—'
+                          ? <span className="text-gray-300">—</span>
+                          : <span className="text-green-700 text-xs truncate block" title={row['Com pareceres emitidos']}>{row['Com pareceres emitidos']}</span>}
+                      </td>
+                      <td className="px-2 py-2 border-b border-gray-100">
+                        <button onClick={() => handlePrintOne(row)}
+                          className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 border border-red-200 bg-red-50 rounded hover:bg-red-100 transition whitespace-nowrap">
+                          <FileText className="w-3 h-3" />PDF
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-t border-gray-100">
+              <p className="text-xs text-gray-400">{filtered.length} registro{filtered.length !== 1 ? 's' : ''}</p>
+              {someSelected && (
+                <p className="text-xs text-blue-600 font-medium">{selected.size} selecionada{selected.size !== 1 ? 's' : ''}</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
