@@ -27,9 +27,16 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
   const [togglingDoc, setTogglingDoc] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<StatusDossie | 'all'>('all');
 
+  // Carregar dossiês ao montar o componente
   useEffect(() => {
+    console.log('DossieView montado, carregando dossiês...');
     loadDossies();
-  }, []);
+  }, [loadDossies]);
+
+  // Debug: mostrar dossiês carregados
+  useEffect(() => {
+    console.log('Dossiês carregados:', dossies);
+  }, [dossies]);
 
   useEffect(() => {
     if (selectedDossieId) {
@@ -408,6 +415,7 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
       {loading && (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+          <p className="ml-3 text-gray-600">Carregando dossiês...</p>
         </div>
       )}
 
@@ -422,8 +430,25 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
         </div>
       )}
 
+      {/* Debug Info */}
+      {!loading && !error && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-sm text-blue-800">
+            <strong>Debug:</strong> Total de dossiês encontrados: {dossies.length}
+          </p>
+          {dossies.length > 0 && (
+            <details className="mt-2">
+              <summary className="text-xs text-blue-600 cursor-pointer">Ver detalhes</summary>
+              <pre className="text-xs mt-2 bg-white p-2 rounded overflow-auto">
+                {JSON.stringify(dossies, null, 2)}
+              </pre>
+            </details>
+          )}
+        </div>
+      )}
+
       {/* Lista de Dossiês */}
-      {filteredDossies.length === 0 ? (
+      {!loading && filteredDossies.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed">
           <FileText className="w-12 h-12 text-gray-400 mx-auto mb-3" />
           <p className="font-medium text-gray-900">Nenhum dossiê encontrado</p>
