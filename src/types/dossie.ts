@@ -15,7 +15,7 @@ export enum TipoDesligamento {
 }
 
 export enum TipoDocumento {
-  // Documentos gerais
+  // Documentos gerais (variam por tipo de desligamento)
   MOVIMENTACAO_TRABALHISTA = 'movimentacao_trabalhista',
   AVISO_PREVIO = 'aviso_previo',
   TRCT = 'trct',
@@ -25,13 +25,12 @@ export enum TipoDocumento {
   CARTA_ABANDONO = 'carta_abandono',
   DESCRICAO_MOTIVO = 'descricao_motivo',
 
-  // Documentos SESMT (obrigatórios para todos)
+  // Documentos SESMT (obrigatórios para TODOS)
   ASO = 'aso',
   FICHA_EPI = 'ficha_epi',
   FICHA_MEDICA = 'ficha_medica',
   DOSSIE_SESMT = 'dossie_sesmt',
   DECLARACAO_NAO_REALIZACAO_EXAMES = 'declaracao_nao_realizacao_exames',
-  EXAMES_PERIODICOS = 'exames_periodicos',
 }
 
 export enum StatusDossie {
@@ -41,34 +40,19 @@ export enum StatusDossie {
 }
 
 /**
- * Configuração de documentos obrigatórios por tipo de desligamento
- * Inclui documentos gerais + SESMT (que são obrigatórios para todos)
+ * Documentos específicos por tipo de desligamento (NÃO inclui obrigatórios SESMT)
  */
-export const DOCUMENTOS_POR_DESLIGAMENTO: Record<TipoDesligamento, TipoDocumento[]> = {
+export const DOCUMENTOS_ESPECIFICOS_POR_DESLIGAMENTO: Record<TipoDesligamento, TipoDocumento[]> = {
   [TipoDesligamento.PEDIDO_DEMISSAO]: [
     TipoDocumento.MOVIMENTACAO_TRABALHISTA,
     TipoDocumento.AVISO_PREVIO,
     TipoDocumento.TRCT,
     TipoDocumento.EMAIL_SETOR,
-    // SESMT obrigatórios
-    TipoDocumento.ASO,
-    TipoDocumento.FICHA_EPI,
-    TipoDocumento.FICHA_MEDICA,
-    TipoDocumento.DOSSIE_SESMT,
-    TipoDocumento.DECLARACAO_NAO_REALIZACAO_EXAMES,
-    TipoDocumento.EXAMES_PERIODICOS,
   ],
   [TipoDesligamento.TERMINO_CONTRATO]: [
     TipoDocumento.MOVIMENTACAO_TRABALHISTA,
     TipoDocumento.TRCT,
     TipoDocumento.EMAIL_SETOR,
-    // SESMT obrigatórios
-    TipoDocumento.ASO,
-    TipoDocumento.FICHA_EPI,
-    TipoDocumento.FICHA_MEDICA,
-    TipoDocumento.DOSSIE_SESMT,
-    TipoDocumento.DECLARACAO_NAO_REALIZACAO_EXAMES,
-    TipoDocumento.EXAMES_PERIODICOS,
   ],
   [TipoDesligamento.DISPENSA_SEM_JUSTA_CAUSA]: [
     TipoDocumento.MOVIMENTACAO_TRABALHISTA,
@@ -77,39 +61,18 @@ export const DOCUMENTOS_POR_DESLIGAMENTO: Record<TipoDesligamento, TipoDocumento
     TipoDocumento.SEGURO_DESEMPREGO,
     TipoDocumento.EMAIL_SETOR,
     TipoDocumento.EXTRATO_FGTS,
-    // SESMT obrigatórios
-    TipoDocumento.ASO,
-    TipoDocumento.FICHA_EPI,
-    TipoDocumento.FICHA_MEDICA,
-    TipoDocumento.DOSSIE_SESMT,
-    TipoDocumento.DECLARACAO_NAO_REALIZACAO_EXAMES,
-    TipoDocumento.EXAMES_PERIODICOS,
   ],
   [TipoDesligamento.DISPENSA_COM_JUSTA_CAUSA]: [
     TipoDocumento.MOVIMENTACAO_TRABALHISTA,
     TipoDocumento.AVISO_PREVIO,
     TipoDocumento.TRCT,
     TipoDocumento.EMAIL_SETOR,
-    // SESMT obrigatórios
-    TipoDocumento.ASO,
-    TipoDocumento.FICHA_EPI,
-    TipoDocumento.FICHA_MEDICA,
-    TipoDocumento.DOSSIE_SESMT,
-    TipoDocumento.DECLARACAO_NAO_REALIZACAO_EXAMES,
-    TipoDocumento.EXAMES_PERIODICOS,
   ],
   [TipoDesligamento.ABANDONO_EMPREGO]: [
     TipoDocumento.MOVIMENTACAO_TRABALHISTA,
     TipoDocumento.TRCT,
     TipoDocumento.EMAIL_SETOR,
     TipoDocumento.CARTA_ABANDONO,
-    // SESMT obrigatórios
-    TipoDocumento.ASO,
-    TipoDocumento.FICHA_EPI,
-    TipoDocumento.FICHA_MEDICA,
-    TipoDocumento.DOSSIE_SESMT,
-    TipoDocumento.DECLARACAO_NAO_REALIZACAO_EXAMES,
-    TipoDocumento.EXAMES_PERIODICOS,
   ],
   [TipoDesligamento.COMUM_ACORDO]: [
     TipoDocumento.MOVIMENTACAO_TRABALHISTA,
@@ -117,26 +80,12 @@ export const DOCUMENTOS_POR_DESLIGAMENTO: Record<TipoDesligamento, TipoDocumento
     TipoDocumento.TRCT,
     TipoDocumento.EMAIL_SETOR,
     TipoDocumento.EXTRATO_FGTS,
-    // SESMT obrigatórios
-    TipoDocumento.ASO,
-    TipoDocumento.FICHA_EPI,
-    TipoDocumento.FICHA_MEDICA,
-    TipoDocumento.DOSSIE_SESMT,
-    TipoDocumento.DECLARACAO_NAO_REALIZACAO_EXAMES,
-    TipoDocumento.EXAMES_PERIODICOS,
   ],
   [TipoDesligamento.OBITO]: [
     TipoDocumento.MOVIMENTACAO_TRABALHISTA,
     TipoDocumento.TRCT,
     TipoDocumento.EMAIL_SETOR,
     TipoDocumento.EXTRATO_FGTS,
-    // SESMT obrigatórios
-    TipoDocumento.ASO,
-    TipoDocumento.FICHA_EPI,
-    TipoDocumento.FICHA_MEDICA,
-    TipoDocumento.DOSSIE_SESMT,
-    TipoDocumento.DECLARACAO_NAO_REALIZACAO_EXAMES,
-    TipoDocumento.EXAMES_PERIODICOS,
   ],
   [TipoDesligamento.OUTROS_MOTIVOS]: [
     TipoDocumento.MOVIMENTACAO_TRABALHISTA,
@@ -144,15 +93,19 @@ export const DOCUMENTOS_POR_DESLIGAMENTO: Record<TipoDesligamento, TipoDocumento
     TipoDocumento.EMAIL_SETOR,
     TipoDocumento.EXTRATO_FGTS,
     TipoDocumento.DESCRICAO_MOTIVO,
-    // SESMT obrigatórios
-    TipoDocumento.ASO,
-    TipoDocumento.FICHA_EPI,
-    TipoDocumento.FICHA_MEDICA,
-    TipoDocumento.DOSSIE_SESMT,
-    TipoDocumento.DECLARACAO_NAO_REALIZACAO_EXAMES,
-    TipoDocumento.EXAMES_PERIODICOS,
   ],
 };
+
+/**
+ * Documentos SESMT obrigatórios para TODOS os casos
+ */
+export const DOCUMENTOS_OBRIGATORIOS_SESMT: TipoDocumento[] = [
+  TipoDocumento.ASO,
+  TipoDocumento.FICHA_EPI,
+  TipoDocumento.FICHA_MEDICA,
+  TipoDocumento.DOSSIE_SESMT,
+  TipoDocumento.DECLARACAO_NAO_REALIZACAO_EXAMES,
+];
 
 /**
  * Rótulos amigáveis para os tipos de desligamento
@@ -185,7 +138,6 @@ export const LABELS_DOCUMENTO: Record<TipoDocumento, string> = {
   [TipoDocumento.FICHA_MEDICA]: 'Ficha Médica',
   [TipoDocumento.DOSSIE_SESMT]: 'Dossiê SESMT',
   [TipoDocumento.DECLARACAO_NAO_REALIZACAO_EXAMES]: 'Declaração de Não Realização dos Exames Médicos',
-  [TipoDocumento.EXAMES_PERIODICOS]: 'Exames Periódicos',
 };
 
 /**
@@ -226,7 +178,7 @@ export interface AcompanhamentoDossie {
 export interface AuditoriaItem {
   usuario: string;
   email_usuario: string;
-  acao: 'criacao' | 'marcacao' | 'desmarcacao' | 'conclusao' | 'edicao_observacao';
+  acao: 'criacao' | 'marcacao' | 'desmarcacao' | 'conclusao' | 'edicao_observacao' | 'alteracao_tipo';
   documento?: TipoDocumento;
   data_hora: string;
   detalhes?: string;
@@ -237,23 +189,31 @@ export interface AuditoriaItem {
  */
 export interface ConfiguracaoDossie {
   id: string;
-  usuarios_autorizados: string[]; // IDs de usuários
-  emails_autorizados: string[]; // Emails dos usuários
-  perfis_autorizados: string[]; // 'admin', 'responsavel', etc
+  usuarios_autorizados: string[];
+  emails_autorizados: string[];
+  perfis_autorizados: string[];
   ativo: boolean;
   data_criacao: string;
   data_atualizacao: string;
 }
 
 /**
- * Função auxiliar para obter documentos obrigatórios de um tipo de desligamento
+ * Função auxiliar: obter documentos específicos de um tipo de desligamento
  */
-export function getDocumentosObrigatorios(tipoDesligamento: TipoDesligamento): TipoDocumento[] {
-  return DOCUMENTOS_POR_DESLIGAMENTO[tipoDesligamento] || [];
+export function getDocumentosEspecificos(tipoDesligamento: TipoDesligamento): TipoDocumento[] {
+  return DOCUMENTOS_ESPECIFICOS_POR_DESLIGAMENTO[tipoDesligamento] || [];
 }
 
 /**
- * Função auxiliar para verificar se ASO e Declaração são mutuamente exclusivos
+ * Função auxiliar: obter TODOS os documentos (específicos + SESMT)
+ */
+export function getDocumentosObrigatorios(tipoDesligamento: TipoDesligamento): TipoDocumento[] {
+  const especificos = getDocumentosEspecificos(tipoDesligamento);
+  return [...especificos, ...DOCUMENTOS_OBRIGATORIOS_SESMT];
+}
+
+/**
+ * Função auxiliar: verificar se ASO e Declaração são mutuamente exclusivos
  */
 export function verificarExclusividadeASODeclaracao(checklist: ItemChecklist[]): boolean {
   const temASO = checklist.some(item => item.documento === TipoDocumento.ASO && item.marcado);
@@ -264,7 +224,7 @@ export function verificarExclusividadeASODeclaracao(checklist: ItemChecklist[]):
 }
 
 /**
- * Função auxiliar para calcular percentual de conclusão
+ * Função auxiliar: calcular percentual de conclusão
  */
 export function calcularPercentualConclusao(checklist: ItemChecklist[]): number {
   if (checklist.length === 0) return 0;
@@ -273,8 +233,34 @@ export function calcularPercentualConclusao(checklist: ItemChecklist[]): number 
 }
 
 /**
- * Função auxiliar para verificar se todos os documentos obrigatórios foram marcados
+ * Função auxiliar: verificar se todos os documentos obrigatórios foram marcados
  */
 export function todosMarcados(checklist: ItemChecklist[]): boolean {
   return checklist.every(item => item.marcado);
+}
+
+/**
+ * Função auxiliar: verificar se todos os documentos necessários para o tipo estão marcados
+ */
+export function todosDocumentosNecessariosMarados(
+  checklist: ItemChecklist[],
+  tipoDesligamento: TipoDesligamento
+): boolean {
+  const documentosNecessarios = getDocumentosObrigatorios(tipoDesligamento);
+  return documentosNecessarios.every(doc =>
+    checklist.some(item => item.documento === doc && item.marcado)
+  );
+}
+
+/**
+ * Função auxiliar: obter documentos não marcados para um tipo específico
+ */
+export function getDocumentosAindaNaoMarcados(
+  checklist: ItemChecklist[],
+  tipoDesligamento: TipoDesligamento
+): TipoDocumento[] {
+  const documentosNecessarios = getDocumentosObrigatorios(tipoDesligamento);
+  return documentosNecessarios.filter(
+    doc => !checklist.some(item => item.documento === doc && item.marcado)
+  );
 }
