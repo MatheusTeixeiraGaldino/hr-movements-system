@@ -4,10 +4,6 @@ import {
   Square,
   AlertCircle,
   Loader2,
-  FileText,
-  Folder,
-  MessageSquare,
-  Clock,
   User,
 } from 'lucide-react';
 
@@ -17,7 +13,6 @@ import { supabase } from '../lib/supabase';
 import {
   AcompanhamentoDossie,
   TipoDocumento,
-  StatusDossie,
   TipoDesligamento,
   LABELS_DOCUMENTO,
   LABELS_DESLIGAMENTO,
@@ -30,13 +25,11 @@ import {
 interface DossieViewProps {
   currentUser: any;
   selectedDossieId?: string;
-  onBack?: () => void;
 }
 
 export default function DossieView({
   currentUser,
   selectedDossieId,
-  onBack,
 }: DossieViewProps) {
   const {
     dossies,
@@ -177,7 +170,7 @@ export default function DossieView({
       <div className="space-y-6">
         <h1 className="text-2xl font-bold">Dossiê</h1>
 
-        {/* Tipo desligamento */}
+        {/* Tipo */}
         <div className="bg-white p-4 rounded shadow">
           {editingTipo ? (
             <>
@@ -214,7 +207,18 @@ export default function DossieView({
           )}
         </div>
 
-        {/* ALERTAS */}
+        {/* Progresso */}
+        <div className="bg-white p-4 rounded shadow">
+          <div className="w-full bg-gray-200 h-2 rounded">
+            <div
+              className="bg-blue-600 h-2 rounded"
+              style={{ width: `${percentual}%` }}
+            />
+          </div>
+          <p className="text-sm mt-2">{percentual}% concluído</p>
+        </div>
+
+        {/* Alertas */}
         {!exclusividadeOk && (
           <div className="bg-red-100 p-3 rounded flex gap-2">
             <AlertCircle />
@@ -228,7 +232,7 @@ export default function DossieView({
           </div>
         )}
 
-        {/* CHECKLIST */}
+        {/* Checklist */}
         <div className="bg-white p-4 rounded shadow">
           {selectedDossie.checklist.map(item => (
             <div key={item.documento} className="flex gap-2">
@@ -252,7 +256,7 @@ export default function DossieView({
           ))}
         </div>
 
-        {/* OBS */}
+        {/* Observação */}
         <div className="bg-white p-4 rounded shadow">
           <h3>Observação</h3>
 
@@ -273,7 +277,7 @@ export default function DossieView({
           )}
         </div>
 
-        {/* PASTA */}
+        {/* Pasta */}
         <div className="bg-white p-4 rounded shadow">
           <h3>Pasta</h3>
 
@@ -301,7 +305,7 @@ export default function DossieView({
           )}
         </div>
 
-        {/* HISTÓRICO */}
+        {/* Histórico */}
         <div className="bg-white p-4 rounded shadow">
           <h3>Histórico</h3>
 
