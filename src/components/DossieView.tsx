@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { CheckSquare, Square, AlertCircle, Loader2, FileText, Folder, MessageSquare, Clock, User, Lock } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { CheckSquare, Square, AlertCircle, Loader2, FileText, Folder, MessageSquare, Clock, User } from 'lucide-react';
 import { useDossie } from '../hooks/useDossie';
 import {
   AcompanhamentoDossie,
