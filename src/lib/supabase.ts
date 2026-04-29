@@ -138,3 +138,57 @@ export interface DashboardLancamento {
   data_lancamento?: string
   lancado_por_nome?: string
 }
+
+
+// ============================================
+// TIPOS PARA ACOMPANHAMENTO DOSSIÊ
+// ============================================
+
+export interface ItemChecklist {
+  documento: string
+  marcado: boolean
+  data_marcacao?: string
+  usuario_marcacao?: string
+  email_usuario_marcacao?: string
+}
+
+export interface AuditoriaItem {
+  usuario: string
+  email_usuario: string
+  acao: 'criacao' | 'marcacao' | 'desmarcacao' | 'conclusao' | 'edicao_observacao'
+  documento?: string
+  data_hora: string
+  detalhes?: string
+}
+
+export interface AcompanhamentoDossie {
+  id: string
+  movimento_id: string
+  tipo_desligamento: string
+  employee_name: string
+  cpf?: string
+  chapa?: string
+  status: 'pendente' | 'em_andamento' | 'concluido'
+  checklist: ItemChecklist[]
+  observacao?: string
+  pasta_desligado?: string
+  data_criacao: string
+  data_conclusao?: string
+  usuario_criacao: string
+  email_usuario_criacao: string
+  historico_auditoria: AuditoriaItem[]
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ConfiguracaoDossie {
+  id: string
+  usuarios_autorizados: string[]
+  emails_autorizados: string[]
+  perfis_autorizados: string[]
+  ativo: boolean
+  data_criacao: string
+  data_atualizacao: string
+  created_at?: string
+  updated_at?: string
+}
