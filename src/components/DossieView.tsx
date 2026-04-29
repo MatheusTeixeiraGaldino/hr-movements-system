@@ -63,7 +63,7 @@ export default function DossieView({
     currentUser.role === 'admin' || currentUser.role === 'responsavel';
 
   // =========================
-  // 🔥 REGRAS DE DOCUMENTOS
+  // REGRAS DE DOCUMENTOS
   // =========================
   const getDocsByTipo = (tipo: TipoDesligamento): TipoDocumento[] => {
     const base = [
@@ -98,13 +98,12 @@ export default function DossieView({
       TipoDocumento.DECLARACAO_NAO_REALIZACAO_EXAMES,
       TipoDocumento.FICHA_EPI,
       TipoDocumento.FICHA_MEDICA,
-      TipoDocumento.DOSSIE,
     ];
 
     return [...base, ...(mapa[tipo] || []), ...obrigatorios];
   };
 
-  const handleAlterarTipoLocal = async () => {
+  const handleAlterarTipoLocal = () => {
     if (!selectedDossie) return;
 
     const novosDocs = getDocsByTipo(novoTipo);
@@ -116,13 +115,12 @@ export default function DossieView({
       return existente || { documento: doc, marcado: false };
     });
 
-    const updated = {
+    setSelectedDossie({
       ...selectedDossie,
       tipo_desligamento: novoTipo,
       checklist: novoChecklist,
-    };
+    });
 
-    setSelectedDossie(updated);
     setEditingTipo(false);
   };
 
@@ -148,10 +146,6 @@ export default function DossieView({
   // DETALHE
   // =========================
   if (selectedDossie) {
-    const percentual = calcularPercentualConclusao(
-      selectedDossie.checklist
-    );
-
     const exclusividadeOk =
       verificarExclusividadeASODeclaracao(selectedDossie.checklist);
 
@@ -248,9 +242,6 @@ export default function DossieView({
             .map(item => {
               const isASO =
                 item.documento === TipoDocumento.ASO;
-              const isDeclaracao =
-                item.documento ===
-                TipoDocumento.DECLARACAO_NAO_REALIZACAO_EXAMES;
 
               const outroMarcado = selectedDossie.checklist.some(
                 c =>
@@ -291,7 +282,7 @@ export default function DossieView({
             })}
         </div>
 
-        {/* HISTÓRICO DROPDOWN */}
+        {/* HISTÓRICO */}
         <div className="bg-white p-4 rounded shadow">
           <button
             onClick={() => setShowHistorico(!showHistorico)}
