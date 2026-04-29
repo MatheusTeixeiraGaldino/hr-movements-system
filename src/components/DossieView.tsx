@@ -47,11 +47,9 @@ export default function DossieView({
   const [selectedDossie, setSelectedDossie] =
     useState<AcompanhamentoDossie | null>(null);
 
-  const [editingObservacao, setEditingObservacao] = useState(false);
-  const [novaObservacao, setNovaObservacao] = useState('');
-
-  const [editingPasta, setEditingPasta] = useState(false);
-  const [novaPasta, setNovaPasta] = useState('');
+  const [filterStatus, setFilterStatus] = useState<
+    'all' | 'pendente' | 'em_andamento' | 'concluido'
+  >('all');
 
   const [editingTipo, setEditingTipo] = useState(false);
   const [novoTipo, setNovoTipo] = useState<TipoDesligamento>(
@@ -92,40 +90,6 @@ export default function DossieView({
     setTogglingDoc(null);
   };
 
-  const handleSaveObservacao = async () => {
-    if (!selectedDossie) return;
-
-    await atualizarObservacao(
-      selectedDossie.id,
-      novaObservacao,
-      currentUser.name,
-      currentUser.email
-    );
-
-    const updated = await loadDossieById(selectedDossie.id);
-    if (updated) {
-      setSelectedDossie(updated);
-      setEditingObservacao(false);
-    }
-  };
-
-  const handleSavePasta = async () => {
-    if (!selectedDossie) return;
-
-    await atualizarPastaDesligado(
-      selectedDossie.id,
-      novaPasta,
-      currentUser.name,
-      currentUser.email
-    );
-
-    const updated = await loadDossieById(selectedDossie.id);
-    if (updated) {
-      setSelectedDossie(updated);
-      setEditingPasta(false);
-    }
-  };
-
   const handleAlterarTipo = async () => {
     if (!selectedDossie) return;
 
@@ -155,6 +119,9 @@ export default function DossieView({
     }
   };
 
+  // =========================
+  // VIEW DETALHE
+  // =========================
   if (selectedDossie) {
     const percentual = calcularPercentualConclusao(
       selectedDossie.checklist
@@ -170,7 +137,6 @@ export default function DossieView({
 
     return (
       <div className="space-y-6">
-        {/* BOTÃO VOLTAR */}
         {onBack && (
           <button
             onClick={() => {
@@ -233,7 +199,6 @@ export default function DossieView({
           <p className="text-sm mt-2">{percentual}% concluído</p>
         </div>
 
-        {/* Alertas */}
         {!exclusividadeOk && (
           <div className="bg-red-100 p-3 rounded flex gap-2">
             <AlertCircle />
@@ -271,55 +236,6 @@ export default function DossieView({
           ))}
         </div>
 
-        {/* Observação */}
-        <div className="bg-white p-4 rounded shadow">
-          <h3>Observação</h3>
-
-          {editingObservacao ? (
-            <>
-              <textarea
-                value={novaObservacao}
-                onChange={e =>
-                  setNovaObservacao(e.target.value)
-                }
-              />
-              <button onClick={handleSaveObservacao}>
-                Salvar
-              </button>
-            </>
-          ) : (
-            <p>{selectedDossie.observacao || '-'}</p>
-          )}
-        </div>
-
-        {/* Pasta */}
-        <div className="bg-white p-4 rounded shadow">
-          <h3>Pasta</h3>
-
-          {editingPasta ? (
-            <>
-              <input
-                value={novaPasta}
-                onChange={e => setNovaPasta(e.target.value)}
-              />
-              <button onClick={handleSavePasta}>
-                Salvar
-              </button>
-            </>
-          ) : selectedDossie.pasta_desligado ? (
-            <a
-              href={selectedDossie.pasta_desligado}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 underline"
-            >
-              {selectedDossie.pasta_desligado}
-            </a>
-          ) : (
-            <p>-</p>
-          )}
-        </div>
-
         {/* Histórico */}
         <div className="bg-white p-4 rounded shadow">
           <h3>Histórico</h3>
@@ -335,19 +251,76 @@ export default function DossieView({
     );
   }
 
+  // =========================
+  // LISTA COM FILTROS
+  // =========================
   return (
-    <div>
-      <h1>Dossiês</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Acompanhamento Dossiê</h1>
+        <p className="text-gray-600">
+          Gerencie os checklists de documentos
+        </p>
+      </div>
+
+      {/* FILTROS */}
+      <div className="flex gap-2">
+        {(['all', 'pendente', 'em_andamento', 'concluido'] as const).map(status => (
+          <button
+            key={status}
+            onClick={() => setFilterStatus(status)}
+            className={`px-4 py-2 rounded ${
+              filterStatus === status
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200'
+            }`}
+          >
+            {status === 'all'
+              ? 'Todos'
+              : status === 'pendente'
+              ? 'Pendente'
+              : status === 'em_andamento'
+              ? 'Em Andamento'
+              : 'Concluído'}
+          </button>
+        ))}
+      </div>
 
       {loading && <Loader2 className="animate-spin" />}
 
       {error && <p>{error}</p>}
 
-      {dossies.map(d => (
-        <button key={d.id} onClick={() => setSelectedDossie(d)}>
-          {d.employee_name}
-        </button>
-      ))}
+      <div className="grid gap-4">
+        {dossies
+          .filter(d => filterStatus === 'all' || d.status === filterStatus)
+          .map(d => {
+            const percentual = calcularPercentualConclusao(d.checklist);
+
+            return (
+              <button
+                key={d.id}
+                onClick={() => setSelectedDossie(d)}
+                className="bg-white p-4 rounded shadow text-left"
+              >
+                <h3 className="font-semibold">{d.employee_name}</h3>
+                <p className="text-sm text-gray-600">
+                  {LABELS_DESLIGAMENTO[d.tipo_desligamento]}
+                </p>
+
+                <div className="w-full bg-gray-200 h-2 mt-2">
+                  <div
+                    className="bg-blue-600 h-2"
+                    style={{ width: `${percentual}%` }}
+                  />
+                </div>
+
+                <p className="text-xs mt-1">
+                  {percentual}% concluído
+                </p>
+              </button>
+            );
+          })}
+      </div>
     </div>
   );
 }
