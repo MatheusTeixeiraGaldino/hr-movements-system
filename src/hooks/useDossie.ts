@@ -176,6 +176,9 @@ export function useDossie() {
         if (index === -1) throw new Error('Documento não encontrado');
 
         checklist[index].marcado = !checklist[index].marcado;
+        checklist[index].data_marcacao = new Date().toISOString();
+        checklist[index].usuario_marcacao = user;
+        checklist[index].email_usuario_marcacao = email;
 
         const historico = [
           ...(dossie.historico_auditoria || []),
@@ -204,7 +207,9 @@ export function useDossie() {
 
         if (error) throw error;
 
-        await loadDossies();
+        setDossies(prev => 
+          prev.map(d => d.id === id ? { ...d, checklist, status, historico_auditoria: historico } : d)
+        );
       } catch (err: any) {
         setError(err.message);
         console.error(err);
@@ -212,7 +217,7 @@ export function useDossie() {
         setLoading(false);
       }
     },
-    [loadDossieById, loadDossies]
+    [loadDossieById]
   );
 
   // =============================
@@ -248,7 +253,9 @@ export function useDossie() {
 
         if (error) throw error;
 
-        await loadDossies();
+        setDossies(prev =>
+          prev.map(d => d.id === id ? { ...d, observacao, historico_auditoria: historico } : d)
+        );
       } catch (err: any) {
         setError(err.message);
         console.error(err);
@@ -256,7 +263,7 @@ export function useDossie() {
         setLoading(false);
       }
     },
-    [loadDossieById, loadDossies]
+    [loadDossieById]
   );
 
   // =============================
@@ -292,7 +299,9 @@ export function useDossie() {
 
         if (error) throw error;
 
-        await loadDossies();
+        setDossies(prev =>
+          prev.map(d => d.id === id ? { ...d, pasta_desligado: pasta, historico_auditoria: historico } : d)
+        );
       } catch (err: any) {
         setError(err.message);
         console.error(err);
@@ -300,7 +309,7 @@ export function useDossie() {
         setLoading(false);
       }
     },
-    [loadDossieById, loadDossies]
+    [loadDossieById]
   );
 
   return {
