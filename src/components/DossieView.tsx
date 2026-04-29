@@ -33,16 +33,14 @@ export default function DossieView({
   selectedDossieId,
   onBack,
 }: DossieViewProps) {
-  const {
-    dossies,
-    loading,
-    error,
-    loadDossies,
-    loadDossieById,
-    toggleDocumento,
-    atualizarObservacao,
-    atualizarPastaDesligado,
-  } = useDossie();
+const {
+  dossies,
+  loading,
+  error,
+  loadDossies,
+  loadDossieById,
+  toggleDocumento,
+} = useDossie();
 
   const [selectedDossie, setSelectedDossie] =
     useState<AcompanhamentoDossie | null>(null);
