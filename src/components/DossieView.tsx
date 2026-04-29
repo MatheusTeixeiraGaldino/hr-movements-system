@@ -1,7 +1,19 @@
 import { useState, useEffect } from 'react';
-import { CheckSquare, Square, AlertCircle, Loader2, FileText, Folder, MessageSquare, Clock, User } from 'lucide-react';
+import {
+  CheckSquare,
+  Square,
+  AlertCircle,
+  Loader2,
+  FileText,
+  Folder,
+  MessageSquare,
+  Clock,
+  User,
+} from 'lucide-react';
+
 import { useDossie } from '../hooks/useDossie';
 import { supabase } from '../lib/supabase';
+
 import {
   AcompanhamentoDossie,
   TipoDocumento,
@@ -21,18 +33,37 @@ interface DossieViewProps {
   onBack?: () => void;
 }
 
-export default function DossieView({ currentUser, selectedDossieId, onBack }: DossieViewProps) {
-  const { dossies, loading, error, loadDossies, loadDossieById, toggleDocumento, atualizarObservacao, atualizarPastaDesligado } = useDossie();
+export default function DossieView({
+  currentUser,
+  selectedDossieId,
+  onBack,
+}: DossieViewProps) {
+  const {
+    dossies,
+    loading,
+    error,
+    loadDossies,
+    loadDossieById,
+    toggleDocumento,
+    atualizarObservacao,
+    atualizarPastaDesligado,
+  } = useDossie();
 
-  const [selectedDossie, setSelectedDossie] = useState<AcompanhamentoDossie | null>(null);
+  const [selectedDossie, setSelectedDossie] =
+    useState<AcompanhamentoDossie | null>(null);
+
   const [editingObservacao, setEditingObservacao] = useState(false);
   const [novaObservacao, setNovaObservacao] = useState('');
+
   const [editingPasta, setEditingPasta] = useState(false);
   const [novaPasta, setNovaPasta] = useState('');
-  const [togglingDoc, setTogglingDoc] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<StatusDossie | 'all'>('all');
+
   const [editingTipo, setEditingTipo] = useState(false);
-  const [novoTipo, setNovoTipo] = useState<TipoDesligamento>(TipoDesligamento.OUTROS_MOTIVOS);
+  const [novoTipo, setNovoTipo] = useState<TipoDesligamento>(
+    TipoDesligamento.OUTROS_MOTIVOS
+  );
+
+  const [togglingDoc, setTogglingDoc] = useState<string | null>(null);
 
   useEffect(() => {
     loadDossies();
@@ -40,27 +71,42 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
 
   useEffect(() => {
     if (selectedDossieId) {
-      const dossie = dossies.find(d => d.id === selectedDossieId);
-      if (dossie) setSelectedDossie(dossie);
+      const d = dossies.find(d => d.id === selectedDossieId);
+      if (d) setSelectedDossie(d);
     }
   }, [selectedDossieId, dossies]);
 
-  const handleToggleDocumento = async (documento: TipoDocumento) => {
-    if (!selectedDossie) return;
-    setTogglingDoc(documento);
+  const canEdit =
+    currentUser.role === 'admin' || currentUser.role === 'responsavel';
 
-    try {
-      await toggleDocumento(selectedDossie.id, documento, currentUser.name, currentUser.email);
-      const updated = await loadDossieById(selectedDossie.id);
-      if (updated) setSelectedDossie(updated);
-    } finally {
-      setTogglingDoc(null);
-    }
+  const handleToggleDocumento = async (doc: TipoDocumento) => {
+    if (!selectedDossie) return;
+
+    setTogglingDoc(doc);
+
+    await toggleDocumento(
+      selectedDossie.id,
+      doc,
+      currentUser.name,
+      currentUser.email
+    );
+
+    const updated = await loadDossieById(selectedDossie.id);
+    if (updated) setSelectedDossie(updated);
+
+    setTogglingDoc(null);
   };
 
   const handleSaveObservacao = async () => {
     if (!selectedDossie) return;
-    await atualizarObservacao(selectedDossie.id, novaObservacao, currentUser.name, currentUser.email);
+
+    await atualizarObservacao(
+      selectedDossie.id,
+      novaObservacao,
+      currentUser.name,
+      currentUser.email
+    );
+
     const updated = await loadDossieById(selectedDossie.id);
     if (updated) {
       setSelectedDossie(updated);
@@ -70,7 +116,14 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
 
   const handleSavePasta = async () => {
     if (!selectedDossie) return;
-    await atualizarPastaDesligado(selectedDossie.id, novaPasta, currentUser.name, currentUser.email);
+
+    await atualizarPastaDesligado(
+      selectedDossie.id,
+      novaPasta,
+      currentUser.name,
+      currentUser.email
+    );
+
     const updated = await loadDossieById(selectedDossie.id);
     if (updated) {
       setSelectedDossie(updated);
@@ -78,82 +131,186 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
     }
   };
 
-  const canEdit = currentUser.role === 'admin' || currentUser.role === 'responsavel';
+  const handleAlterarTipo = async () => {
+    if (!selectedDossie) return;
+
+    const docs = getDocumentosObrigatorios(novoTipo);
+
+    const checklist = docs.map(doc => {
+      const existente = selectedDossie.checklist.find(
+        c => c.documento === doc
+      );
+      return existente || { documento: doc, marcado: false };
+    });
+
+    const { error } = await supabase
+      .from('acompanhamento_dossie')
+      .update({
+        tipo_desligamento: novoTipo,
+        checklist,
+      })
+      .eq('id', selectedDossie.id);
+
+    if (error) return;
+
+    const updated = await loadDossieById(selectedDossie.id);
+    if (updated) {
+      setSelectedDossie(updated);
+      setEditingTipo(false);
+    }
+  };
 
   if (selectedDossie) {
-    const percentual = calcularPercentualConclusao(selectedDossie.checklist);
-    const isExclusividadeValida = verificarExclusividadeASODeclaracao(selectedDossie.checklist);
-    const todosDocumentosMarcados = todosDocumentosNecessariosMarados(
+    const percentual = calcularPercentualConclusao(
+      selectedDossie.checklist
+    );
+
+    const exclusividadeOk =
+      verificarExclusividadeASODeclaracao(selectedDossie.checklist);
+
+    const docsOk = todosDocumentosNecessariosMarados(
       selectedDossie.checklist,
-      selectedDossie.tipo_desligamento as TipoDesligamento
+      selectedDossie.tipo_desligamento
     );
 
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Acompanhamento Dossiê</h1>
+        <h1 className="text-2xl font-bold">Dossiê</h1>
 
-        <div className="bg-white p-6 rounded-lg shadow">
-          <p><strong>Colaborador:</strong> {selectedDossie.employee_name}</p>
-          <p><strong>Tipo:</strong> {LABELS_DESLIGAMENTO[selectedDossie.tipo_desligamento]}</p>
+        {/* Tipo desligamento */}
+        <div className="bg-white p-4 rounded shadow">
+          {editingTipo ? (
+            <>
+              <select
+                value={novoTipo}
+                onChange={e =>
+                  setNovoTipo(e.target.value as TipoDesligamento)
+                }
+              >
+                {Object.entries(LABELS_DESLIGAMENTO).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+
+              <button onClick={handleAlterarTipo}>Salvar</button>
+            </>
+          ) : (
+            <div className="flex justify-between">
+              <span>
+                {
+                  LABELS_DESLIGAMENTO[
+                    selectedDossie.tipo_desligamento
+                  ]
+                }
+              </span>
+              {canEdit && (
+                <button onClick={() => setEditingTipo(true)}>
+                  Alterar
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="font-semibold mb-2">Progresso</h3>
-          <div className="w-full bg-gray-200 h-3 rounded">
-            <div className="bg-blue-600 h-3 rounded" style={{ width: `${percentual}%` }} />
+        {/* ALERTAS */}
+        {!exclusividadeOk && (
+          <div className="bg-red-100 p-3 rounded flex gap-2">
+            <AlertCircle />
+            ASO e Declaração não podem coexistir
           </div>
-        </div>
+        )}
 
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="font-semibold mb-4">Documentos</h3>
+        {!docsOk && (
+          <div className="bg-yellow-100 p-3 rounded">
+            Documentos pendentes
+          </div>
+        )}
 
+        {/* CHECKLIST */}
+        <div className="bg-white p-4 rounded shadow">
           {selectedDossie.checklist.map(item => (
-            <div key={item.documento} className="flex gap-3 mb-2">
-              <button onClick={() => handleToggleDocumento(item.documento)} disabled={!canEdit}>
-                {item.marcado ? <CheckSquare /> : <Square />}
+            <div key={item.documento} className="flex gap-2">
+              <button
+                disabled={!canEdit}
+                onClick={() =>
+                  handleToggleDocumento(item.documento)
+                }
+              >
+                {togglingDoc === item.documento ? (
+                  <Loader2 className="animate-spin" />
+                ) : item.marcado ? (
+                  <CheckSquare />
+                ) : (
+                  <Square />
+                )}
               </button>
-              <span>{LABELS_DOCUMENTO[item.documento]}</span>
+
+              {LABELS_DOCUMENTO[item.documento]}
             </div>
           ))}
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="font-semibold mb-4">Observações</h3>
+        {/* OBS */}
+        <div className="bg-white p-4 rounded shadow">
+          <h3>Observação</h3>
 
           {editingObservacao ? (
             <>
-              <textarea value={novaObservacao} onChange={e => setNovaObservacao(e.target.value)} />
-              <button onClick={handleSaveObservacao}>Salvar</button>
+              <textarea
+                value={novaObservacao}
+                onChange={e =>
+                  setNovaObservacao(e.target.value)
+                }
+              />
+              <button onClick={handleSaveObservacao}>
+                Salvar
+              </button>
             </>
           ) : (
-            <p>{selectedDossie.observacao || 'Nenhuma'}</p>
+            <p>{selectedDossie.observacao || '-'}</p>
           )}
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="font-semibold mb-4">Pasta</h3>
+        {/* PASTA */}
+        <div className="bg-white p-4 rounded shadow">
+          <h3>Pasta</h3>
 
           {editingPasta ? (
             <>
-              <input value={novaPasta} onChange={e => setNovaPasta(e.target.value)} />
-              <button onClick={handleSavePasta}>Salvar</button>
+              <input
+                value={novaPasta}
+                onChange={e => setNovaPasta(e.target.value)}
+              />
+              <button onClick={handleSavePasta}>
+                Salvar
+              </button>
             </>
+          ) : selectedDossie.pasta_desligado ? (
+            <a
+              href={selectedDossie.pasta_desligado}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 underline"
+            >
+              {selectedDossie.pasta_desligado}
+            </a>
           ) : (
-            <div>
-              {selectedDossie.pasta_desligado ? (
-                <a
-                  href={selectedDossie.pasta_desligado}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 underline"
-                >
-                  {selectedDossie.pasta_desligado}
-                </a>
-              ) : (
-                <p>Nenhuma pasta definida</p>
-              )}
-            </div>
+            <p>-</p>
           )}
+        </div>
+
+        {/* HISTÓRICO */}
+        <div className="bg-white p-4 rounded shadow">
+          <h3>Histórico</h3>
+
+          {selectedDossie.historico_auditoria?.map((h, i) => (
+            <div key={i} className="text-sm border-b py-1">
+              <User className="inline w-3 h-3 mr-1" />
+              {h.usuario} - {h.acao}
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -161,9 +318,10 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
 
   return (
     <div>
-      <h1 className="text-2xl font-bold">Dossiês</h1>
+      <h1>Dossiês</h1>
 
-      {loading && <p>Carregando...</p>}
+      {loading && <Loader2 className="animate-spin" />}
+
       {error && <p>{error}</p>}
 
       {dossies.map(d => (
