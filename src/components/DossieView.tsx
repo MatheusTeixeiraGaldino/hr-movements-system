@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { CheckSquare, Square, AlertCircle, Loader2, FileText, Folder, MessageSquare, Clock, User } from 'lucide-react';
 import { useDossie } from '../hooks/useDossie';
+import { supabase } from '../lib/supabase';
 import {
   AcompanhamentoDossie,
   TipoDocumento,
@@ -32,13 +33,11 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
   const [editingTipo, setEditingTipo] = useState(false);
   const [novoTipo, setNovoTipo] = useState<TipoDesligamento>(TipoDesligamento.OUTROS_MOTIVOS);
 
-  // Carregar dossiês ao montar o componente
   useEffect(() => {
     console.log('DossieView montado, carregando dossiês...');
     loadDossies();
   }, [loadDossies]);
 
-  // Debug: mostrar dossiês carregados
   useEffect(() => {
     console.log('Dossiês carregados:', dossies);
   }, [dossies]);
@@ -117,7 +116,6 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
         },
       ];
 
-      const { supabase } = await import('../lib/supabase');
       const { error } = await supabase
         .from('acompanhamento_dossie')
         .update({
@@ -178,7 +176,6 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
 
     return (
       <div className="space-y-6">
-        {/* Header com botão voltar */}
         <div className="flex items-center justify-between">
           {onBack && (
             <button
@@ -197,7 +194,6 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
           </div>
         </div>
 
-        {/* Informações do Colaborador */}
         <div className="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -214,7 +210,9 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
                     className="w-full text-lg font-semibold text-gray-900 border rounded px-3 py-2"
                   >
                     {Object.entries(LABELS_DESLIGAMENTO).map(([key, label]) => (
-                      <option key={key} value={key}>{label}</option>
+                      <option key={key} value={key}>
+                        {label}
+                      </option>
                     ))}
                   </select>
                   <div className="flex gap-2">
@@ -266,7 +264,6 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
           </div>
         </div>
 
-        {/* Indicador de Progresso */}
         <div className="bg-white rounded-lg shadow p-6">
           <div className="mb-4">
             <div className="flex justify-between items-center mb-2">
@@ -305,7 +302,6 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
           )}
         </div>
 
-        {/* Checklist de Documentos */}
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Documentos Obrigatórios</h3>
           <div className="space-y-3">
@@ -350,7 +346,6 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
           </div>
         </div>
 
-        {/* Observações */}
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
@@ -401,7 +396,6 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
           )}
         </div>
 
-        {/* Pasta do Desligado */}
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
@@ -464,7 +458,6 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
           )}
         </div>
 
-        {/* Auditoria */}
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Clock className="w-5 h-5" />
@@ -510,7 +503,6 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
         <p className="text-gray-600 mt-1">Gerencie os checklists de documentos para desligamentos</p>
       </div>
 
-      {/* Filtros */}
       <div className="flex gap-2">
         {(['all', StatusDossie.PENDENTE, StatusDossie.EM_ANDAMENTO, StatusDossie.CONCLUIDO] as const).map(status => (
           <button
@@ -527,7 +519,6 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
         ))}
       </div>
 
-      {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
@@ -535,7 +526,6 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
         </div>
       )}
 
-      {/* Error */}
       {error && (
         <div className="flex gap-3 p-4 bg-red-50 border border-red-200 rounded-lg">
           <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
@@ -546,7 +536,6 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
         </div>
       )}
 
-      {/* Lista de Dossiês */}
       {!loading && filteredDossies.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed">
           <FileText className="w-12 h-12 text-gray-400 mx-auto mb-3" />
