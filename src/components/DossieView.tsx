@@ -209,11 +209,13 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
                     onChange={(e) => setNovoTipo(e.target.value as TipoDesligamento)}
                     className="w-full text-lg font-semibold text-gray-900 border rounded px-3 py-2"
                   >
-                    {Object.entries(LABELS_DESLIGAMENTO).map(([key, label]) => (
-                      <option key={key} value={key}>
-                        {label}
-                      </option>
-                    ))}
+                    {Object.entries(LABELS_DESLIGAMENTO).map(([key, label]) => {
+                      return (
+                        <option key={key} value={key}>
+                          {label}
+                        </option>
+                      );
+                    })}
                   </select>
                   <div className="flex gap-2">
                     <button
