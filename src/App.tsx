@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight, FileText } from 'lucide-react';
+import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import RelatorioView from './components/RelatorioView';
 import DossieView from './components/DossieView';
