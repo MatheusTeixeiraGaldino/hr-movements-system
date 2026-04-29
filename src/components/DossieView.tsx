@@ -25,11 +25,13 @@ import {
 interface DossieViewProps {
   currentUser: any;
   selectedDossieId?: string;
+  onBack?: () => void;
 }
 
 export default function DossieView({
   currentUser,
   selectedDossieId,
+  onBack,
 }: DossieViewProps) {
   const {
     dossies,
@@ -168,6 +170,19 @@ export default function DossieView({
 
     return (
       <div className="space-y-6">
+        {/* BOTÃO VOLTAR */}
+        {onBack && (
+          <button
+            onClick={() => {
+              setSelectedDossie(null);
+              onBack();
+            }}
+            className="text-sm text-blue-600 hover:underline"
+          >
+            ← Voltar
+          </button>
+        )}
+
         <h1 className="text-2xl font-bold">Dossiê</h1>
 
         {/* Tipo */}
