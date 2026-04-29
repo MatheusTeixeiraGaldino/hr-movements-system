@@ -32,62 +32,52 @@ export function useDossie() {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: err } = await supabase
+      const { data, error } = await supabase
         .from('acompanhamento_dossie')
         .select('*')
         .order('data_criacao', { ascending: false });
 
-      if (err) throw err;
+      if (error) throw error;
 
       const normalizados = (data || []).map(normalizarDossie);
       setDossies(normalizados);
     } catch (err: any) {
-      setError(err.message || 'Erro ao carregar dossiês');
-      console.error('Erro ao carregar dossiês:', err);
+      setError(err.message);
+      console.error(err);
     } finally {
       setLoading(false);
     }
   }, []);
 
   const loadDossieById = useCallback(async (id: string) => {
-    setLoading(true);
-    setError(null);
     try {
-      const { data, error: err } = await supabase
+      const { data, error } = await supabase
         .from('acompanhamento_dossie')
         .select('*')
         .eq('id', id)
         .maybeSingle();
 
-      if (err) throw err;
+      if (error) throw error;
       return data ? normalizarDossie(data) : null;
     } catch (err: any) {
-      setError(err.message || 'Erro ao carregar dossiê');
       console.error(err);
       return null;
-    } finally {
-      setLoading(false);
     }
   }, []);
 
   const loadDossieByMovimentoId = useCallback(async (movimentoId: string) => {
-    setLoading(true);
-    setError(null);
     try {
-      const { data, error: err } = await supabase
+      const { data, error } = await supabase
         .from('acompanhamento_dossie')
         .select('*')
         .eq('movimento_id', movimentoId)
         .maybeSingle();
 
-      if (err) throw err;
+      if (error) throw error;
       return data ? normalizarDossie(data) : null;
     } catch (err: any) {
-      setError(err.message || 'Erro ao carregar dossiê');
       console.error(err);
       return null;
-    } finally {
-      setLoading(false);
     }
   }, []);
 
@@ -96,8 +86,8 @@ export function useDossie() {
       movimentoId: string,
       tipoDesligamento: TipoDesligamento,
       employeeName: string,
-      usuarioCriacao: string,
-      emailUsuarioCriacao: string,
+      usuario: string,
+      email: string,
       cpf?: string,
       chapa?: string
     ) => {
@@ -112,13 +102,13 @@ export function useDossie() {
         }));
 
         const auditoria: AuditoriaItem = {
-          usuario: usuarioCriacao,
-          email_usuario: emailUsuarioCriacao,
+          usuario,
+          email_usuario: email,
           acao: 'criacao',
           data_hora: new Date().toISOString(),
         };
 
-        const { data, error: err } = await supabase
+        const { data, error } = await supabase
           .from('acompanhamento_dossie')
           .insert([
             {
@@ -131,19 +121,19 @@ export function useDossie() {
               checklist,
               historico_auditoria: [auditoria],
               data_criacao: new Date().toISOString(),
-              usuario_criacao: usuarioCriacao,
-              email_usuario_criacao: emailUsuarioCriacao,
+              usuario_criacao: usuario,
+              email_usuario_criacao: email,
             },
           ])
           .select()
           .single();
 
-        if (err) throw err;
+        if (error) throw error;
 
         await loadDossies();
         return data ? normalizarDossie(data) : null;
       } catch (err: any) {
-        setError(err.message || 'Erro ao criar dossiê');
+        setError(err.message);
         console.error(err);
         return null;
       } finally {
@@ -182,7 +172,7 @@ export function useDossie() {
         if (todosMarcados(checklist)) status = StatusDossie.CONCLUIDO;
         else if (checklist.some(i => i.marcado)) status = StatusDossie.EM_ANDAMENTO;
 
-        const { error: err } = await supabase
+        const { error } = await supabase
           .from('acompanhamento_dossie')
           .update({
             checklist,
@@ -191,7 +181,87 @@ export function useDossie() {
           })
           .eq('id', id);
 
-        if (err) throw err;
+        if (error) throw error;
+
+        await loadDossies();
+      } catch (err: any) {
+        setError(err.message);
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loadDossieById, loadDossies]
+  );
+
+  const atualizarObservacao = useCallback(
+    async (id: string, observacao: string, user: string, email: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const dossie = await loadDossieById(id);
+        if (!dossie) throw new Error('Dossiê não encontrado');
+
+        const historico = [
+          ...(dossie.historico_auditoria || []),
+          {
+            usuario: user,
+            email_usuario: email,
+            acao: 'edicao_observacao',
+            data_hora: new Date().toISOString(),
+            detalhes: observacao,
+          },
+        ];
+
+        const { error } = await supabase
+          .from('acompanhamento_dossie')
+          .update({
+            observacao,
+            historico_auditoria: historico,
+          })
+          .eq('id', id);
+
+        if (error) throw error;
+
+        await loadDossies();
+      } catch (err: any) {
+        setError(err.message);
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loadDossieById, loadDossies]
+  );
+
+  const atualizarPastaDesligado = useCallback(
+    async (id: string, pasta: string, user: string, email: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const dossie = await loadDossieById(id);
+        if (!dossie) throw new Error('Dossiê não encontrado');
+
+        const historico = [
+          ...(dossie.historico_auditoria || []),
+          {
+            usuario: user,
+            email_usuario: email,
+            acao: 'edicao_observacao',
+            data_hora: new Date().toISOString(),
+            detalhes: pasta,
+          },
+        ];
+
+        const { error } = await supabase
+          .from('acompanhamento_dossie')
+          .update({
+            pasta_desligado: pasta,
+            historico_auditoria: historico,
+          })
+          .eq('id', id);
+
+        if (error) throw error;
 
         await loadDossies();
       } catch (err: any) {
@@ -213,5 +283,7 @@ export function useDossie() {
     loadDossieByMovimentoId,
     criarDossieAutomatico,
     toggleDocumento,
+    atualizarObservacao,
+    atualizarPastaDesligado,
   };
 }
