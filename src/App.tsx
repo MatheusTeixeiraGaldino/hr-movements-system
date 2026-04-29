@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight } from 'lucide-react';
+import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight, FileText } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import RelatorioView from './components/RelatorioView';
+import DossieView from './components/DossieView';
+import DossieConfigView from './components/DossieConfigView';
+import { useDossie } from './hooks/useDossie';
+import { TipoDesligamento } from './types/dossie';
 
 type UserRole = 'admin' | 'responsavel' | 'team_member';
 type MovementType = 'demissao' | 'transferencia' | 'alteracao' | 'promocao';
@@ -293,10 +297,12 @@ export default function App() {
             { id: 'dashboard', label: 'Dashboard', icon: '▦' },
             ...(((['admin', 'responsavel'] as string[]).includes(currentUser.role)) ? [
               { id: 'relatorio', label: 'Relatório', icon: '📊' },
+              { id: 'dossie', label: 'Acompanhamento Dossiê', icon: '📋' },
             ] : []),
             ...(currentUser.role === 'admin' ? [
               { id: 'setores', label: 'Setores & Emails', icon: '✉' },
               { id: 'usuarios', label: 'Usuários', icon: '👤' },
+              { id: 'dossie_config', label: 'Config. Dossiê', icon: '⚙' },
             ] : []),
           ].map(item => {
             const active = view === item.id;
@@ -385,6 +391,12 @@ export default function App() {
             movements={movements}
             loading={loading}
           />
+        )}
+        {view === 'dossie' && ((['admin', 'responsavel'] as string[]).includes(currentUser.role)) && (
+          <DossieView currentUser={currentUser} onBack={() => setView('dashboard')} />
+        )}
+        {view === 'dossie_config' && currentUser.role === 'admin' && (
+          <DossieConfigView />
         )}
       </main>
     </div>
@@ -765,8 +777,32 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
 
       if (formData.deadline) newMovement.deadline = formData.deadline;
 
-      const { error } = await supabase.from('movements').insert([newMovement]);
+      const { data: insertedData, error } = await supabase.from('movements').insert([newMovement]).select().single();
       if (error) throw error;
+
+      // Criar dossiê automaticamente se for desligamento
+      if (movementType === 'demissao') {
+        try {
+          const tipoDesligamento = formData.tipoDesligamento || TipoDesligamento.OUTROS_MOTIVOS;
+          const cpf = formData.cpf || undefined;
+          const chapa = formData.chapa || undefined;
+          
+          // Importar useDossie dentro do contexto
+          const dossieHook = useDossie();
+          await dossieHook.criarDossieAutomatico(
+            insertedData.id,
+            tipoDesligamento,
+            formData.employeeName,
+            currentUser?.name || '',
+            currentUser?.email || '',
+            cpf,
+            chapa
+          );
+        } catch (dossieErr) {
+          console.error('Erro ao criar dossiê automaticamente:', dossieErr);
+          // Não falhar a movimentação se o dossiê não for criado
+        }
+      }
 
       const { data: usersData } = await supabase.from('users').select('email, name, team_ids, team_names').overlaps('team_ids', selectedTeams);
 
