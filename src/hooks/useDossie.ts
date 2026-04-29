@@ -208,7 +208,7 @@ export function useDossie() {
         if (error) throw error;
 
         setDossies(prev => 
-          prev.map(d => d.id === id ? { ...d, checklist, status, historico_auditoria: historico } : d)
+          prev.map(d => d.id === id ? { ...d, checklist, status, historico_auditoria: historico } as AcompanhamentoDossie : d)
         );
       } catch (err: any) {
         setError(err.message);
@@ -254,7 +254,7 @@ export function useDossie() {
         if (error) throw error;
 
         setDossies(prev =>
-          prev.map(d => d.id === id ? { ...d, observacao, historico_auditoria: historico } : d)
+          prev.map(d => d.id === id ? { ...d, observacao, historico_auditoria: historico } as AcompanhamentoDossie : d)
         );
       } catch (err: any) {
         setError(err.message);
@@ -300,7 +300,7 @@ export function useDossie() {
         if (error) throw error;
 
         setDossies(prev =>
-          prev.map(d => d.id === id ? { ...d, pasta_desligado: pasta, historico_auditoria: historico } : d)
+          prev.map(d => d.id === id ? { ...d, pasta_desligado: pasta, historico_auditoria: historico } as AcompanhamentoDossie : d)
         );
       } catch (err: any) {
         setError(err.message);
