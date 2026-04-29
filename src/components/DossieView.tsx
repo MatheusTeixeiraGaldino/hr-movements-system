@@ -95,12 +95,9 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
       return;
     }
 
-    setLoading(true);
     try {
-      // Obter novos documentos necessários
       const novosDocumentos = getDocumentosObrigatorios(novoTipo);
       
-      // Manter marcações anteriores onde possível, resetar as outras
       const novoChecklist = novosDocumentos.map(doc => {
         const existente = selectedDossie.checklist.find(c => c.documento === doc);
         return existente || {
