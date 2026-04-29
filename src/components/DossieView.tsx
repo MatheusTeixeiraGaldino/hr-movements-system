@@ -430,23 +430,6 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
         </div>
       )}
 
-      {/* Debug Info */}
-      {!loading && !error && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <p className="text-sm text-blue-800">
-            <strong>Debug:</strong> Total de dossiês encontrados: {dossies.length}
-          </p>
-          {dossies.length > 0 && (
-            <details className="mt-2">
-              <summary className="text-xs text-blue-600 cursor-pointer">Ver detalhes</summary>
-              <pre className="text-xs mt-2 bg-white p-2 rounded overflow-auto">
-                {JSON.stringify(dossies, null, 2)}
-              </pre>
-            </details>
-          )}
-        </div>
-      )}
-
       {/* Lista de Dossiês */}
       {!loading && filteredDossies.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed">
