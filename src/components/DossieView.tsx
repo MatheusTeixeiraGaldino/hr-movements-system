@@ -47,17 +47,23 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
     }
   }, [selectedDossieId, dossies]);
 
-  const handleToggleDocumento = async (documento: TipoDocumento) => {
-    if (!selectedDossie) return;
-    setTogglingDoc(documento);
-    try {
-      await toggleDocumento(selectedDossie.id, documento, currentUser.name, currentUser.email);
-      const updated = await loadDossieById(selectedDossie.id);
-      if (updated) setSelectedDossie(updated);
-    } finally {
-      setTogglingDoc(null);
+const handleToggleDocumento = async (documento: TipoDocumento) => {
+  if (!selectedDossie) return;
+  setTogglingDoc(documento);
+  try {
+    await toggleDocumento(selectedDossie.id, documento, currentUser.name, currentUser.email);
+    // Pequeno delay para garantir que o Supabase processou
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const updated = await loadDossieById(selectedDossie.id);
+    if (updated) {
+      setSelectedDossie(updated);
     }
-  };
+  } catch (error) {
+    console.error('Erro ao marcar documento:', error);
+  } finally {
+    setTogglingDoc(null);
+  }
+};
 
   const handleSaveObservacao = async () => {
     if (!selectedDossie) return;
