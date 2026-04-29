@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, Plus, Trash2, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Settings, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ConfiguracaoDossie } from '../types/dossie';
 
