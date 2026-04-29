@@ -4,11 +4,9 @@ import {
   Square,
   AlertCircle,
   Loader2,
-  User,
 } from 'lucide-react';
 
 import { useDossie } from '../hooks/useDossie';
-import { supabase } from '../lib/supabase';
 
 import {
   AcompanhamentoDossie,
@@ -18,8 +16,6 @@ import {
   LABELS_DESLIGAMENTO,
   calcularPercentualConclusao,
   verificarExclusividadeASODeclaracao,
-  todosDocumentosNecessariosMarados,
-  getDocumentosObrigatorios,
 } from '../types/dossie';
 
 interface DossieViewProps {
@@ -33,28 +29,24 @@ export default function DossieView({
   selectedDossieId,
   onBack,
 }: DossieViewProps) {
-const {
-  dossies,
-  loading,
-  error,
-  loadDossies,
-  loadDossieById,
-  toggleDocumento,
-} = useDossie();
+  const {
+    dossies,
+    loading,
+    error,
+    loadDossies,
+    loadDossieById,
+    toggleDocumento,
+  } = useDossie();
 
   const [selectedDossie, setSelectedDossie] =
     useState<AcompanhamentoDossie | null>(null);
 
-  const [filterStatus, setFilterStatus] = useState<
-    'all' | 'pendente' | 'em_andamento' | 'concluido'
-  >('all');
-
-  const [editingTipo, setEditingTipo] = useState(false);
+  const [showHistorico, setShowHistorico] = useState(false);
+  const [togglingDoc, setTogglingDoc] = useState<string | null>(null);
   const [novoTipo, setNovoTipo] = useState<TipoDesligamento>(
     TipoDesligamento.OUTROS_MOTIVOS
   );
-
-  const [togglingDoc, setTogglingDoc] = useState<string | null>(null);
+  const [editingTipo, setEditingTipo] = useState(false);
 
   useEffect(() => {
     loadDossies();
@@ -69,6 +61,70 @@ const {
 
   const canEdit =
     currentUser.role === 'admin' || currentUser.role === 'responsavel';
+
+  // =========================
+  // 🔥 REGRAS DE DOCUMENTOS
+  // =========================
+  const getDocsByTipo = (tipo: TipoDesligamento): TipoDocumento[] => {
+    const base = [
+      TipoDocumento.MOVIMENTACAO_TRABALHISTA,
+      TipoDocumento.TRCT,
+      TipoDocumento.EMAIL_SETOR,
+    ];
+
+    const mapa: Record<string, TipoDocumento[]> = {
+      PEDIDO_DEMISSAO: [TipoDocumento.AVISO_PREVIO],
+      TERMINO_CONTRATO: [],
+      DISPENSA_SEM_JUSTA_CAUSA: [
+        TipoDocumento.AVISO_PREVIO,
+        TipoDocumento.SEGURO_DESEMPREGO,
+        TipoDocumento.EXTRATO_FGTS,
+      ],
+      DISPENSA_COM_JUSTA_CAUSA: [TipoDocumento.AVISO_PREVIO],
+      ABANDONO: [TipoDocumento.CARTA_ABANDONO],
+      COMUM_ACORDO: [
+        TipoDocumento.AVISO_PREVIO,
+        TipoDocumento.EXTRATO_FGTS,
+      ],
+      OBITO: [TipoDocumento.EXTRATO_FGTS],
+      OUTROS_MOTIVOS: [
+        TipoDocumento.EXTRATO_FGTS,
+        TipoDocumento.DESCRICAO_MOTIVO,
+      ],
+    };
+
+    const obrigatorios = [
+      TipoDocumento.ASO,
+      TipoDocumento.DECLARACAO_NAO_REALIZACAO_EXAMES,
+      TipoDocumento.FICHA_EPI,
+      TipoDocumento.FICHA_MEDICA,
+      TipoDocumento.DOSSIE,
+    ];
+
+    return [...base, ...(mapa[tipo] || []), ...obrigatorios];
+  };
+
+  const handleAlterarTipoLocal = async () => {
+    if (!selectedDossie) return;
+
+    const novosDocs = getDocsByTipo(novoTipo);
+
+    const novoChecklist = novosDocs.map(doc => {
+      const existente = selectedDossie.checklist.find(
+        c => c.documento === doc
+      );
+      return existente || { documento: doc, marcado: false };
+    });
+
+    const updated = {
+      ...selectedDossie,
+      tipo_desligamento: novoTipo,
+      checklist: novoChecklist,
+    };
+
+    setSelectedDossie(updated);
+    setEditingTipo(false);
+  };
 
   const handleToggleDocumento = async (doc: TipoDocumento) => {
     if (!selectedDossie) return;
@@ -88,37 +144,8 @@ const {
     setTogglingDoc(null);
   };
 
-  const handleAlterarTipo = async () => {
-    if (!selectedDossie) return;
-
-    const docs = getDocumentosObrigatorios(novoTipo);
-
-    const checklist = docs.map(doc => {
-      const existente = selectedDossie.checklist.find(
-        c => c.documento === doc
-      );
-      return existente || { documento: doc, marcado: false };
-    });
-
-    const { error } = await supabase
-      .from('acompanhamento_dossie')
-      .update({
-        tipo_desligamento: novoTipo,
-        checklist,
-      })
-      .eq('id', selectedDossie.id);
-
-    if (error) return;
-
-    const updated = await loadDossieById(selectedDossie.id);
-    if (updated) {
-      setSelectedDossie(updated);
-      setEditingTipo(false);
-    }
-  };
-
   // =========================
-  // VIEW DETALHE
+  // DETALHE
   // =========================
   if (selectedDossie) {
     const percentual = calcularPercentualConclusao(
@@ -128,196 +155,218 @@ const {
     const exclusividadeOk =
       verificarExclusividadeASODeclaracao(selectedDossie.checklist);
 
-    const docsOk = todosDocumentosNecessariosMarados(
-      selectedDossie.checklist,
+    const docsObrigatorios = getDocsByTipo(
       selectedDossie.tipo_desligamento
+    );
+
+    const docsOk = docsObrigatorios.every(doc =>
+      selectedDossie.checklist.some(
+        c => c.documento === doc && c.marcado
+      )
     );
 
     return (
       <div className="space-y-6">
-        {onBack && (
+        {/* HEADER */}
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold">
+              {selectedDossie.employee_name}
+            </h1>
+            <p className="text-gray-600">
+              {
+                LABELS_DESLIGAMENTO[
+                  selectedDossie.tipo_desligamento
+                ]
+              }
+            </p>
+          </div>
+
           <button
             onClick={() => {
               setSelectedDossie(null);
-              onBack();
+              onBack && onBack();
             }}
-            className="text-sm text-blue-600 hover:underline"
+            className="px-3 py-1 bg-gray-100 rounded"
           >
             ← Voltar
           </button>
+        </div>
+
+        {/* ALTERAR TIPO */}
+        {canEdit && (
+          <div className="bg-white p-4 rounded shadow">
+            {editingTipo ? (
+              <>
+                <select
+                  value={novoTipo}
+                  onChange={e =>
+                    setNovoTipo(e.target.value as TipoDesligamento)
+                  }
+                >
+                  {Object.entries(LABELS_DESLIGAMENTO).map(
+                    ([k, v]) => (
+                      <option key={k} value={k}>
+                        {v}
+                      </option>
+                    )
+                  )}
+                </select>
+
+                <button onClick={handleAlterarTipoLocal}>
+                  Confirmar
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setEditingTipo(true)}>
+                Alterar Tipo
+              </button>
+            )}
+          </div>
         )}
 
-        <h1 className="text-2xl font-bold">Dossiê</h1>
-
-        {/* Tipo */}
-        <div className="bg-white p-4 rounded shadow">
-          {editingTipo ? (
-            <>
-              <select
-                value={novoTipo}
-                onChange={e =>
-                  setNovoTipo(e.target.value as TipoDesligamento)
-                }
-              >
-                {Object.entries(LABELS_DESLIGAMENTO).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-
-              <button onClick={handleAlterarTipo}>Salvar</button>
-            </>
-          ) : (
-            <div className="flex justify-between">
-              <span>
-                {
-                  LABELS_DESLIGAMENTO[
-                    selectedDossie.tipo_desligamento
-                  ]
-                }
-              </span>
-              {canEdit && (
-                <button onClick={() => setEditingTipo(true)}>
-                  Alterar
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Progresso */}
-        <div className="bg-white p-4 rounded shadow">
-          <div className="w-full bg-gray-200 h-2 rounded">
-            <div
-              className="bg-blue-600 h-2 rounded"
-              style={{ width: `${percentual}%` }}
-            />
-          </div>
-          <p className="text-sm mt-2">{percentual}% concluído</p>
-        </div>
-
+        {/* ALERTAS */}
         {!exclusividadeOk && (
           <div className="bg-red-100 p-3 rounded flex gap-2">
             <AlertCircle />
-            ASO e Declaração não podem coexistir
+            ASO e Declaração não podem ser marcados juntos
           </div>
         )}
 
         {!docsOk && (
           <div className="bg-yellow-100 p-3 rounded">
-            Documentos pendentes
+            Documentos obrigatórios pendentes
           </div>
         )}
 
-        {/* Checklist */}
-        <div className="bg-white p-4 rounded shadow">
-          {selectedDossie.checklist.map(item => (
-            <div key={item.documento} className="flex gap-2">
-              <button
-                disabled={!canEdit}
-                onClick={() =>
-                  handleToggleDocumento(item.documento)
-                }
-              >
-                {togglingDoc === item.documento ? (
-                  <Loader2 className="animate-spin" />
-                ) : item.marcado ? (
-                  <CheckSquare />
-                ) : (
-                  <Square />
-                )}
-              </button>
+        {/* CHECKLIST */}
+        <div className="bg-white p-4 rounded shadow space-y-2">
+          {selectedDossie.checklist
+            .filter(c =>
+              docsObrigatorios.includes(c.documento)
+            )
+            .map(item => {
+              const isASO =
+                item.documento === TipoDocumento.ASO;
+              const isDeclaracao =
+                item.documento ===
+                TipoDocumento.DECLARACAO_NAO_REALIZACAO_EXAMES;
 
-              {LABELS_DOCUMENTO[item.documento]}
-            </div>
-          ))}
+              const outroMarcado = selectedDossie.checklist.some(
+                c =>
+                  c.marcado &&
+                  (isASO
+                    ? c.documento ===
+                      TipoDocumento.DECLARACAO_NAO_REALIZACAO_EXAMES
+                    : c.documento === TipoDocumento.ASO)
+              );
+
+              const disable = outroMarcado && !item.marcado;
+
+              return (
+                <div
+                  key={item.documento}
+                  className="flex gap-2 items-center"
+                >
+                  <button
+                    disabled={!canEdit || disable}
+                    onClick={() =>
+                      handleToggleDocumento(item.documento)
+                    }
+                  >
+                    {togglingDoc === item.documento ? (
+                      <Loader2 className="animate-spin w-4 h-4" />
+                    ) : item.marcado ? (
+                      <CheckSquare />
+                    ) : (
+                      <Square />
+                    )}
+                  </button>
+
+                  <span>
+                    {LABELS_DOCUMENTO[item.documento]}
+                  </span>
+                </div>
+              );
+            })}
         </div>
 
-        {/* Histórico */}
+        {/* HISTÓRICO DROPDOWN */}
         <div className="bg-white p-4 rounded shadow">
-          <h3>Histórico</h3>
+          <button
+            onClick={() => setShowHistorico(!showHistorico)}
+            className="w-full flex justify-between"
+          >
+            <span>Histórico</span>
+            <span>{showHistorico ? '▲' : '▼'}</span>
+          </button>
 
-          {selectedDossie.historico_auditoria?.map((h, i) => (
-            <div key={i} className="text-sm border-b py-1">
-              <User className="inline w-3 h-3 mr-1" />
-              {h.usuario} - {h.acao}
+          {showHistorico && (
+            <div className="mt-2 space-y-2">
+              {selectedDossie.historico_auditoria?.map(
+                (h, i) => (
+                  <div key={i} className="text-sm border-b">
+                    <p>{h.usuario}</p>
+                    <p>{h.acao}</p>
+                  </div>
+                )
+              )}
             </div>
-          ))}
+          )}
         </div>
       </div>
     );
   }
 
   // =========================
-  // LISTA COM FILTROS
+  // LISTA
   // =========================
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Acompanhamento Dossiê</h1>
-        <p className="text-gray-600">
-          Gerencie os checklists de documentos
-        </p>
-      </div>
-
-      {/* FILTROS */}
-      <div className="flex gap-2">
-        {(['all', 'pendente', 'em_andamento', 'concluido'] as const).map(status => (
-          <button
-            key={status}
-            onClick={() => setFilterStatus(status)}
-            className={`px-4 py-2 rounded ${
-              filterStatus === status
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200'
-            }`}
-          >
-            {status === 'all'
-              ? 'Todos'
-              : status === 'pendente'
-              ? 'Pendente'
-              : status === 'em_andamento'
-              ? 'Em Andamento'
-              : 'Concluído'}
-          </button>
-        ))}
-      </div>
+    <div className="space-y-4">
+      <h1 className="text-2xl font-bold">
+        Acompanhamento Dossiê
+      </h1>
 
       {loading && <Loader2 className="animate-spin" />}
-
       {error && <p>{error}</p>}
 
       <div className="grid gap-4">
-        {dossies
-          .filter(d => filterStatus === 'all' || d.status === filterStatus)
-          .map(d => {
-            const percentual = calcularPercentualConclusao(d.checklist);
+        {dossies.map(d => {
+          const percentual = calcularPercentualConclusao(
+            d.checklist
+          );
 
-            return (
-              <button
-                key={d.id}
-                onClick={() => setSelectedDossie(d)}
-                className="bg-white p-4 rounded shadow text-left"
-              >
-                <h3 className="font-semibold">{d.employee_name}</h3>
-                <p className="text-sm text-gray-600">
-                  {LABELS_DESLIGAMENTO[d.tipo_desligamento]}
-                </p>
+          return (
+            <button
+              key={d.id}
+              onClick={() => setSelectedDossie(d)}
+              className="bg-white p-4 rounded shadow text-left"
+            >
+              <h3 className="font-semibold">
+                {d.employee_name}
+              </h3>
 
-                <div className="w-full bg-gray-200 h-2 mt-2">
-                  <div
-                    className="bg-blue-600 h-2"
-                    style={{ width: `${percentual}%` }}
-                  />
-                </div>
+              <p className="text-sm text-gray-600">
+                {
+                  LABELS_DESLIGAMENTO[
+                    d.tipo_desligamento
+                  ]
+                }
+              </p>
 
-                <p className="text-xs mt-1">
-                  {percentual}% concluído
-                </p>
-              </button>
-            );
-          })}
+              <div className="w-full bg-gray-200 h-2 mt-2">
+                <div
+                  className="bg-blue-600 h-2"
+                  style={{ width: `${percentual}%` }}
+                />
+              </div>
+
+              <p className="text-xs mt-1">
+                {percentual}% concluído
+              </p>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
