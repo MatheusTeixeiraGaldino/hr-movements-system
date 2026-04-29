@@ -23,12 +23,19 @@ export function useDossie() {
     setLoading(true);
     setError(null);
     try {
+      console.log('Iniciando carregamento de dossiês...');
+      
       const { data, error: err } = await supabase
         .from('acompanhamento_dossie')
         .select('*')
         .order('data_criacao', { ascending: false });
 
-      if (err) throw err;
+      if (err) {
+        console.error('Erro do Supabase:', err);
+        throw err;
+      }
+      
+      console.log('Dossiês carregados do Supabase:', data);
       setDossies(data || []);
     } catch (err: any) {
       const errorMsg = err.message || 'Erro ao carregar dossiês';
@@ -105,8 +112,11 @@ export function useDossie() {
       setLoading(true);
       setError(null);
       try {
+        console.log('Criando dossiê automático:', { movimentoId, tipoDesligamento, employeeName });
+        
         // Obter documentos obrigatórios
         const documentosObrigatorios = getDocumentosObrigatorios(tipoDesligamento);
+        console.log('Documentos obrigatórios:', documentosObrigatorios);
 
         // Criar checklist inicial
         const checklist: ItemChecklist[] = documentosObrigatorios.map(doc => ({
@@ -140,13 +150,20 @@ export function useDossie() {
           historico_auditoria: [auditoriaInicial],
         };
 
+        console.log('Dados do dossiê a inserir:', novoDossie);
+
         const { data, error: err } = await supabase
           .from('acompanhamento_dossie')
           .insert([novoDossie])
           .select()
           .single();
 
-        if (err) throw err;
+        if (err) {
+          console.error('Erro ao inserir dossiê:', err);
+          throw err;
+        }
+
+        console.log('Dossiê criado com sucesso:', data);
 
         // Recarregar dossiês
         await loadDossies();
