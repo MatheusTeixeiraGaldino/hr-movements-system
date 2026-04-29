@@ -5,10 +5,13 @@ import {
   AcompanhamentoDossie,
   TipoDocumento,
   StatusDossie,
+  TipoDesligamento,
   LABELS_DOCUMENTO,
   LABELS_DESLIGAMENTO,
   calcularPercentualConclusao,
   verificarExclusividadeASODeclaracao,
+  todosDocumentosNecessariosMarados,
+  getDocumentosObrigatorios,
 } from '../types/dossie';
 
 interface DossieViewProps {
@@ -26,6 +29,8 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
   const [novaPasta, setNovaPasta] = useState('');
   const [togglingDoc, setTogglingDoc] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<StatusDossie | 'all'>('all');
+  const [editingTipo, setEditingTipo] = useState(false);
+  const [novoTipo, setNovoTipo] = useState<TipoDesligamento>(TipoDesligamento.OUTROS_MOTIVOS);
 
   // Carregar dossiês ao montar o componente
   useEffect(() => {
@@ -47,23 +52,22 @@ export default function DossieView({ currentUser, selectedDossieId, onBack }: Do
     }
   }, [selectedDossieId, dossies]);
 
-const handleToggleDocumento = async (documento: TipoDocumento) => {
-  if (!selectedDossie) return;
-  setTogglingDoc(documento);
-  try {
-    await toggleDocumento(selectedDossie.id, documento, currentUser.name, currentUser.email);
-    // Pequeno delay para garantir que o Supabase processou
-    await new Promise(resolve => setTimeout(resolve, 300));
-    const updated = await loadDossieById(selectedDossie.id);
-    if (updated) {
-      setSelectedDossie(updated);
+  const handleToggleDocumento = async (documento: TipoDocumento) => {
+    if (!selectedDossie) return;
+    setTogglingDoc(documento);
+    try {
+      await toggleDocumento(selectedDossie.id, documento, currentUser.name, currentUser.email);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const updated = await loadDossieById(selectedDossie.id);
+      if (updated) {
+        setSelectedDossie(updated);
+      }
+    } catch (error) {
+      console.error('Erro ao marcar documento:', error);
+    } finally {
+      setTogglingDoc(null);
     }
-  } catch (error) {
-    console.error('Erro ao marcar documento:', error);
-  } finally {
-    setTogglingDoc(null);
-  }
-};
+  };
 
   const handleSaveObservacao = async () => {
     if (!selectedDossie) return;
@@ -82,6 +86,61 @@ const handleToggleDocumento = async (documento: TipoDocumento) => {
     if (updated) {
       setSelectedDossie(updated);
       setEditingPasta(false);
+    }
+  };
+
+  const handleAlterarTipoDesligamento = async () => {
+    if (!selectedDossie || novoTipo === selectedDossie.tipo_desligamento) {
+      setEditingTipo(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Obter novos documentos necessários
+      const novosDocumentos = getDocumentosObrigatorios(novoTipo);
+      
+      // Manter marcações anteriores onde possível, resetar as outras
+      const novoChecklist = novosDocumentos.map(doc => {
+        const existente = selectedDossie.checklist.find(c => c.documento === doc);
+        return existente || {
+          documento: doc,
+          marcado: false,
+        };
+      });
+
+      const historico = [
+        ...(selectedDossie.historico_auditoria || []),
+        {
+          usuario: currentUser.name,
+          email_usuario: currentUser.email,
+          acao: 'alteracao_tipo' as const,
+          data_hora: new Date().toISOString(),
+          detalhes: `Alterado de ${LABELS_DESLIGAMENTO[selectedDossie.tipo_desligamento as TipoDesligamento]} para ${LABELS_DESLIGAMENTO[novoTipo]}`,
+        },
+      ];
+
+      const { supabase } = await import('../lib/supabase');
+      const { error } = await supabase
+        .from('acompanhamento_dossie')
+        .update({
+          tipo_desligamento: novoTipo,
+          checklist: novoChecklist,
+          historico_auditoria: historico,
+        })
+        .eq('id', selectedDossie.id);
+
+      if (error) throw error;
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const updated = await loadDossieById(selectedDossie.id);
+      if (updated) {
+        setSelectedDossie(updated);
+        setEditingTipo(false);
+      }
+    } catch (error) {
+      console.error('Erro ao alterar tipo:', error);
+      alert('Erro ao alterar tipo de desligamento');
     }
   };
 
@@ -113,10 +172,12 @@ const handleToggleDocumento = async (documento: TipoDocumento) => {
 
   const filteredDossies = dossies.filter(d => filterStatus === 'all' || d.status === filterStatus);
 
+  const canEdit = currentUser.role === 'admin' || currentUser.role === 'responsavel';
+
   if (selectedDossie) {
     const percentual = calcularPercentualConclusao(selectedDossie.checklist);
     const isExclusividadeValida = verificarExclusividadeASODeclaracao(selectedDossie.checklist);
-    const canEdit = currentUser.role === 'admin' || currentUser.role === 'responsavel';
+    const todosDocumentosMarcados = todosDocumentosNecessariosMarados(selectedDossie.checklist, selectedDossie.tipo_desligamento as TipoDesligamento);
 
     return (
       <div className="space-y-6">
@@ -148,9 +209,50 @@ const handleToggleDocumento = async (documento: TipoDocumento) => {
             </div>
             <div>
               <p className="text-sm text-gray-600">Tipo de Desligamento</p>
-              <p className="text-lg font-semibold text-gray-900">
-                {LABELS_DESLIGAMENTO[selectedDossie.tipo_desligamento]}
-              </p>
+              {editingTipo ? (
+                <div className="space-y-2">
+                  <select
+                    value={novoTipo}
+                    onChange={(e) => setNovoTipo(e.target.value as TipoDesligamento)}
+                    className="w-full text-lg font-semibold text-gray-900 border rounded px-3 py-2"
+                  >
+                    {Object.entries(LABELS_DESLIGAMENTO).map(([key, label]) => (
+                      <option key={key} value={key}>{label}</option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleAlterarTipoDesligamento}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                    >
+                      Confirmar
+                    </button>
+                    <button
+                      onClick={() => setEditingTipo(false)}
+                      className="px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <p className="text-lg font-semibold text-gray-900">
+                    {LABELS_DESLIGAMENTO[selectedDossie.tipo_desligamento as TipoDesligamento]}
+                  </p>
+                  {canEdit && (
+                    <button
+                      onClick={() => {
+                        setEditingTipo(true);
+                        setNovoTipo(selectedDossie.tipo_desligamento as TipoDesligamento);
+                      }}
+                      className="text-xs px-2 py-1 bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
+                    >
+                      Alterar
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
             {selectedDossie.cpf && (
               <div>
@@ -191,6 +293,16 @@ const handleToggleDocumento = async (documento: TipoDocumento) => {
               <div>
                 <p className="font-medium text-red-900">Atenção</p>
                 <p className="text-sm text-red-700">ASO e Declaração de Não Realização são mutuamente exclusivos. Desmarque um deles.</p>
+              </div>
+            </div>
+          )}
+
+          {!todosDocumentosMarcados && (
+            <div className="flex gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg mt-3">
+              <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium text-yellow-900">Documentos pendentes</p>
+                <p className="text-sm text-yellow-700">Complete todos os documentos obrigatórios para o tipo de desligamento selecionado.</p>
               </div>
             </div>
           )}
@@ -339,7 +451,7 @@ const handleToggleDocumento = async (documento: TipoDocumento) => {
           ) : (
             <div>
               {selectedDossie.pasta_desligado ? (
-                <a
+                
                   href={selectedDossie.pasta_desligado}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -376,6 +488,7 @@ const handleToggleDocumento = async (documento: TipoDocumento) => {
                       {item.acao === 'criacao' && 'Criou o dossiê'}
                       {item.acao === 'conclusao' && 'Concluiu o dossiê'}
                       {item.acao === 'edicao_observacao' && 'Editou informações'}
+                      {item.acao === 'alteracao_tipo' && 'Alterou tipo de desligamento'}
                       {item.detalhes && ` - ${item.detalhes}`}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
@@ -464,7 +577,7 @@ const handleToggleDocumento = async (documento: TipoDocumento) => {
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1">
                     <h3 className="font-semibold text-gray-900">{dossie.employee_name}</h3>
-                    <p className="text-sm text-gray-600">{LABELS_DESLIGAMENTO[dossie.tipo_desligamento]}</p>
+                    <p className="text-sm text-gray-600">{LABELS_DESLIGAMENTO[dossie.tipo_desligamento as TipoDesligamento]}</p>
                   </div>
                   <span className={`text-xs px-2 py-1 rounded-full border font-medium ${getStatusColor(dossie.status)}`}>
                     {getStatusLabel(dossie.status)}
