@@ -20,6 +20,8 @@ function normalizarDossie(d: any): AcompanhamentoDossie {
     historico_auditoria: Array.isArray(d.historico_auditoria)
       ? d.historico_auditoria
       : [],
+    // NOVO: Incluir data_demissao
+    data_demissao: d.data_demissao || undefined,
   };
 }
 
@@ -104,7 +106,8 @@ export function useDossie() {
       usuario: string,
       email: string,
       cpf?: string,
-      chapa?: string
+      chapa?: string,
+      dataDemissao?: string // NOVO: Aceitar data de demissão
     ) => {
       setLoading(true);
       setError(null);
@@ -133,6 +136,7 @@ export function useDossie() {
               employee_name: employeeName,
               cpf: cpf || null,
               chapa: chapa || null,
+              data_demissao: dataDemissao || null, // NOVO
               status: StatusDossie.PENDENTE,
               checklist,
               historico_auditoria: [auditoria],
@@ -175,6 +179,7 @@ export function useDossie() {
         const index = checklist.findIndex(i => i.documento === documento);
         if (index === -1) throw new Error('Documento não encontrado');
 
+        // CORRIGIDO: Toggle correto do marcado
         checklist[index].marcado = !checklist[index].marcado;
         checklist[index].data_marcacao = new Date().toISOString();
         checklist[index].usuario_marcacao = user;
@@ -209,6 +214,52 @@ export function useDossie() {
 
         setDossies(prev => 
           prev.map(d => d.id === id ? { ...d, checklist, status, historico_auditoria: historico } as AcompanhamentoDossie : d)
+        );
+      } catch (err: any) {
+        setError(err.message);
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loadDossieById]
+  );
+
+  // =============================
+  // ATUALIZAR DATA DE DEMISSÃO
+  // =============================
+  const atualizarDataDemissao = useCallback(
+    async (id: string, dataDemissao: string, user: string, email: string) => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const dossie = await loadDossieById(id);
+        if (!dossie) throw new Error('Dossiê não encontrado');
+
+        const historico = [
+          ...(dossie.historico_auditoria || []),
+          {
+            usuario: user,
+            email_usuario: email,
+            acao: 'edicao_observacao' as const,
+            data_hora: new Date().toISOString(),
+            detalhes: `Data de demissão alterada para ${dataDemissao}`,
+          },
+        ];
+
+        const { error } = await supabase
+          .from('acompanhamento_dossie')
+          .update({
+            data_demissao: dataDemissao,
+            historico_auditoria: historico,
+          })
+          .eq('id', id);
+
+        if (error) throw error;
+
+        setDossies(prev =>
+          prev.map(d => d.id === id ? { ...d, data_demissao: dataDemissao, historico_auditoria: historico } as AcompanhamentoDossie : d)
         );
       } catch (err: any) {
         setError(err.message);
@@ -323,5 +374,6 @@ export function useDossie() {
     toggleDocumento,
     atualizarObservacao,
     atualizarPastaDesligado,
+    atualizarDataDemissao, // NOVO
   };
 }
