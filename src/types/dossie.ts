@@ -153,6 +153,7 @@ export interface ItemChecklist {
 
 /**
  * Interface principal para o Acompanhamento Dossiê
+ * ALTERAÇÃO: Adicionado campo data_demissao
  */
 export interface AcompanhamentoDossie {
   id: string;
@@ -161,6 +162,7 @@ export interface AcompanhamentoDossie {
   employee_name: string;
   cpf?: string;
   chapa?: string;
+  data_demissao?: string; // NOVO: Data de demissão (YYYY-MM-DD)
   status: StatusDossie;
   checklist: ItemChecklist[];
   observacao?: string;
