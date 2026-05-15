@@ -731,6 +731,7 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
   );
 }
 function DashboardView({ currentUser, movements, loading, loadMovements, setSelectedMovement, setView, activeTeamId }: any) {
+  const dossieHook = useDossie();
   const [showNewMovement, setShowNewMovement] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [movementType, setMovementType] = useState<MovementType | null>(null);
@@ -1494,10 +1495,12 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
             <div><span className="text-gray-600 font-medium">Data de criação:</span><p className="text-gray-900">{new Date(selectedMovement.created_at).toLocaleDateString('pt-BR')}</p></div>
             {selectedMovement.deadline && <div><span className="text-gray-600 font-medium">Prazo limite:</span><p className="text-gray-900">{new Date(selectedMovement.deadline).toLocaleDateString('pt-BR')}</p></div>}
             {Object.entries(selectedMovement.details).map(([key, value]) => {
-              const labels: any = { dismissalDate: 'Data do Desligamento', company: 'Empresa', sector: 'Setor', oldSector: 'Setor Atual', newSector: 'Setor Destino', oldPosition: 'Função Atual', newPosition: 'Função Destino', changeDate: 'Data da Mudança', tipoDesligamento: 'Tipo de Desligamento' };
-              if (key === 'observation') return null;
-              return (<div key={key}><span className="text-gray-600 font-medium">{labels[key] || key}:</span><p className="text-gray-900">{typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/) ? new Date(value).toLocaleDateString('pt-BR') : String(value)}</p></div>);
-            })}
+  const labels: any = { dismissalDate: 'Data do Desligamento', company: 'Empresa', sector: 'Setor', oldSector: 'Setor Atual', newSector: 'Setor Destino', oldPosition: 'Função Atual', newPosition: 'Função Destino', changeDate: 'Data da Mudança', tipoDesligamento: 'Tipo de Desligamento' };
+  if (key === 'observation') return null;
+  // ← ADICIONE ESTA LINHA:
+  if (key === 'tipoDesligamento' && !currentUser?.can_manage_demissoes) return null;
+  return (<div key={key}><span className="text-gray-600 font-medium">{labels[key] || key}:</span><p className="text-gray-900">{typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/) ? new Date(value).toLocaleDateString('pt-BR') : String(value)}</p></div>);
+})}
           </div>
           {(selectedMovement.details?.observation || selectedMovement.observation) && (
             <div className="mt-4 pt-4 border-t">
