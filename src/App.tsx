@@ -790,28 +790,27 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
       if (error) throw error;
 
       // Criar dossiê automaticamente se for desligamento
-      if (movementType === 'demissao') {
-        try {
-          const tipoDesligamento = formData.tipoDesligamento || TipoDesligamento.OUTROS_MOTIVOS;
-          const cpf = formData.cpf || undefined;
-          const chapa = formData.chapa || undefined;
-          const dataDemissao = formData.dismissalDate || undefined;
-          
-          const dossieHook = useDossie();
-          await dossieHook.criarDossieAutomatico(
-            insertedData.id,
-            tipoDesligamento,
-            formData.employeeName,
-            currentUser?.name || '',
-            currentUser?.email || '',
-            cpf,
-            chapa,
-            dataDemissao
-          );
-        } catch (dossieErr) {
-          console.error('Erro ao criar dossiê automaticamente:', dossieErr);
-        }
-      }
+if (movementType === 'demissao') {
+  try {
+    const tipoDesligamento = formData.tipoDesligamento || TipoDesligamento.OUTROS_MOTIVOS;
+    const cpf = formData.cpf || undefined;
+    const chapa = formData.chapa || undefined;
+    const dataDemissao = formData.dismissalDate || undefined;
+    
+    await dossieHook.criarDossieAutomatico(
+      insertedData.id,
+      tipoDesligamento,
+      formData.employeeName,
+      currentUser?.name || '',
+      currentUser?.email || '',
+      cpf,
+      chapa,
+      dataDemissao
+    );
+  } catch (dossieErr) {
+    console.error('Erro ao criar dossiê automaticamente:', dossieErr);
+  }
+}
 
       const { data: usersData } = await supabase.from('users').select('email, name, team_ids, team_names').overlaps('team_ids', selectedTeams);
 
