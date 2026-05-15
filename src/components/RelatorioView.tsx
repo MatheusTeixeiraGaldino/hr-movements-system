@@ -130,15 +130,20 @@ function buildMovementPDFHtml(m: Movement): string {
       <table class="info-table">
         <tr>
           <td class="detail-label">Cancelado por</td>
-          <td class="detail-value">${m.cancelamento.cancelado_por} (${m.cancelamento.cancelado_por_email})</td>
+          <td class="detail-value">
+  ${m.cancelamento?.cancelado_por || '—'}
+  (${m.cancelamento?.cancelado_por_email || '—'})
+</td>
         </tr>
         <tr>
           <td class="detail-label">Data/Hora do cancelamento</td>
-          <td class="detail-value">${formatDateTime(m.cancelamento.cancelado_em)}</td>
+          <td class="detail-value">
+  ${formatDateTime(m.cancelamento?.cancelado_em)}
+</td>
         </tr>
         <tr>
           <td class="detail-label" style="vertical-align:top">Motivo</td>
-          <td class="detail-value" style="font-style:italic">${m.cancelamento.motivo}</td>
+          <td class="detail-value" style="font-style:italic">   ${m.cancelamento?.motivo || '—'} </td>
         </tr>
       </table>
     </div>`;
@@ -581,13 +586,18 @@ function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
         : '—';
 
       let canceledAt: Date | null = null;
-      let canceledAtStr = '—';
-      let canceledByStr = '—';
-      if (isCanceled) {
-        canceledAt = new Date(m.cancelamento.cancelado_em);
-        canceledAtStr = formatDate(m.cancelamento.cancelado_em);
-        canceledByStr = m.cancelamento.cancelado_por;
-      }
+let canceledAtStr = '—';
+let canceledByStr = '—';
+
+if (isCanceled) {
+  canceledAt = m.cancelamento?.cancelado_em
+    ? new Date(m.cancelamento.cancelado_em)
+    : null;
+
+  canceledAtStr = formatDate(m.cancelamento?.cancelado_em);
+
+  canceledByStr = m.cancelamento?.cancelado_por || '—';
+}
 
       return {
         _id: m.id, _type: m.type, _teams: m.selected_teams,
