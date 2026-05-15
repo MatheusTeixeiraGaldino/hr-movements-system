@@ -26,6 +26,12 @@ interface Movement {
   created_by: string;
   details: Record<string, any>;
   deadline?: string | null;
+  cancelamento?: {
+    motivo: string;
+    cancelado_em: string;
+    cancelado_por: string;
+    cancelado_por_email: string;
+  } | null;
 }
 
 interface CurrentUser {
@@ -95,8 +101,12 @@ function buildMovementPDFHtml(m: Movement): string {
   const criacao = formatDate(m.created_at);
   const prazo   = m.deadline ? formatDate(m.deadline) : '—';
   const allDone = m.selected_teams.every(id => m.responses[id]?.status === 'completed');
-  const statusColor = allDone ? '#166534' : '#92400e';
-  const statusBg    = allDone ? '#dcfce7' : '#fef3c7';
+  const isCanceled = m.cancelamento !== null && m.cancelamento !== undefined;
+  
+  let statusColor = isCanceled ? '#dc2626' : (allDone ? '#166534' : '#92400e');
+  let statusBg    = isCanceled ? '#fee2e2' : (allDone ? '#dcfce7' : '#fef3c7');
+  let statusText  = isCanceled ? '✕ CANCELADO' : (allDone ? '✓ APROVADO — TODOS OS PARECERES EMITIDOS' : '⏳ PENDENTE — AGUARDANDO PARECERES');
+  let statusBorder = isCanceled ? '#fca5a5' : (allDone ? '#86efac' : '#fde68a');
 
   // ── detalhes da movimentação ──
   const detailRows = Object.entries(m.details)
@@ -111,94 +121,120 @@ function buildMovementPDFHtml(m: Movement): string {
 
   const observation = m.details?.observation || (m as any).observation;
 
+  // ── info cancelamento ──
+  let cancelamentoHtml = '';
+  if (isCanceled) {
+    cancelamentoHtml = `
+    <div class="cancellation-box">
+      <p class="cancellation-title">Informações do Cancelamento</p>
+      <table class="info-table">
+        <tr>
+          <td class="detail-label">Cancelado por</td>
+          <td class="detail-value">${m.cancelamento.cancelado_por} (${m.cancelamento.cancelado_por_email})</td>
+        </tr>
+        <tr>
+          <td class="detail-label">Data/Hora do cancelamento</td>
+          <td class="detail-value">${formatDateTime(m.cancelamento.cancelado_em)}</td>
+        </tr>
+        <tr>
+          <td class="detail-label" style="vertical-align:top">Motivo</td>
+          <td class="detail-value" style="font-style:italic">${m.cancelamento.motivo}</td>
+        </tr>
+      </table>
+    </div>`;
+  }
+
   // ── pareceres por equipe ──
-  const teamSections = m.selected_teams.map(teamId => {
-    const teamName = TEAMS_MAP[teamId] || teamId;
-    const resp     = m.responses[teamId];
-    const done     = resp?.status === 'completed';
-    const color    = done ? '#166534' : '#92400e';
-    const bg       = done ? '#f0fdf4' : '#fffbeb';
-    const border   = done ? '#86efac' : '#fde68a';
+  let teamSections = '';
+  if (!isCanceled) {
+    teamSections = m.selected_teams.map(teamId => {
+      const teamName = TEAMS_MAP[teamId] || teamId;
+      const resp     = m.responses[teamId];
+      const done     = resp?.status === 'completed';
+      const color    = done ? '#166534' : '#92400e';
+      const bg       = done ? '#f0fdf4' : '#fffbeb';
+      const border   = done ? '#86efac' : '#fde68a';
 
-    // última entrada do histórico = data/hora real do parecer
-    const history  = resp?.history || [];
-    const lastEntry= history.length > 0 ? history[history.length - 1] : null;
-    const pareceristaNome  = lastEntry?.user_name  || '—';
-    const pareceristaMail  = lastEntry?.user_email || '';
-    const dataHoraParecer  = lastEntry?.timestamp ? formatDateTime(lastEntry.timestamp) : (resp?.date ? formatDate(resp.date) : '—');
-    const acaoLabel        = lastEntry?.action === 'updated' ? 'Atualizado' : 'Emitido';
+      // última entrada do histórico = data/hora real do parecer
+      const history  = resp?.history || [];
+      const lastEntry= history.length > 0 ? history[history.length - 1] : null;
+      const pareceristaNome  = lastEntry?.user_name  || '—';
+      const pareceristaMail  = lastEntry?.user_email || '';
+      const dataHoraParecer  = lastEntry?.timestamp ? formatDateTime(lastEntry.timestamp) : (resp?.date ? formatDate(resp.date) : '—');
+      const acaoLabel        = lastEntry?.action === 'updated' ? 'Atualizado' : 'Emitido';
 
-    // histórico completo de alterações
-    const histRows = history.length > 1
-      ? history.slice(0, -1).map((h, i) => `
-          <tr>
-            <td style="color:#6b7280;font-size:9px;padding:3px 6px">${i + 1}ª versão</td>
-            <td style="color:#6b7280;font-size:9px;padding:3px 6px">${h.user_name}</td>
-            <td style="color:#6b7280;font-size:9px;padding:3px 6px">${formatDateTime(h.timestamp)}</td>
-            <td style="color:#6b7280;font-size:9px;padding:3px 6px">${h.action === 'created' ? 'Emissão inicial' : 'Atualização'}</td>
-          </tr>`).join('')
-      : '';
+      // histórico completo de alterações
+      const histRows = history.length > 1
+        ? history.slice(0, -1).map((h, i) => `
+            <tr>
+              <td style="color:#6b7280;font-size:9px;padding:3px 6px">${i + 1}ª versão</td>
+              <td style="color:#6b7280;font-size:9px;padding:3px 6px">${h.user_name}</td>
+              <td style="color:#6b7280;font-size:9px;padding:3px 6px">${formatDateTime(h.timestamp)}</td>
+              <td style="color:#6b7280;font-size:9px;padding:3px 6px">${h.action === 'created' ? 'Emissão inicial' : 'Atualização'}</td>
+            </tr>`).join('')
+        : '';
 
-    // checklist
-    const checklist = resp?.checklist || {};
-    const checkItems = Object.entries(checklist);
-    const checkHtml = checkItems.length > 0
-      ? `<div class="checklist-wrap">
-           <p class="checklist-title">Checklist</p>
-           ${checkItems.map(([item, checked]) => `
-             <div class="check-item">
-               <span class="check-icon" style="color:${checked ? '#16a34a' : '#dc2626'}">${checked ? '✓' : '✗'}</span>
-               <span style="color:${checked ? '#111' : '#6b7280'}">${item}</span>
-             </div>`).join('')}
-         </div>`
-      : '';
+      // checklist
+      const checklist = resp?.checklist || {};
+      const checkItems = Object.entries(checklist);
+      const checkHtml = checkItems.length > 0
+        ? `<div class="checklist-wrap">
+             <p class="checklist-title">Checklist</p>
+             ${checkItems.map(([item, checked]) => `
+               <div class="check-item">
+                 <span class="check-icon" style="color:${checked ? '#16a34a' : '#dc2626'}">${checked ? '✓' : '✗'}</span>
+                 <span style="color:${checked ? '#111' : '#6b7280'}">${item}</span>
+               </div>`).join('')}
+           </div>`
+        : '';
 
-    return `
-      <div class="team-card" style="border-color:${border};background:${bg}">
-        <div class="team-header">
-          <div>
-            <span class="team-name">${teamName}</span>
+      return `
+        <div class="team-card" style="border-color:${border};background:${bg}">
+          <div class="team-header">
+            <div>
+              <span class="team-name">${teamName}</span>
+            </div>
+            <span class="status-badge" style="color:${color};background:${done ? '#dcfce7' : '#fef3c7'};border:1px solid ${border}">
+              ${done ? '✓ Parecer Emitido' : '⏳ Pendente'}
+            </span>
           </div>
-          <span class="status-badge" style="color:${color};background:${done ? '#dcfce7' : '#fef3c7'};border:1px solid ${border}">
-            ${done ? '✓ Parecer Emitido' : '⏳ Pendente'}
-          </span>
-        </div>
 
-        ${done ? `
-        <table class="info-table" style="margin-bottom:8px">
-          <tr>
-            <td class="detail-label">Responsável</td>
-            <td class="detail-value">${pareceristaNome}${pareceristaMail ? ` <span style="color:#6b7280;font-size:9px">(${pareceristaMail})</span>` : ''}</td>
-          </tr>
-          <tr>
-            <td class="detail-label">Data / Hora do Parecer</td>
-            <td class="detail-value" style="font-weight:700;color:#1e3a5f">${dataHoraParecer} <span style="font-size:9px;color:#6b7280">(${acaoLabel})</span></td>
-          </tr>
-        </table>
-
-        ${checkHtml}
-
-        <div class="parecer-box">
-          <p class="parecer-label">Parecer / Observações</p>
-          <p class="parecer-text">${resp?.comment || '—'}</p>
-        </div>
-
-        ${histRows ? `
-        <div style="margin-top:8px">
-          <p style="font-size:9px;font-weight:700;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Histórico de alterações</p>
-          <table style="width:100%;border-collapse:collapse;font-size:9px">
-            <thead><tr style="background:#f3f4f6">
-              <th style="text-align:left;padding:3px 6px;color:#6b7280">Versão</th>
-              <th style="text-align:left;padding:3px 6px;color:#6b7280">Usuário</th>
-              <th style="text-align:left;padding:3px 6px;color:#6b7280">Data / Hora</th>
-              <th style="text-align:left;padding:3px 6px;color:#6b7280">Ação</th>
-            </tr></thead>
-            <tbody>${histRows}</tbody>
+          ${done ? `
+          <table class="info-table" style="margin-bottom:8px">
+            <tr>
+              <td class="detail-label">Responsável</td>
+              <td class="detail-value">${pareceristaNome}${pareceristaMail ? ` <span style="color:#6b7280;font-size:9px">(${pareceristaMail})</span>` : ''}</td>
+            </tr>
+            <tr>
+              <td class="detail-label">Data / Hora do Parecer</td>
+              <td class="detail-value" style="font-weight:700;color:#1e3a5f">${dataHoraParecer} <span style="font-size:9px;color:#6b7280">(${acaoLabel})</span></td>
+            </tr>
           </table>
-        </div>` : ''}
-        ` : `<p style="font-size:10px;color:#92400e;margin-top:6px">Aguardando emissão de parecer.</p>`}
-      </div>`;
-  }).join('');
+
+          ${checkHtml}
+
+          <div class="parecer-box">
+            <p class="parecer-label">Parecer / Observações</p>
+            <p class="parecer-text">${resp?.comment || '—'}</p>
+          </div>
+
+          ${histRows ? `
+          <div style="margin-top:8px">
+            <p style="font-size:9px;font-weight:700;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Histórico de alterações</p>
+            <table style="width:100%;border-collapse:collapse;font-size:9px">
+              <thead><tr style="background:#f3f4f6">
+                <th style="text-align:left;padding:3px 6px;color:#6b7280">Versão</th>
+                <th style="text-align:left;padding:3px 6px;color:#6b7280">Usuário</th>
+                <th style="text-align:left;padding:3px 6px;color:#6b7280">Data / Hora</th>
+                <th style="text-align:left;padding:3px 6px;color:#6b7280">Ação</th>
+              </tr></thead>
+              <tbody>${histRows}</tbody>
+            </table>
+          </div>` : ''}
+          ` : `<p style="font-size:10px;color:#92400e;margin-top:6px">Aguardando emissão de parecer.</p>`}
+        </div>`;
+    }).join('');
+  }
 
   const now = new Date().toLocaleString('pt-BR');
 
@@ -232,6 +268,10 @@ function buildMovementPDFHtml(m: Movement): string {
 
     /* ── observação ── */
     .obs-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;font-size:10px;color:#374151;line-height:1.5}
+
+    /* ── cancelamento ── */
+    .cancellation-box{background:#fee2e2;border:1.5px solid #fca5a5;border-radius:8px;padding:12px 14px;margin-bottom:20px}
+    .cancellation-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#7f1d1d;margin-bottom:8px}
 
     /* ── cards de equipe ── */
     .team-card{border:1.5px solid #e5e7eb;border-radius:8px;padding:12px 14px;margin-bottom:12px;page-break-inside:avoid}
@@ -282,8 +322,8 @@ function buildMovementPDFHtml(m: Movement): string {
   </div>
 
   <!-- Status geral -->
-  <span class="status-geral" style="color:${statusColor};background:${statusBg};border:1.5px solid ${allDone ? '#86efac' : '#fde68a'}">
-    ${allDone ? '✓ APROVADO — TODOS OS PARECERES EMITIDOS' : '⏳ PENDENTE — AGUARDANDO PARECERES'}
+  <span class="status-geral" style="color:${statusColor};background:${statusBg};border:1.5px solid ${statusBorder}">
+    ${statusText}
   </span>
 
   <!-- Identificação -->
@@ -319,7 +359,15 @@ function buildMovementPDFHtml(m: Movement): string {
     </div>` : ''}
   </div>
 
+  ${cancelamentoHtml ? `
+  <!-- Cancelamento -->
+  <div class="section">
+    <div class="section-title">Status do Cancelamento</div>
+    ${cancelamentoHtml}
+  </div>` : ''}
+
   <!-- Resumo de progresso -->
+  ${!isCanceled ? `
   <div class="summary-grid">
     <div class="summary-card">
       <div class="summary-num">${m.selected_teams.length}</div>
@@ -334,12 +382,15 @@ function buildMovementPDFHtml(m: Movement): string {
       <div class="summary-label">Pareceres pendentes</div>
     </div>
   </div>
+  ` : ''}
 
   <!-- Pareceres -->
+  ${!isCanceled ? `
   <div class="section">
     <div class="section-title">Pareceres das Equipes</div>
     ${teamSections}
   </div>
+  ` : ''}
 
   <!-- Rodapé -->
   <div class="doc-footer">
@@ -461,7 +512,6 @@ function MultiSelect({ label, selected, onToggle, onClear, options, totalCount }
     </div>
   );
 }
-
 // ─── Row builder ──────────────────────────────────────────────────────────────
 interface Row {
   _id: string;
@@ -470,8 +520,10 @@ interface Row {
   _status: string;
   _teamStatus: Record<string, 'completed' | 'pending'>;
   _movement: Movement;
-  _createdAt: Date;      // data de criação como Date para comparação
-  _approvedAt: Date | null; // maior data de parecer (null se não aprovado)
+  _createdAt: Date;
+  _approvedAt: Date | null;
+  _isCanceled: boolean;
+  _canceledAt: Date | null;
   Nome: string;
   Tipo: string;
   'Criado por': string;
@@ -480,6 +532,8 @@ interface Row {
   'Faltam parecer': string;
   'Com pareceres emitidos': string;
   'Último Parecer': string;
+  'Cancelado em': string;
+  'Cancelado por': string;
 }
 
 function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
@@ -488,13 +542,15 @@ function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
     .map(m => {
       const respondidas = m.selected_teams.filter(id => m.responses[id]?.status === 'completed');
       const pendentes   = m.selected_teams.filter(id => m.responses[id]?.status !== 'completed');
-      const statusLabel = pendentes.length === 0 ? 'Aprovado' : 'Pendente';
+      const isCanceled = m.cancelamento !== null && m.cancelamento !== undefined;
+      
+      let statusLabel = isCanceled ? 'Cancelado' : (pendentes.length === 0 ? 'Aprovado' : 'Pendente');
       const teamStatus: Record<string, 'completed' | 'pending'> = {};
       m.selected_teams.forEach(id => { teamStatus[id] = m.responses[id]?.status === 'completed' ? 'completed' : 'pending'; });
 
       // maior data/hora entre todos os pareceres emitidos (data de aprovação final)
       let approvedAt: Date | null = null;
-      if (pendentes.length === 0) {
+      if (!isCanceled && pendentes.length === 0) {
         const timestamps = m.selected_teams
           .map(id => {
             const resp = m.responses[id];
@@ -524,11 +580,22 @@ function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
         ? formatDate(new Date(Math.max(...allTimestamps.map(d => d.getTime()))).toISOString())
         : '—';
 
+      let canceledAt: Date | null = null;
+      let canceledAtStr = '—';
+      let canceledByStr = '—';
+      if (isCanceled) {
+        canceledAt = new Date(m.cancelamento.cancelado_em);
+        canceledAtStr = formatDate(m.cancelamento.cancelado_em);
+        canceledByStr = m.cancelamento.cancelado_por;
+      }
+
       return {
         _id: m.id, _type: m.type, _teams: m.selected_teams,
         _status: statusLabel, _teamStatus: teamStatus, _movement: m,
         _createdAt: new Date(m.created_at),
         _approvedAt: approvedAt,
+        _isCanceled: isCanceled,
+        _canceledAt: canceledAt,
         Nome: m.employee_name,
         Tipo: MOVEMENT_TYPE_MAP[m.type] || m.type,
         'Criado por': m.created_by,
@@ -537,6 +604,8 @@ function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
         'Faltam parecer':         pendentes.length === 0 ? '—' : pendentes.map(id => TEAMS_MAP[id] || id).join(', '),
         'Com pareceres emitidos': respondidas.length === 0 ? '—' : respondidas.map(id => TEAMS_MAP[id] || id).join(', '),
         'Último Parecer': lastResponseDate,
+        'Cancelado em': canceledAtStr,
+        'Cancelado por': canceledByStr,
       };
     });
 }
@@ -574,6 +643,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   const [filterStatuses, setFilterStatuses] = useState<Set<string>>(new Set());
   const [filterTypes,    setFilterTypes]    = useState<Set<string>>(new Set());
   const [filterTeams,    setFilterTeams]    = useState<Set<string>>(new Set());
+  const [showCanceled,   setShowCanceled]   = useState(false);
   const [dateCreatedStart, setDateCreatedStart] = useState<string>('');
   const [dateCreatedEnd,   setDateCreatedEnd]   = useState<string>('');
   const [dateApprStart,    setDateApprStart]    = useState<string>('');
@@ -629,16 +699,20 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
       if (filterTypes.size > 0 && !filterTypes.has(r._type)) return false;
       if (filterTeams.size > 0 && ![...filterTeams].some(t => r._teams.includes(t))) return false;
       if (!matchesDateFilters(r)) return false;
+      if (showCanceled && !r._isCanceled) return false;
+      if (!showCanceled && r._isCanceled) return false;
       return true;
-    }), [allRows, filterTypes, filterTeams, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd]);
+    }), [allRows, filterTypes, filterTeams, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, showCanceled]);
 
   // para tipo: aplica status + equipe (sem tipo)
   const rowsForTypeCount = useMemo(() =>
     allRows.filter(r => {
       if (!matchesTeamStatus(r, filterTeams, filterStatuses)) return false;
       if (!matchesDateFilters(r)) return false;
+      if (showCanceled && !r._isCanceled) return false;
+      if (!showCanceled && r._isCanceled) return false;
       return true;
-    }), [allRows, filterTeams, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd]);
+    }), [allRows, filterTeams, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, showCanceled]);
 
   // para equipe: aplica status + tipo (sem equipe)
   const rowsForTeamCount = useMemo(() =>
@@ -646,16 +720,20 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
       if (filterTypes.size > 0 && !filterTypes.has(r._type)) return false;
       if (filterStatuses.size > 0 && !filterStatuses.has(r._status)) return false;
       if (!matchesDateFilters(r)) return false;
+      if (showCanceled && !r._isCanceled) return false;
+      if (!showCanceled && r._isCanceled) return false;
       return true;
-    }), [allRows, filterTypes, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd]);
+    }), [allRows, filterTypes, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, showCanceled]);
 
   const filtered = useMemo(() =>
     allRows.filter(r => {
       if (filterTypes.size > 0 && !filterTypes.has(r._type)) return false;
       if (!matchesTeamStatus(r, filterTeams, filterStatuses)) return false;
       if (!matchesDateFilters(r)) return false;
+      if (showCanceled && !r._isCanceled) return false;
+      if (!showCanceled && r._isCanceled) return false;
       return true;
-    }), [allRows, filterTypes, filterTeams, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd]);
+    }), [allRows, filterTypes, filterTeams, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, showCanceled]);
 
   // Map display column names → Row keys for sorting
   const COL_KEY: Record<string, keyof Row> = {
@@ -667,6 +745,8 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
     'Último Parecer': 'Último Parecer',
     'Faltam':         'Faltam parecer',
     'Responderam':    'Com pareceres emitidos',
+    'Cancelado em':   'Cancelado em',
+    'Cancelado por':  'Cancelado por',
   };
 
   const sortedFiltered = useMemo(() => {
@@ -691,6 +771,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
     setFilterStatuses(new Set()); setFilterTypes(new Set()); setFilterTeams(new Set());
     setDateCreatedStart(''); setDateCreatedEnd('');
     setDateApprStart(''); setDateApprEnd('');
+    setShowCanceled(false);
     setSelected(new Set());
   };
 
@@ -723,9 +804,9 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   const handleExportExcel = () => {
     setExporting(true);
     try {
-      const exportData = sortedFiltered.map(({ _id, _type, _teams, _status, _teamStatus, _movement, _createdAt, _approvedAt, ...rest }) => rest);
+      const exportData = sortedFiltered.map(({ _id, _type, _teams, _status, _teamStatus, _movement, _createdAt, _approvedAt, _isCanceled, _canceledAt, ...rest }) => rest);
       const ws = XLSX.utils.json_to_sheet(exportData);
-      ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 25 }, { wch: 18 }, { wch: 12 }, { wch: 45 }, { wch: 45 }];
+      ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 25 }, { wch: 18 }, { wch: 12 }, { wch: 45 }, { wch: 45 }, { wch: 18 }, { wch: 25 }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Movimentações');
       const today = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
@@ -738,7 +819,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   };
 
   const hasActiveFilters = filterStatuses.size > 0 || filterTypes.size > 0 || filterTeams.size > 0
-    || !!dateCreatedStart || !!dateCreatedEnd || !!dateApprStart || !!dateApprEnd;
+    || !!dateCreatedStart || !!dateCreatedEnd || !!dateApprStart || !!dateApprEnd || showCanceled;
   const allSelected = sortedFiltered.length > 0 && selected.size === sortedFiltered.length;
   const someSelected = selected.size > 0;
 
@@ -800,16 +881,22 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
             selected={filterStatuses}
             onToggle={v => toggleSet(setFilterStatuses, v)}
             onClear={() => setFilterStatuses(new Set())}
-            options={(['Pendente', 'Aprovado'] as const).map(opt => {
-              const count = rowsForStatusCount.filter(r => {
-                if (filterTeams.size === 0) return r._status === opt;
-                return [...filterTeams].some(t => {
-                  if (!r._teams.includes(t)) return false;
-                  const done = r._teamStatus[t] === 'completed';
-                  return opt === 'Aprovado' ? done : !done;
-                });
-              }).length;
-              return { value: opt, label: `${opt === 'Pendente' ? '⏳' : '✓'} ${opt}`, count };
+            options={(['Pendente', 'Aprovado', 'Cancelado'] as const).map(opt => {
+              let count = 0;
+              if (opt === 'Cancelado') {
+                count = rowsForStatusCount.filter(r => r._isCanceled).length;
+              } else {
+                count = rowsForStatusCount.filter(r => {
+                  if (filterTeams.size === 0) return r._status === opt;
+                  return [...filterTeams].some(t => {
+                    if (!r._teams.includes(t)) return false;
+                    const done = r._teamStatus[t] === 'completed';
+                    return opt === 'Aprovado' ? done : !done;
+                  });
+                }).length;
+              }
+              const icon = opt === 'Cancelado' ? '✕' : (opt === 'Pendente' ? '⏳' : '✓');
+              return { value: opt, label: `${icon} ${opt}`, count };
             })}
             totalCount={rowsForStatusCount.length}
           />
@@ -844,6 +931,19 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
             totalCount={rowsForTeamCount.length}
           />
 
+        </div>
+
+        {/* Toggle Canceladas */}
+        <div className="mb-4 flex items-center gap-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showCanceled}
+              onChange={(e) => setShowCanceled(e.target.checked)}
+              className="w-4 h-4"
+            />
+            <span className="text-sm font-medium text-gray-700">Mostrar apenas canceladas</span>
+          </label>
         </div>
 
         {/* Filtros de data */}
@@ -921,7 +1021,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
                   <th className="px-2 py-2.5 border-b border-gray-200 w-8">
                     <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="w-3.5 h-3.5 cursor-pointer" title="Selecionar todos" />
                   </th>
-                  {['Nome', 'Tipo', 'Criado por', 'Criação', 'Status', 'Último Parecer', 'Faltam', 'Responderam'].map(col => {
+                  {['Nome', 'Tipo', 'Criado por', 'Criação', 'Status', 'Último Parecer', 'Faltam', 'Responderam', 'Cancelado em', 'Cancelado por'].map(col => {
                     const active = sortCol === col;
                     return (
                       <th
@@ -945,7 +1045,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
                 {sortedFiltered.map((row, idx) => {
                   const isChecked = selected.has(row._id);
                   return (
-                    <tr key={row._id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} ${isChecked ? 'ring-1 ring-inset ring-blue-300' : ''}`}>
+                    <tr key={row._id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} ${isChecked ? 'ring-1 ring-inset ring-blue-300' : ''} ${row._isCanceled ? 'opacity-75' : ''}`}>
                       <td className="px-2 py-2 border-b border-gray-100">
                         <input type="checkbox" checked={isChecked} onChange={() => toggleSelect(row._id)} className="w-3.5 h-3.5 cursor-pointer" />
                       </td>
@@ -954,9 +1054,13 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
                       <td className="px-2 py-2 border-b border-gray-100 text-gray-600 whitespace-nowrap">{row['Criado por']}</td>
                       <td className="px-2 py-2 border-b border-gray-100 text-gray-500 whitespace-nowrap">{row['Data de criação']}</td>
                       <td className="px-2 py-2 border-b border-gray-100 whitespace-nowrap">
-                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${row.Status === 'Aprovado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                          {row.Status === 'Aprovado' ? '✓' : '⏳'} {row.Status}
-                        </span>
+                        {row._isCanceled ? (
+                          <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-red-100 text-red-800">✕ Cancelado</span>
+                        ) : (
+                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${row.Status === 'Aprovado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                            {row.Status === 'Aprovado' ? '✓' : '⏳'} {row.Status}
+                          </span>
+                        )}
                       </td>
                       <td className="px-2 py-2 border-b border-gray-100 whitespace-nowrap text-gray-500">
                         {row['Último Parecer'] === '—'
@@ -972,6 +1076,12 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
                         {row['Com pareceres emitidos'] === '—'
                           ? <span className="text-gray-300">—</span>
                           : <span className="text-green-700 text-xs truncate block" title={row['Com pareceres emitidos']}>{row['Com pareceres emitidos']}</span>}
+                      </td>
+                      <td className="px-2 py-2 border-b border-gray-100 text-gray-500 whitespace-nowrap">
+                        {row['Cancelado em'] === '—' ? <span className="text-gray-300">—</span> : row['Cancelado em']}
+                      </td>
+                      <td className="px-2 py-2 border-b border-gray-100 text-gray-600 whitespace-nowrap">
+                        {row['Cancelado por'] === '—' ? <span className="text-gray-300">—</span> : row['Cancelado por']}
                       </td>
                       <td className="px-2 py-2 border-b border-gray-100">
                         <button onClick={() => handlePrintOne(row)}
