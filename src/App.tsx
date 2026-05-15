@@ -17,8 +17,6 @@ interface Attachment {
   uploadedAt: string;
 }
 
-
-
 interface Movement {
   id: string;
   type: MovementType;
@@ -44,6 +42,12 @@ interface Movement {
   details: Record<string, any>;
   observation?: string | null;
   deadline?: string | null;
+  cancelamento?: {
+    motivo: string;
+    cancelado_em: string;
+    cancelado_por: string;
+    cancelado_por_email: string;
+  } | null;
 }
 
 const TEAMS = [
@@ -234,7 +238,6 @@ function AttachmentManager({ attachments, onAdd, onRemove, disabled }: {
     </div>
   );
 }
-
 export default function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [movements, setMovements] = useState<Movement[]>([]);
@@ -487,7 +490,6 @@ function LoginComponent({ setCurrentUser, setView, setActiveTeamId }: any) {
   );
 }
 
-
 function ChangePasswordModal({ onClose, currentUser }: { onClose: () => void; currentUser: any }) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -728,7 +730,6 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
-
 function DashboardView({ currentUser, movements, loading, loadMovements, setSelectedMovement, setView, activeTeamId }: any) {
   const [showNewMovement, setShowNewMovement] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -761,10 +762,16 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
       return;
     }
 
+    if (movementType === 'demissao' && !formData.tipoDesligamento) {
+      alert('Selecione o tipo de desligamento');
+      return;
+    }
+
     setLoadingCreate(true);
     try {
       const responsesObj = selectedTeams.reduce((acc, teamId) => ({ ...acc, [teamId]: { status: 'pending', checklist: {}, attachments: [] } }), {});
       const detailsWithObservation = { ...formData, observation: formData.observation || '' };
+      
       const newMovement: any = {
         type: movementType!,
         employee_name: formData.employeeName,
@@ -772,7 +779,8 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
         status: 'pending' as const,
         responses: responsesObj,
         created_by: currentUser?.name || '',
-        details: detailsWithObservation
+        details: detailsWithObservation,
+        cancelamento: null
       };
 
       if (formData.deadline) newMovement.deadline = formData.deadline;
@@ -786,8 +794,8 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
           const tipoDesligamento = formData.tipoDesligamento || TipoDesligamento.OUTROS_MOTIVOS;
           const cpf = formData.cpf || undefined;
           const chapa = formData.chapa || undefined;
+          const dataDemissao = formData.dismissalDate || undefined;
           
-          // Importar useDossie dentro do contexto
           const dossieHook = useDossie();
           await dossieHook.criarDossieAutomatico(
             insertedData.id,
@@ -796,11 +804,11 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
             currentUser?.name || '',
             currentUser?.email || '',
             cpf,
-            chapa
+            chapa,
+            dataDemissao
           );
         } catch (dossieErr) {
           console.error('Erro ao criar dossiê automaticamente:', dossieErr);
-          // Não falhar a movimentação se o dossiê não for criado
         }
       }
 
@@ -844,6 +852,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
   };
 
   const myMovs = movements.filter((m: Movement) => {
+    if (m.cancelamento) return false; // Não mostra movimentações canceladas na lista principal
     if (isAdmin) return m.created_by === currentUser?.name || m.selected_teams.some((t: string) => currentUser?.team_ids.includes(t));
     return m.selected_teams.includes(activeTeamId);
   });
@@ -1013,13 +1022,16 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
           loading={loadingCreate}
           onClose={() => { setShowNewMovement(false); setMovementType(null); setFormData({}); setSelectedTeams([]); setSelectedSetorIds([]); }}
           onSubmit={handleCreate} isPost20th={isPost20th}
+          currentUser={currentUser}
         />
       )}
     </div>
   );
 }
 
-function NewMovementModal({ movementType, formData, setFormData, selectedTeams, setSelectedTeams, selectedSetorIds, setSelectedSetorIds, loading, onClose, onSubmit, isPost20th }: any) {
+function NewMovementModal({ movementType, formData, setFormData, selectedTeams, setSelectedTeams, selectedSetorIds, setSelectedSetorIds, loading, onClose, onSubmit, isPost20th, currentUser }: any) {
+  const canSeeDemissaoType = currentUser?.can_manage_demissoes === true;
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-white rounded-xl max-w-2xl w-full my-8 p-6">
@@ -1038,11 +1050,34 @@ function NewMovementModal({ movementType, formData, setFormData, selectedTeams, 
             <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Colaborador *</label>
             <input type="text" placeholder="Digite o nome completo" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, employeeName: e.target.value})} />
           </div>
-          {movementType === 'demissao' && (
+
+          {movementType === 'demissao' && canSeeDemissaoType && (
             <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Desligamento *</label>
+                <select value={formData.tipoDesligamento || ''} onChange={(e) => setFormData({...formData, tipoDesligamento: e.target.value})} className="w-full border rounded-lg px-3 py-2">
+                  <option value="">Selecione um tipo...</option>
+                  <option value={TipoDesligamento.PEDIDO_DEMISSAO}>Pedido de Demissão</option>
+                  <option value={TipoDesligamento.TERMINO_CONTRATO}>Término de Contrato</option>
+                  <option value={TipoDesligamento.DISPENSA_SEM_JUSTA_CAUSA}>Dispensa sem Justa Causa</option>
+                  <option value={TipoDesligamento.DISPENSA_COM_JUSTA_CAUSA}>Dispensa com Justa Causa</option>
+                  <option value={TipoDesligamento.ABANDONO_EMPREGO}>Abandono de Emprego</option>
+                  <option value={TipoDesligamento.COMUM_ACORDO}>Comum Acordo</option>
+                  <option value={TipoDesligamento.OBITO}>Óbito</option>
+                  <option value={TipoDesligamento.OUTROS_MOTIVOS}>Outros Motivos</option>
+                </select>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Data do Desligamento</label>
                 <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, dismissalDate: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">CPF (opcional)</label>
+                <input type="text" placeholder="000.000.000-00" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, cpf: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Chapa (opcional)</label>
+                <input type="text" placeholder="Número da chapa" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, chapa: e.target.value})} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Empresa/Coligada</label>
@@ -1054,6 +1089,7 @@ function NewMovementModal({ movementType, formData, setFormData, selectedTeams, 
               </div>
             </>
           )}
+
           {movementType !== 'demissao' && (
             <>
               <div className="grid grid-cols-2 gap-4">
@@ -1082,6 +1118,7 @@ function NewMovementModal({ movementType, formData, setFormData, selectedTeams, 
               </div>
             </>
           )}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Data Limite para Respostas</label>
             <input type="date" className="w-full border rounded-lg px-3 py-2" onChange={(e) => setFormData({...formData, deadline: e.target.value})} />
@@ -1102,7 +1139,7 @@ function NewMovementModal({ movementType, formData, setFormData, selectedTeams, 
             </div>
           </div>
           <SetorEmailSelector selectedSetorIds={selectedSetorIds} setSelectedSetorIds={setSelectedSetorIds} />
-          <button onClick={onSubmit} disabled={!formData.employeeName || selectedTeams.length === 0 || loading} className="w-full bg-blue-600 text-white py-2.5 rounded-lg disabled:bg-gray-300 flex items-center justify-center gap-2">
+          <button onClick={onSubmit} disabled={!formData.employeeName || selectedTeams.length === 0 || (movementType === 'demissao' && canSeeDemissaoType && !formData.tipoDesligamento) || loading} className="w-full bg-blue-600 text-white py-2.5 rounded-lg disabled:bg-gray-300 flex items-center justify-center gap-2">
             {loading ? <><Loader2 className="w-5 h-5 animate-spin" />Criando...</> : 'Criar Movimentação'}
           </button>
         </div>
@@ -1110,7 +1147,6 @@ function NewMovementModal({ movementType, formData, setFormData, selectedTeams, 
     </div>
   );
 }
-
 function DetailView({ currentUser, selectedMovement, setView, setSelectedMovement, loadMovements, activeTeamId }: any) {
   const [comment, setComment] = useState('');
   const [loadingSub, setLoadingSub] = useState(false);
@@ -1123,6 +1159,9 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   const [uploadingFile, setUploadingFile] = useState(false);
   const [editSelectedTeams, setEditSelectedTeams] = useState<string[]>(selectedMovement.selected_teams);
   const [editType, setEditType] = useState<MovementType>(selectedMovement.type as MovementType);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelMotivo, setCancelMotivo] = useState('');
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   const isMyTeam = selectedMovement.selected_teams.includes(activeTeamId);
   const myResp = activeTeamId ? selectedMovement.responses[activeTeamId] : null;
@@ -1130,6 +1169,8 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   const isAdmin = currentUser?.role === 'admin';
   const isResponsavel = currentUser?.role === 'responsavel';
   const canEdit = isAdmin || (isResponsavel && selectedMovement.created_by === currentUser?.name);
+  const canCancel = isAdmin || (selectedMovement.created_by === currentUser?.name);
+  const isCanceled = selectedMovement.cancelamento !== null && selectedMovement.cancelamento !== undefined;
 
   const userTeamChecklist: string[] = CHECKLISTS[selectedMovement.type as MovementType]?.[activeTeamId || ''] || [];
 
@@ -1164,6 +1205,41 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
     const success = await deleteFile(attachment.url);
     if (success) { setAttachments(prev => prev.filter(a => a.url !== attachment.url)); }
     else { alert('Erro ao remover arquivo'); }
+  };
+
+  const handleCancel = async () => {
+    if (!cancelMotivo.trim()) {
+      alert('Informe o motivo do cancelamento');
+      return;
+    }
+
+    setCancelLoading(true);
+    try {
+      const cancelamento = {
+        motivo: cancelMotivo.trim(),
+        cancelado_em: new Date().toISOString(),
+        cancelado_por: currentUser.name,
+        cancelado_por_email: currentUser.email
+      };
+
+      const { error } = await supabase
+        .from('movements')
+        .update({ cancelamento })
+        .eq('id', selectedMovement.id);
+
+      if (error) throw error;
+
+      alert('Movimentação cancelada com sucesso!');
+      await loadMovements();
+      setView('dashboard');
+      setSelectedMovement(null);
+    } catch (err: any) {
+      alert('Erro ao cancelar movimentação: ' + err.message);
+    } finally {
+      setCancelLoading(false);
+      setShowCancelModal(false);
+      setCancelMotivo('');
+    }
   };
 
   const allChecklistCompleted = userTeamChecklist.length > 0 && userTeamChecklist.every(checkItem => checklist[checkItem]);
@@ -1249,6 +1325,33 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
     }
   };
 
+  if (isCanceled) {
+    return (
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-red-600">Movimentação Cancelada</h2>
+            <p className="text-gray-600">{selectedMovement.employee_name}</p>
+          </div>
+          <button onClick={() => { setView('dashboard'); setSelectedMovement(null); }} className="text-gray-600 hover:text-gray-900">← Voltar</button>
+        </div>
+
+        <div className="bg-red-50 border-l-4 border-red-400 p-6 rounded-lg">
+          <h3 className="font-semibold text-red-900 mb-3">Informações do Cancelamento</h3>
+          <div className="space-y-2 text-red-800">
+            <p><strong>Status:</strong> Cancelada</p>
+            <p><strong>Cancelada por:</strong> {selectedMovement.cancelamento.cancelado_por} ({selectedMovement.cancelamento.cancelado_por_email})</p>
+            <p><strong>Data/Hora do cancelamento:</strong> {new Date(selectedMovement.cancelamento.cancelado_em).toLocaleString('pt-BR')}</p>
+            <p><strong>Motivo:</strong></p>
+            <div className="bg-white p-3 rounded border border-red-200 mt-1">
+              <p className="text-gray-800 whitespace-pre-wrap">{selectedMovement.cancelamento.motivo}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white rounded-lg shadow p-6">
       <div className="flex justify-between mb-6">
@@ -1263,15 +1366,55 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
               {isAdmin && <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Excluir</button>}
             </>
           )}
+          {canCancel && !isCanceled && (
+            <button onClick={() => setShowCancelModal(true)} className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700">Cancelar</button>
+          )}
           <button onClick={() => { setView('dashboard'); setSelectedMovement(null); }} className="text-gray-600 hover:text-gray-900">← Voltar</button>
         </div>
       </div>
+
+      {showCancelModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-orange-600">Cancelar Movimentação</h3>
+              <button onClick={() => { setShowCancelModal(false); setCancelMotivo(''); }} className="text-gray-600 hover:text-gray-900">✕</button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">Você está prestes a cancelar esta movimentação. Esta ação não pode ser desfeita.</p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Motivo do Cancelamento *</label>
+              <textarea
+                value={cancelMotivo}
+                onChange={(e) => setCancelMotivo(e.target.value)}
+                placeholder="Explique por que esta movimentação está sendo cancelada..."
+                className="w-full border rounded-lg px-3 py-2 h-24"
+                disabled={cancelLoading}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowCancelModal(false); setCancelMotivo(''); }}
+                className="flex-1 px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400"
+                disabled={cancelLoading}
+              >
+                Não, manter
+              </button>
+              <button
+                onClick={handleCancel}
+                disabled={!cancelMotivo.trim() || cancelLoading}
+                className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-300"
+              >
+                {cancelLoading ? 'Cancelando...' : 'Sim, cancelar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isEditing ? (
         <div className="bg-gray-50 rounded-lg p-4 mb-6 space-y-4">
           <h3 className="font-semibold mb-3">Editar Informações</h3>
 
-          {/* Tipo de movimentação */}
           <div>
             <label className="block text-sm font-medium mb-2">Tipo de Movimentação</label>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -1351,7 +1494,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
             <div><span className="text-gray-600 font-medium">Data de criação:</span><p className="text-gray-900">{new Date(selectedMovement.created_at).toLocaleDateString('pt-BR')}</p></div>
             {selectedMovement.deadline && <div><span className="text-gray-600 font-medium">Prazo limite:</span><p className="text-gray-900">{new Date(selectedMovement.deadline).toLocaleDateString('pt-BR')}</p></div>}
             {Object.entries(selectedMovement.details).map(([key, value]) => {
-              const labels: any = { dismissalDate: 'Data do Desligamento', company: 'Empresa', sector: 'Setor', oldSector: 'Setor Atual', newSector: 'Setor Destino', oldPosition: 'Função Atual', newPosition: 'Função Destino', changeDate: 'Data da Mudança' };
+              const labels: any = { dismissalDate: 'Data do Desligamento', company: 'Empresa', sector: 'Setor', oldSector: 'Setor Atual', newSector: 'Setor Destino', oldPosition: 'Função Atual', newPosition: 'Função Destino', changeDate: 'Data da Mudança', tipoDesligamento: 'Tipo de Desligamento' };
               if (key === 'observation') return null;
               return (<div key={key}><span className="text-gray-600 font-medium">{labels[key] || key}:</span><p className="text-gray-900">{typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/) ? new Date(value).toLocaleDateString('pt-BR') : String(value)}</p></div>);
             })}
@@ -1905,7 +2048,7 @@ function UsuariosView() {
             );
           })}
           {usuarios.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '48px 0', color: '#94a3b8' }}><Users className="w-10 h-10 mx-auto mb-3 opacity-30" /><p>Nenhum usuário encontrado</p></div>
+            <div style={{ textAlign: 'center', padding: '48px 0', color: '#94a3b8' }}><Users className="w-10 h-10" style={{ margin: '0 auto 12px' }} /><p>Nenhum usuário encontrado</p></div>
           )}
         </div>
       )}
