@@ -1498,7 +1498,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   if (key === 'observation') return null;
   // ← ADICIONE ESTA LINHA:
   if (key === 'tipoDesligamento' && !currentUser?.can_manage_demissoes) return null;
-  return (<div key={key}><span className="text-gray-600 font-medium">{labels[key] || key}:</span><p className="text-gray-900">{typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/) ? new Date(value).toLocaleDateString('pt-BR') : String(value)}</p></div>);
+  return (<div key={key}><span className="text-gray-600 font-medium">{labels[key] || key}:</span><p className="text-gray-900">{typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/) ? new Date(value + 'T00:00:00').toLocaleDateString('pt-BR') : String(value)}</p></div>);
 })}
           </div>
           {(selectedMovement.details?.observation || selectedMovement.observation) && (
