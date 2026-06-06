@@ -83,7 +83,8 @@ const DETAIL_LABELS: Record<string, string> = {
 // ─── helpers ─────────────────────────────────────────────────────────────────
 function formatDate(iso?: string | null) {
   if (!iso) return '—';
-  const d = new Date(iso);
+  const normalized = iso.match(/^\d{4}-\d{2}-\d{2}$/) ? iso + 'T00:00:00' : iso;
+  const d = new Date(normalized);
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString('pt-BR');
 }
