@@ -543,7 +543,7 @@ interface Row {
 
 function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
   return movements
-    .filter(m => currentUser.role === 'admin' || m.created_by === currentUser.name)
+    .filter(m => currentUser.role === 'admin' || m.created_by === currentUser.name || m.selected_teams.some((t: string) => currentUser.team_ids.includes(t)))
     .map(m => {
       const respondidas = m.selected_teams.filter(id => m.responses[id]?.status === 'completed');
       const pendentes   = m.selected_teams.filter(id => m.responses[id]?.status !== 'completed');
