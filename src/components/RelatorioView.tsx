@@ -539,6 +539,8 @@ interface Row {
   'Último Parecer': string;
   'Cancelado em': string;
   'Cancelado por': string;
+  'Data da Mudança/Desligamento': string;
+  _movementDate: Date | null;
 }
 
 function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
@@ -599,6 +601,9 @@ if (isCanceled) {
   canceledByStr = m.cancelamento?.cancelado_por || '—';
 }
 
+      const rawMovementDate = m.type === 'demissao' ? m.details.dismissalDate : m.details.changeDate;
+      const movementDate = rawMovementDate ? new Date(rawMovementDate) : null;
+
       return {
         _id: m.id, _type: m.type, _teams: m.selected_teams,
         _status: statusLabel, _teamStatus: teamStatus, _movement: m,
@@ -606,10 +611,12 @@ if (isCanceled) {
         _approvedAt: approvedAt,
         _isCanceled: isCanceled,
         _canceledAt: canceledAt,
+        _movementDate: movementDate,
         Nome: m.employee_name,
         Tipo: MOVEMENT_TYPE_MAP[m.type] || m.type,
         'Criado por': m.created_by,
         'Data de criação': formatDate(m.created_at),
+        'Data da Mudança/Desligamento': rawMovementDate ? formatDate(rawMovementDate) : '—',
         Status: statusLabel,
         'Faltam parecer':         pendentes.length === 0 ? '—' : pendentes.map(id => TEAMS_MAP[id] || id).join(', '),
         'Com pareceres emitidos': respondidas.length === 0 ? '—' : respondidas.map(id => TEAMS_MAP[id] || id).join(', '),
@@ -658,6 +665,8 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   const [dateCreatedEnd,   setDateCreatedEnd]   = useState<string>('');
   const [dateApprStart,    setDateApprStart]    = useState<string>('');
   const [dateApprEnd,      setDateApprEnd]      = useState<string>('');
+  const [dateMovStart,     setDateMovStart]     = useState<string>('');
+  const [dateMovEnd,       setDateMovEnd]       = useState<string>('');
   const [sortCol,  setSortCol]  = useState<string>('');
   const [sortDir,  setSortDir]  = useState<'asc' | 'desc'>('asc');
   const [selected,     setSelected]     = useState<Set<string>>(new Set());
@@ -698,6 +707,13 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
       if (as_ && r._approvedAt < as_) return false;
       if (ae  && r._approvedAt > ae)  return false;
     }
+    const ms = toStart(dateMovStart);
+    const me = toEnd(dateMovEnd);
+    if (ms || me) {
+      if (!r._movementDate) return false;
+      if (ms && r._movementDate < ms) return false;
+      if (me && r._movementDate > me) return false;
+    }
     return true;
   };
 
@@ -712,7 +728,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
       if (showCanceled && !r._isCanceled) return false;
       if (!showCanceled && r._isCanceled) return false;
       return true;
-    }), [allRows, filterTypes, filterTeams, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, showCanceled]);
+    }), [allRows, filterTypes, filterTeams, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled]);
 
   // para tipo: aplica status + equipe (sem tipo)
   const rowsForTypeCount = useMemo(() =>
@@ -722,7 +738,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
       if (showCanceled && !r._isCanceled) return false;
       if (!showCanceled && r._isCanceled) return false;
       return true;
-    }), [allRows, filterTeams, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, showCanceled]);
+    }), [allRows, filterTeams, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled]);
 
   // para equipe: aplica status + tipo (sem equipe)
   const rowsForTeamCount = useMemo(() =>
@@ -733,7 +749,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
       if (showCanceled && !r._isCanceled) return false;
       if (!showCanceled && r._isCanceled) return false;
       return true;
-    }), [allRows, filterTypes, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, showCanceled]);
+    }), [allRows, filterTypes, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled]);
 
   const filtered = useMemo(() =>
     allRows.filter(r => {
@@ -743,14 +759,15 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
       if (showCanceled && !r._isCanceled) return false;
       if (!showCanceled && r._isCanceled) return false;
       return true;
-    }), [allRows, filterTypes, filterTeams, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, showCanceled]);
+    }), [allRows, filterTypes, filterTeams, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled]);
 
   // Map display column names → Row keys for sorting
   const COL_KEY: Record<string, keyof Row> = {
     'Nome':           'Nome',
     'Tipo':           'Tipo',
     'Criado por':     'Criado por',
-    'Criação':        'Data de criação',
+    'Criação':        '_createdAt',
+    'Mudança/Deslig.': '_movementDate',
     'Status':         'Status',
     'Último Parecer': 'Último Parecer',
     'Faltam':         'Faltam parecer',
@@ -781,6 +798,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
     setFilterStatuses(new Set()); setFilterTypes(new Set()); setFilterTeams(new Set());
     setDateCreatedStart(''); setDateCreatedEnd('');
     setDateApprStart(''); setDateApprEnd('');
+    setDateMovStart(''); setDateMovEnd('');
     setShowCanceled(false);
     setSelected(new Set());
   };
@@ -814,9 +832,9 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   const handleExportExcel = () => {
     setExporting(true);
     try {
-      const exportData = sortedFiltered.map(({ _id, _type, _teams, _status, _teamStatus, _movement, _createdAt, _approvedAt, _isCanceled, _canceledAt, ...rest }) => rest);
+      const exportData = sortedFiltered.map(({ _id, _type, _teams, _status, _teamStatus, _movement, _createdAt, _approvedAt, _isCanceled, _canceledAt, _movementDate, ...rest }) => rest);
       const ws = XLSX.utils.json_to_sheet(exportData);
-      ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 25 }, { wch: 18 }, { wch: 12 }, { wch: 45 }, { wch: 45 }, { wch: 18 }, { wch: 25 }];
+      ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 25 }, { wch: 18 }, { wch: 22 }, { wch: 12 }, { wch: 45 }, { wch: 45 }, { wch: 18 }, { wch: 25 }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Movimentações');
       const today = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
@@ -829,7 +847,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   };
 
   const hasActiveFilters = filterStatuses.size > 0 || filterTypes.size > 0 || filterTeams.size > 0
-    || !!dateCreatedStart || !!dateCreatedEnd || !!dateApprStart || !!dateApprEnd || showCanceled;
+    || !!dateCreatedStart || !!dateCreatedEnd || !!dateApprStart || !!dateApprEnd || !!dateMovStart || !!dateMovEnd || showCanceled;
   const allSelected = sortedFiltered.length > 0 && selected.size === sortedFiltered.length;
   const someSelected = selected.size > 0;
 
@@ -1012,6 +1030,30 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
             )}
           </div>
 
+          {/* Data da Mudança/Desligamento */}
+          <div className="p-3 bg-gray-50 rounded-lg border col-span-2">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Data da Mudança / Desligamento</label>
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-400 mb-1">De</label>
+                <input type="date" value={dateMovStart} onChange={e => setDateMovStart(e.target.value)}
+                  className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" />
+              </div>
+              <span className="text-gray-300 text-xs mt-4">→</span>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-400 mb-1">Até</label>
+                <input type="date" value={dateMovEnd} onChange={e => setDateMovEnd(e.target.value)}
+                  className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" />
+              </div>
+              {(dateMovStart || dateMovEnd) && (
+                <button onClick={() => { setDateMovStart(''); setDateMovEnd(''); }}
+                  className="mt-4 text-gray-400 hover:text-red-500" title="Limpar">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
         </div>
 
         {/* Tabela */}
@@ -1031,7 +1073,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
                   <th className="px-2 py-2.5 border-b border-gray-200 w-8">
                     <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="w-3.5 h-3.5 cursor-pointer" title="Selecionar todos" />
                   </th>
-                  {['Nome', 'Tipo', 'Criado por', 'Criação', 'Status', 'Último Parecer', 'Faltam', 'Responderam', 'Cancelado em', 'Cancelado por'].map(col => {
+                  {['Nome', 'Tipo', 'Criado por', 'Criação', 'Mudança/Deslig.', 'Status', 'Último Parecer', 'Faltam', 'Responderam', 'Cancelado em', 'Cancelado por'].map(col => {
                     const active = sortCol === col;
                     return (
                       <th
@@ -1063,6 +1105,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
                       <td className="px-2 py-2 border-b border-gray-100 text-gray-600 whitespace-nowrap">{row.Tipo}</td>
                       <td className="px-2 py-2 border-b border-gray-100 text-gray-600 whitespace-nowrap">{row['Criado por']}</td>
                       <td className="px-2 py-2 border-b border-gray-100 text-gray-500 whitespace-nowrap">{row['Data de criação']}</td>
+                      <td className="px-2 py-2 border-b border-gray-100 text-gray-900 font-medium whitespace-nowrap">{row['Data da Mudança/Desligamento']}</td>
                       <td className="px-2 py-2 border-b border-gray-100 whitespace-nowrap">
                         {row._isCanceled ? (
                           <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-red-100 text-red-800">✕ Cancelado</span>
