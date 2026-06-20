@@ -55,6 +55,7 @@ const TEAMS = [
   { id: 'ponto', name: 'Ponto' },
   { id: 'transporte', name: 'Transporte' },
   { id: 'ti', name: 'T.I' },
+  { id: 'beneficios', name: 'Benefícios' },
   { id: 'comunicacao', name: 'Comunicação' },
   { id: 'seguranca', name: 'Segurança do Trabalho' },
   { id: 'ambulatorio', name: 'Ambulatório' },
@@ -77,12 +78,14 @@ const CHECKLISTS: Record<MovementType, Record<string, string[]>> = {
     transporte: ['Valores de multas', 'Baixa de carro responsável'],
     ti: ['Baixa de usuário'],
     seguranca: ['Entrega de EPIs', 'Sem acidente de trabalho', 'Não é membro da CIPA'],
-    ambulatorio: ['Valores farmácia', 'Baixa plano de saúde', 'Baixa plano odonto', 'Exame demissional', 'Valores plano de saúde'],
+    ambulatorio: ['Valores farmácia', 'Exame demissional'],  // ✏️ REMOVEU os 3 itens
+    beneficios: ['Baixa plano de saúde', 'Baixa plano odonto', 'Valores plano de saúde'],  // ✨ NOVO
     financeiro: ['Existe multas', 'Existe adiantamento', 'Valores a descontar'],
     dp: ['Comissões recebidas', 'Aviso prévio assinado', 'Valores marmita'],
     treinamento: ['Valores a devolver bolsa de estudos', 'Valores a devolver adiantamento treinamentos'],
     comunicacao:['Retirar dos grupos de Whatsapp e comunicação']
   },
+  
   transferencia: {
     rh: ['Transferência temporária', 'Colaborador apto para a função'],
     ponto: ['Análise alteração no ponto do colaborador'],
@@ -91,9 +94,11 @@ const CHECKLISTS: Record<MovementType, Record<string, string[]>> = {
     seguranca: ['Ordem de serviço assinada', 'Colaborador habilitado em NR'],
     treinamento: ['Treinamentos obrigatórios'],
     ambulatorio: ['ASO'],
+    beneficios: ['Alteração plano de saúde'],  // ✨ NOVO
     dp: ['Transferência programada', 'Necessário criação de função ou seção']
   },
-  alteracao: {
+  
+ alteracao: {
     rh: ['Alteração temporária', 'Colaborador apto para a função'],
     ponto: ['Análise alteração no ponto do colaborador'],
     transporte: ['Colaborador apto a dirigir veículo da empresa'],
@@ -101,8 +106,10 @@ const CHECKLISTS: Record<MovementType, Record<string, string[]>> = {
     seguranca: ['Ordem de serviço assinada', 'Colaborador habilitado em NR'],
     treinamento: ['Treinamentos obrigatórios'],
     ambulatorio: ['ASO'],
+    beneficios: ['Alteração plano de saúde'],  // ✨ ADICIONAR ESTA LINHA
     dp: ['Alteração programada', 'Necessário criação de função ou seção']
   },
+  
   promocao: {
     rh: ['Colaborador apto para a função', 'Testes necessários para função', 'Promoção para liderança de equipe, fez treinamento de líderes'],
     ponto: ['Análise alteração no ponto do colaborador'],
@@ -110,7 +117,8 @@ const CHECKLISTS: Record<MovementType, Record<string, string[]>> = {
     ti: ['Alteração de acessos colaborador'],
     seguranca: ['Ordem de serviço assinada', 'Colaborador habilitado em NR'],
     treinamento: ['Treinamentos obrigatórios'],
-    ambulatorio: ['ASO', 'Alteração plano de saúde'],
+    ambulatorio: ['ASO'],
+    beneficios: ['Alteração plano de saúde'],  // ✨ NOVO
     dp: ['Promoção programada', 'Necessário criação de função ou seção', 'Alteração seguro de vida'],
     comunicacao:['Programado post de promoção']
   }
