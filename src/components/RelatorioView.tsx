@@ -2,7 +2,62 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { Loader2, FileSpreadsheet, FileText, Printer, ChevronDown, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
+/**
+ * Extrai o setor de uma movimentação
+ */
+function extrairSetor(row: Row): string {
+  const movement = row._movement;
+  const details = movement.details || {};
 
+  if (details.newSector && details.newSector.trim()) {
+    return details.newSector.trim();
+  }
+  if (details.oldSector && details.oldSector.trim()) {
+    return details.oldSector.trim();
+  }
+  if (details.sector && details.sector.trim()) {
+    return details.sector.trim();
+  }
+  
+  return 'Sem Setor Especificado';
+}
+
+/**
+ * Agrupa linhas por setor
+ */
+function agruparPorSetor(rows: Row[]): Record<string, Row[]> {
+  const agrupado: Record<string, Row[]> = {};
+
+  rows.forEach(row => {
+    const setor = extrairSetor(row);
+    if (!agrupado[setor]) {
+      agrupado[setor] = [];
+    }
+    agrupado[setor].push(row);
+  });
+
+  return agrupado;
+}
+
+/**
+ * Prepara dados para exportação (remove campos internos)
+ */
+function prepararDadosExportacao(rows: Row[]): Record<string, any>[] {
+  return rows.map(({ 
+    _id, 
+    _type, 
+    _teams, 
+    _status, 
+    _teamStatus, 
+    _movement, 
+    _createdAt, 
+    _approvedAt, 
+    _isCanceled, 
+    _canceledAt, 
+    _movementDate, 
+    ...rest 
+  }) => rest);
+}
 interface Movement {
   id: string;
   type: string;
@@ -830,22 +885,63 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
     printMovementPDF(row._movement);
   };
 
-  const handleExportExcel = () => {
-    setExporting(true);
-    try {
-      const exportData = sortedFiltered.map(({ _id, _type, _teams, _status, _teamStatus, _movement, _createdAt, _approvedAt, _isCanceled, _canceledAt, _movementDate, ...rest }) => rest);
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 25 }, { wch: 18 }, { wch: 22 }, { wch: 12 }, { wch: 45 }, { wch: 45 }, { wch: 18 }, { wch: 25 }];
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Movimentações');
-      const today = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
-      XLSX.writeFile(wb, `relatorio-movimentacoes-${today}.xlsx`);
-    } catch (e) {
-      alert('Erro ao gerar o arquivo Excel.');
-    } finally {
-      setExporting(false);
+const handleExportExcel = () => {
+  if (exporting || sortedFiltered.length === 0) {
+    if (sortedFiltered.length === 0) {
+      alert('Nenhuma movimentação para exportar.');
     }
-  };
+    return;
+  }
+
+  setExporting(true);
+
+  try {
+    const dadosPorSetor = agruparPorSetor(sortedFiltered);
+    const setores = Object.keys(dadosPorSetor).sort();
+    const hoje = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+
+    // Gerar um arquivo para cada setor
+    setores.forEach((setor, index) => {
+      const wb = XLSX.utils.book_new();
+      const dados = prepararDadosExportacao(dadosPorSetor[setor]);
+      const ws = XLSX.utils.json_to_sheet(dados);
+
+      ws['!cols'] = [
+        { wch: 30 }, { wch: 20 }, { wch: 25 }, { wch: 16 },
+        { wch: 20 }, { wch: 12 }, { wch: 16 }, { wch: 40 },
+        { wch: 40 }, { wch: 16 }, { wch: 25 },
+      ];
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Movimentações');
+
+      // Nome do setor "limpo" para o arquivo
+      const setorSanitizado = setor
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .slice(0, 40);
+
+      const nomeArquivo = `relatorio-${setorSanitizado}-${hoje}.xlsx`;
+      XLSX.writeFile(wb, nomeArquivo);
+
+      // Pequeno delay para evitar problemas de simultaneous downloads
+      if (index < setores.length - 1) {
+        setTimeout(() => {}, 100);
+      }
+    });
+
+    alert(
+      `✅ Relatório exportado com sucesso!\n\n` +
+      `📊 ${setores.length} arquivo(s) gerado(s)\n` +
+      `Um para cada setor`
+    );
+  } catch (e) {
+    console.error('Erro ao exportar:', e);
+    alert('❌ Erro ao gerar os arquivos Excel. Detalhes no console.');
+  } finally {
+    setExporting(false);
+  }
+};
 
   const hasActiveFilters = filterStatuses.size > 0 || filterTypes.size > 0 || filterTeams.size > 0
     || !!dateCreatedStart || !!dateCreatedEnd || !!dateApprStart || !!dateApprEnd || !!dateMovStart || !!dateMovEnd || showCanceled;
