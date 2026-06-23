@@ -55,6 +55,7 @@ const TEAMS_LIST = [
   { id: 'financeiro', name: 'Financeiro' },
   { id: 'dp',         name: 'DP' },
   { id: 'treinamento',name: 'Treinamento e Desenvolvimento' },
+  { id: 'beneficios', name: 'Benefícios' },
 ];
 
 const TEAMS_MAP: Record<string, string> = Object.fromEntries(TEAMS_LIST.map(t => [t.id, t.name]));
@@ -109,7 +110,6 @@ function buildMovementPDFHtml(m: Movement): string {
   let statusText  = isCanceled ? '✕ CANCELADO' : (allDone ? '✓ APROVADO — TODOS OS PARECERES EMITIDOS' : '⏳ PENDENTE — AGUARDANDO PARECERES');
   let statusBorder = isCanceled ? '#fca5a5' : (allDone ? '#86efac' : '#fde68a');
 
-  // ── detalhes da movimentação ──
   const detailRows = Object.entries(m.details)
     .filter(([key]) => key !== 'observation' && key !== 'employeeName')
     .map(([key, value]) => {
@@ -122,7 +122,6 @@ function buildMovementPDFHtml(m: Movement): string {
 
   const observation = m.details?.observation || (m as any).observation;
 
-  // ── info cancelamento ──
   let cancelamentoHtml = '';
   if (isCanceled) {
     cancelamentoHtml = `
@@ -150,7 +149,6 @@ function buildMovementPDFHtml(m: Movement): string {
     </div>`;
   }
 
-  // ── pareceres por equipe ──
   let teamSections = '';
   if (!isCanceled) {
     teamSections = m.selected_teams.map(teamId => {
@@ -161,7 +159,6 @@ function buildMovementPDFHtml(m: Movement): string {
       const bg       = done ? '#f0fdf4' : '#fffbeb';
       const border   = done ? '#86efac' : '#fde68a';
 
-      // última entrada do histórico = data/hora real do parecer
       const history  = resp?.history || [];
       const lastEntry= history.length > 0 ? history[history.length - 1] : null;
       const pareceristaNome  = lastEntry?.user_name  || '—';
@@ -169,7 +166,6 @@ function buildMovementPDFHtml(m: Movement): string {
       const dataHoraParecer  = lastEntry?.timestamp ? formatDateTime(lastEntry.timestamp) : (resp?.date ? formatDate(resp.date) : '—');
       const acaoLabel        = lastEntry?.action === 'updated' ? 'Atualizado' : 'Emitido';
 
-      // histórico completo de alterações
       const histRows = history.length > 1
         ? history.slice(0, -1).map((h, i) => `
             <tr>
@@ -180,7 +176,6 @@ function buildMovementPDFHtml(m: Movement): string {
             </tr>`).join('')
         : '';
 
-      // checklist
       const checklist = resp?.checklist || {};
       const checkItems = Object.entries(checklist);
       const checkHtml = checkItems.length > 0
@@ -252,69 +247,41 @@ function buildMovementPDFHtml(m: Movement): string {
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;background:#fff;padding:28px 32px}
-
-    /* ── cabeçalho ── */
     .doc-header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:3px solid #1e3a5f;margin-bottom:18px}
     .doc-title{font-size:20px;font-weight:700;color:#1e3a5f;letter-spacing:-.3px}
     .doc-subtitle{font-size:11px;color:#555;margin-top:3px}
     .doc-meta{text-align:right;font-size:10px;color:#555;line-height:1.6}
     .doc-meta strong{color:#111}
-
-    /* ── status geral ── */
     .status-geral{display:inline-block;padding:4px 14px;border-radius:6px;font-size:12px;font-weight:700;letter-spacing:.5px;margin-bottom:16px}
-
-    /* ── seção ── */
     .section{margin-bottom:20px}
     .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1e3a5f;border-bottom:1.5px solid #bfdbfe;padding-bottom:4px;margin-bottom:10px}
-
-    /* ── tabela de informações ── */
     .info-table{width:100%;border-collapse:collapse}
     .detail-label{width:36%;font-weight:600;color:#374151;padding:4px 8px 4px 0;vertical-align:top;white-space:nowrap}
     .detail-value{color:#111;padding:4px 0;vertical-align:top}
-
-    /* ── observação ── */
     .obs-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;font-size:10px;color:#374151;line-height:1.5}
-
-    /* ── cancelamento ── */
     .cancellation-box{background:#fee2e2;border:1.5px solid #fca5a5;border-radius:8px;padding:12px 14px;margin-bottom:20px}
     .cancellation-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#7f1d1d;margin-bottom:8px}
-
-    /* ── cards de equipe ── */
     .team-card{border:1.5px solid #e5e7eb;border-radius:8px;padding:12px 14px;margin-bottom:12px;page-break-inside:avoid}
     .team-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
     .team-name{font-size:12px;font-weight:700;color:#1e3a5f}
     .status-badge{font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px}
-
-    /* ── checklist ── */
     .checklist-wrap{background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px 10px;margin-bottom:8px}
     .checklist-title{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-bottom:6px}
     .check-item{display:flex;align-items:flex-start;gap:6px;font-size:10px;margin-bottom:3px}
     .check-icon{font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px}
-
-    /* ── parecer ── */
     .parecer-box{background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px 10px}
     .parecer-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-bottom:4px}
     .parecer-text{font-size:10px;color:#111;line-height:1.5;white-space:pre-wrap}
-
-    /* ── resumo ── */
     .summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
     .summary-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;text-align:center}
     .summary-num{font-size:22px;font-weight:700;color:#1e3a5f}
     .summary-label{font-size:9px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
-
-    /* ── rodapé ── */
     .doc-footer{margin-top:28px;padding-top:10px;border-top:1.5px solid #e2e8f0;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
-
     @page{size:A4 portrait;margin:10mm 12mm}
-    @media print{
-      body{padding:0}
-      .no-print{display:none}
-    }
+    @media print{body{padding:0}.no-print{display:none}}
   </style>
 </head>
 <body>
-
-  <!-- Cabeçalho do documento -->
   <div class="doc-header">
     <div>
       <div class="doc-title">Ficha de Movimentação Trabalhista</div>
@@ -326,84 +293,34 @@ function buildMovementPDFHtml(m: Movement): string {
       <div>Gerado em: <strong>${now}</strong></div>
     </div>
   </div>
-
-  <!-- Status geral -->
   <span class="status-geral" style="color:${statusColor};background:${statusBg};border:1.5px solid ${statusBorder}">
     ${statusText}
   </span>
-
-  <!-- Identificação -->
   <div class="section">
     <div class="section-title">Identificação da Movimentação</div>
     <table class="info-table">
-      <tr>
-        <td class="detail-label">Colaborador</td>
-        <td class="detail-value" style="font-size:13px;font-weight:700">${m.employee_name}</td>
-      </tr>
-      <tr>
-        <td class="detail-label">Tipo de Movimentação</td>
-        <td class="detail-value"><strong>${tipo}</strong></td>
-      </tr>
-      <tr>
-        <td class="detail-label">Criado por</td>
-        <td class="detail-value">${m.created_by}</td>
-      </tr>
-      <tr>
-        <td class="detail-label">Data de Criação</td>
-        <td class="detail-value">${criacao}</td>
-      </tr>
-      <tr>
-        <td class="detail-label">Prazo para Respostas</td>
-        <td class="detail-value">${prazo}</td>
-      </tr>
+      <tr><td class="detail-label">Colaborador</td><td class="detail-value" style="font-size:13px;font-weight:700">${m.employee_name}</td></tr>
+      <tr><td class="detail-label">Tipo de Movimentação</td><td class="detail-value"><strong>${tipo}</strong></td></tr>
+      <tr><td class="detail-label">Criado por</td><td class="detail-value">${m.created_by}</td></tr>
+      <tr><td class="detail-label">Data de Criação</td><td class="detail-value">${criacao}</td></tr>
+      <tr><td class="detail-label">Prazo para Respostas</td><td class="detail-value">${prazo}</td></tr>
       ${detailRows}
     </table>
-    ${observation ? `
-    <div style="margin-top:10px">
-      <div class="section-title" style="margin-bottom:6px">Observações Gerais</div>
-      <div class="obs-box">${observation}</div>
-    </div>` : ''}
+    ${observation ? `<div style="margin-top:10px"><div class="section-title" style="margin-bottom:6px">Observações Gerais</div><div class="obs-box">${observation}</div></div>` : ''}
   </div>
-
-  ${cancelamentoHtml ? `
-  <!-- Cancelamento -->
-  <div class="section">
-    <div class="section-title">Status do Cancelamento</div>
-    ${cancelamentoHtml}
-  </div>` : ''}
-
-  <!-- Resumo de progresso -->
+  ${cancelamentoHtml ? `<div class="section"><div class="section-title">Status do Cancelamento</div>${cancelamentoHtml}</div>` : ''}
   ${!isCanceled ? `
   <div class="summary-grid">
-    <div class="summary-card">
-      <div class="summary-num">${m.selected_teams.length}</div>
-      <div class="summary-label">Equipes envolvidas</div>
-    </div>
-    <div class="summary-card" style="border-color:#86efac">
-      <div class="summary-num" style="color:#16a34a">${m.selected_teams.filter(id => m.responses[id]?.status === 'completed').length}</div>
-      <div class="summary-label">Pareceres emitidos</div>
-    </div>
-    <div class="summary-card" style="border-color:#fde68a">
-      <div class="summary-num" style="color:#d97706">${m.selected_teams.filter(id => m.responses[id]?.status !== 'completed').length}</div>
-      <div class="summary-label">Pareceres pendentes</div>
-    </div>
+    <div class="summary-card"><div class="summary-num">${m.selected_teams.length}</div><div class="summary-label">Equipes envolvidas</div></div>
+    <div class="summary-card" style="border-color:#86efac"><div class="summary-num" style="color:#16a34a">${m.selected_teams.filter(id => m.responses[id]?.status === 'completed').length}</div><div class="summary-label">Pareceres emitidos</div></div>
+    <div class="summary-card" style="border-color:#fde68a"><div class="summary-num" style="color:#d97706">${m.selected_teams.filter(id => m.responses[id]?.status !== 'completed').length}</div><div class="summary-label">Pareceres pendentes</div></div>
   </div>
+  <div class="section"><div class="section-title">Pareceres das Equipes</div>${teamSections}</div>
   ` : ''}
-
-  <!-- Pareceres -->
-  ${!isCanceled ? `
-  <div class="section">
-    <div class="section-title">Pareceres das Equipes</div>
-    ${teamSections}
-  </div>
-  ` : ''}
-
-  <!-- Rodapé -->
   <div class="doc-footer">
     <span>RH Movimentações — Documento gerado automaticamente em ${now}</span>
     <span>ID: ${m.id}</span>
   </div>
-
 </body>
 </html>`;
 }
@@ -474,7 +391,6 @@ function MultiSelect({ label, selected, onToggle, onClear, options, totalCount }
 
       {open && (
         <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
-          {/* opção "Todos" */}
           <button
             type="button"
             onClick={() => { onClear(); setOpen(false); }}
@@ -518,6 +434,7 @@ function MultiSelect({ label, selected, onToggle, onClear, options, totalCount }
     </div>
   );
 }
+
 // ─── Row builder ──────────────────────────────────────────────────────────────
 interface Row {
   _id: string;
@@ -556,7 +473,6 @@ function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
       const teamStatus: Record<string, 'completed' | 'pending'> = {};
       m.selected_teams.forEach(id => { teamStatus[id] = m.responses[id]?.status === 'completed' ? 'completed' : 'pending'; });
 
-      // maior data/hora entre todos os pareceres emitidos (data de aprovação final)
       let approvedAt: Date | null = null;
       if (!isCanceled && pendentes.length === 0) {
         const timestamps = m.selected_teams
@@ -573,7 +489,6 @@ function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
         }
       }
 
-      // maior data entre TODOS os pareceres já emitidos (mesmo que pendente ainda)
       const allTimestamps = m.selected_teams
         .map(id => {
           const resp = m.responses[id];
@@ -589,18 +504,14 @@ function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
         : '—';
 
       let canceledAt: Date | null = null;
-let canceledAtStr = '—';
-let canceledByStr = '—';
+      let canceledAtStr = '—';
+      let canceledByStr = '—';
 
-if (isCanceled) {
-  canceledAt = m.cancelamento?.cancelado_em
-    ? new Date(m.cancelamento.cancelado_em)
-    : null;
-
-  canceledAtStr = formatDate(m.cancelamento?.cancelado_em);
-
-  canceledByStr = m.cancelamento?.cancelado_por || '—';
-}
+      if (isCanceled) {
+        canceledAt = m.cancelamento?.cancelado_em ? new Date(m.cancelamento.cancelado_em) : null;
+        canceledAtStr = formatDate(m.cancelamento?.cancelado_em);
+        canceledByStr = m.cancelamento?.cancelado_por || '—';
+      }
 
       const rawMovementDate = m.type === 'demissao' ? m.details.dismissalDate : m.details.changeDate;
       const movementDate = rawMovementDate ? new Date(rawMovementDate) : null;
@@ -629,18 +540,13 @@ if (isCanceled) {
 }
 
 function matchesTeamStatus(row: Row, filterTeams: Set<string>, filterStatuses: Set<string>): boolean {
-  // sem filtro de equipe: usa status geral da movimentação
   if (filterTeams.size === 0) {
     if (filterStatuses.size > 0 && !filterStatuses.has(row._status)) return false;
     return true;
   }
-  // a movimentação precisa conter pelo menos uma das equipes filtradas
   const hasTeam = [...filterTeams].some(t => row._teams.includes(t));
   if (!hasTeam) return false;
-
   if (filterStatuses.size === 0) return true;
-
-  // verifica status para CADA equipe filtrada presente na movimentação
   return [...filterTeams].some(teamId => {
     if (!row._teams.includes(teamId)) return false;
     const done = row._teamStatus[teamId] === 'completed';
@@ -648,6 +554,82 @@ function matchesTeamStatus(row: Row, filterTeams: Set<string>, filterStatuses: S
     if (filterStatuses.has('Pendente') && !done) return true;
     return false;
   });
+}
+
+// ─── Excel export helpers ─────────────────────────────────────────────────────
+
+/**
+ * As 5 colunas exatas do modelo de referência (Pendencias_por_Setor.xlsx).
+ * Cada aba de equipe lista apenas as movimentações PENDENTES para aquela equipe.
+ */
+const PENDING_COLS = [
+  'Nome',
+  'Tipo',
+  'Criado por',
+  'Data de criação',
+  'Data da Mudança/Desligamento',
+  'Status',
+];
+
+/**
+ * Colunas da aba Geral (visão completa de todas as movimentações filtradas).
+ */
+const GENERAL_COLS = [
+  'Nome', 'Tipo', 'Criado por', 'Data de criação',
+  'Data da Mudança/Desligamento', 'Status',
+  'Último Parecer', 'Faltam parecer', 'Com pareceres emitidos',
+  'Cancelado em', 'Cancelado por',
+];
+
+/** Monta a aba "Geral" com todas as linhas filtradas. */
+function buildGeneralSheet(rows: Row[]): XLSX.WorkSheet {
+  const data = rows.map(r => ({
+    'Nome':                         r.Nome,
+    'Tipo':                         r.Tipo,
+    'Criado por':                   r['Criado por'],
+    'Data de criação':              r['Data de criação'],
+    'Data da Mudança/Desligamento': r['Data da Mudança/Desligamento'],
+    'Status':                       r.Status,
+    'Último Parecer':               r['Último Parecer'],
+    'Faltam parecer':               r['Faltam parecer'],
+    'Com pareceres emitidos':       r['Com pareceres emitidos'],
+    'Cancelado em':                 r['Cancelado em'],
+    'Cancelado por':                r['Cancelado por'],
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(data, { header: GENERAL_COLS });
+  ws['!cols'] = [
+    { wch: 35 }, { wch: 18 }, { wch: 28 }, { wch: 16 },
+    { wch: 28 }, { wch: 12 }, { wch: 16 }, { wch: 45 },
+    { wch: 45 }, { wch: 16 }, { wch: 22 },
+  ];
+  return ws;
+}
+
+/**
+ * Monta a aba de uma equipe específica.
+ * Lista todas as movimentações filtradas que incluem aquela equipe,
+ * com as mesmas 5 colunas do modelo de referência.
+ */
+function buildTeamPendingSheet(teamId: string, allRows: Row[]): XLSX.WorkSheet | null {
+  const pendingRows = allRows.filter(r => r._teams.includes(teamId));
+
+  if (pendingRows.length === 0) return null;
+
+  const data = pendingRows.map(r => ({
+    'Nome':                         r.Nome,
+    'Tipo':                         r.Tipo,
+    'Criado por':                   r['Criado por'],
+    'Data de criação':              r['Data de criação'],
+    'Data da Mudança/Desligamento': r['Data da Mudança/Desligamento'],
+    'Status':                       r._teamStatus[teamId] === 'completed' ? 'Respondido' : 'Pendente',
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(data, { header: PENDING_COLS });
+  ws['!cols'] = [
+    { wch: 35 }, { wch: 18 }, { wch: 28 }, { wch: 16 }, { wch: 28 }, { wch: 12 },
+  ];
+  return ws;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -692,7 +674,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
 
   const allRows = useMemo(() => buildRows(movements, currentUser), [movements, currentUser]);
 
-  // converte string 'YYYY-MM-DD' para Date no início/fim do dia
   const toStart = (s: string) => s ? new Date(s + 'T00:00:00') : null;
   const toEnd   = (s: string) => s ? new Date(s + 'T23:59:59') : null;
 
@@ -718,9 +699,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
     return true;
   };
 
-  // Contadores intercalados: cada filtro conta sobre os outros dois ativos
-
-  // para status: aplica tipo + equipe (sem status)
   const rowsForStatusCount = useMemo(() =>
     allRows.filter(r => {
       if (filterTypes.size > 0 && !filterTypes.has(r._type)) return false;
@@ -731,7 +709,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
       return true;
     }), [allRows, filterTypes, filterTeams, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled]);
 
-  // para tipo: aplica status + equipe (sem tipo)
   const rowsForTypeCount = useMemo(() =>
     allRows.filter(r => {
       if (!matchesTeamStatus(r, filterTeams, filterStatuses)) return false;
@@ -741,7 +718,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
       return true;
     }), [allRows, filterTeams, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled]);
 
-  // para equipe: aplica status + tipo (sem equipe)
   const rowsForTeamCount = useMemo(() =>
     allRows.filter(r => {
       if (filterTypes.size > 0 && !filterTypes.has(r._type)) return false;
@@ -762,7 +738,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
       return true;
     }), [allRows, filterTypes, filterTeams, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled]);
 
-  // Map display column names → Row keys for sorting
   const COL_KEY: Record<string, keyof Row> = {
     'Nome':           'Nome',
     'Tipo':           'Tipo',
@@ -783,10 +758,8 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
     return [...filtered].sort((a, b) => {
       const av = String(a[key] ?? '');
       const bv = String(b[key] ?? '');
-      // treat '—' as empty so they sort last
       const ae = av === '—' ? '' : av;
       const be = bv === '—' ? '' : bv;
-      // try numeric/date comparison first (dd/mm/yyyy or plain numbers)
       const aDate = ae.match(/^\d{2}\/\d{2}\/\d{4}$/) ? ae.split('/').reverse().join('-') : ae;
       const bDate = be.match(/^\d{2}\/\d{2}\/\d{4}$/) ? be.split('/').reverse().join('-') : be;
       const cmp = aDate.localeCompare(bDate, 'pt-BR', { numeric: true, sensitivity: 'base' });
@@ -794,7 +767,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
     });
   }, [filtered, sortCol, sortDir]);
 
-  // limpar seleção quando filtros mudam
   const clearFilters = () => {
     setFilterStatuses(new Set()); setFilterTypes(new Set()); setFilterTeams(new Set());
     setDateCreatedStart(''); setDateCreatedEnd('');
@@ -830,18 +802,32 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
     printMovementPDF(row._movement);
   };
 
+  // ─── EXPORT EXCEL POR EQUIPE ───────────────────────────────────────────────
   const handleExportExcel = () => {
     setExporting(true);
     try {
-      const exportData = sortedFiltered.map(({ _id, _type, _teams, _status, _teamStatus, _movement, _createdAt, _approvedAt, _isCanceled, _canceledAt, _movementDate, ...rest }) => rest);
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 25 }, { wch: 18 }, { wch: 22 }, { wch: 12 }, { wch: 45 }, { wch: 45 }, { wch: 18 }, { wch: 25 }];
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Movimentações');
+
+      // 1. Aba "Geral" com visão completa das movimentações filtradas
+      const generalWs = buildGeneralSheet(sortedFiltered);
+      XLSX.utils.book_append_sheet(wb, generalWs, 'Geral');
+
+      // 2. Uma aba por equipe — apenas pendências daquela equipe,
+      //    exatamente no formato do modelo (5 colunas, sem respondidas).
+      //    Só cria a aba se a equipe tiver ao menos 1 pendência.
+      for (const team of TEAMS_LIST) {
+        const teamWs = buildTeamPendingSheet(team.id, sortedFiltered);
+        if (!teamWs) continue;
+        // Limite Excel: 31 chars no nome da aba
+        const sheetName = team.name.length > 31 ? team.name.substring(0, 31) : team.name;
+        XLSX.utils.book_append_sheet(wb, teamWs, sheetName);
+      }
+
       const today = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
-      XLSX.writeFile(wb, `relatorio-movimentacoes-${today}.xlsx`);
+      XLSX.writeFile(wb, `pendencias-por-setor-${today}.xlsx`);
     } catch (e) {
       alert('Erro ao gerar o arquivo Excel.');
+      console.error(e);
     } finally {
       setExporting(false);
     }
@@ -876,16 +862,16 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
             onClick={handleExportExcel}
             disabled={exporting || sortedFiltered.length === 0}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-xs font-medium"
+            title="Exporta aba Geral + uma aba por equipe com pendências"
           >
             {exporting
               ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Exportando...</>
-              : <><FileSpreadsheet className="w-3.5 h-3.5" />Excel</>}
+              : <><FileSpreadsheet className="w-3.5 h-3.5" />Pendências por Setor</>}
           </button>
         </div>
       </div>
 
       <div className="p-4">
-        {/* Limpar filtros */}
         {hasActiveFilters && (
           <div className="flex justify-end mb-2">
             <button onClick={clearFilters} className="flex items-center gap-1 px-2.5 py-1 text-xs text-red-600 border border-red-200 bg-red-50 rounded-lg hover:bg-red-100 transition">
@@ -894,7 +880,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
           </div>
         )}
 
-        {/* Hint equipe + status */}
         {filterTeams.size > 0 && (
           <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
             Equipe(s) selecionada(s) — <strong>Aprovado</strong>: equipe já deu o parecer; <strong>Pendente</strong>: ainda não deu.
@@ -903,8 +888,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
 
         {/* Filtros — dropdowns multi-select */}
         <div className="grid grid-cols-3 gap-3 mb-3">
-
-          {/* Status */}
           <MultiSelect
             label="Status"
             selected={filterStatuses}
@@ -930,7 +913,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
             totalCount={rowsForStatusCount.length}
           />
 
-          {/* Tipo */}
           <MultiSelect
             label="Tipo"
             selected={filterTypes}
@@ -944,7 +926,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
             totalCount={rowsForTypeCount.length}
           />
 
-          {/* Equipe */}
           <MultiSelect
             label="Equipe"
             selected={filterTeams}
@@ -959,7 +940,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
               .filter(o => o.count > 0)}
             totalCount={rowsForTeamCount.length}
           />
-
         </div>
 
         {/* Toggle Canceladas */}
@@ -977,8 +957,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
 
         {/* Filtros de data */}
         <div className="grid grid-cols-2 gap-3 mb-4">
-
-          {/* Data de criação */}
           <div className="p-3 bg-gray-50 rounded-lg border">
             <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Data de Criação</label>
             <div className="flex items-center gap-2">
@@ -1002,7 +980,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
             </div>
           </div>
 
-          {/* Data de aprovação */}
           <div className="p-3 bg-gray-50 rounded-lg border">
             <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
               Data de Aprovação <span className="text-gray-400 font-normal normal-case">(último parecer)</span>
@@ -1031,7 +1008,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
             )}
           </div>
 
-          {/* Data da Mudança/Desligamento */}
           <div className="p-3 bg-gray-50 rounded-lg border col-span-2">
             <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Data da Mudança / Desligamento</label>
             <div className="flex items-center gap-2">
@@ -1054,7 +1030,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
               )}
             </div>
           </div>
-
         </div>
 
         {/* Tabela */}
@@ -1117,9 +1092,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
                         )}
                       </td>
                       <td className="px-2 py-2 border-b border-gray-100 whitespace-nowrap text-gray-500">
-                        {row['Último Parecer'] === '—'
-                          ? <span className="text-gray-300">—</span>
-                          : row['Último Parecer']}
+                        {row['Último Parecer'] === '—' ? <span className="text-gray-300">—</span> : row['Último Parecer']}
                       </td>
                       <td className="px-2 py-2 border-b border-gray-100 max-w-[120px]">
                         {row['Faltam parecer'] === '—'
