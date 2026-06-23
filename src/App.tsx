@@ -254,11 +254,20 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [activeTeamId, setActiveTeamId] = useState<string>('');
 
+  // activeTeamId = '' significa "Todas as equipes do usuário"
+  // activeTeamId = 'rh' significa "Somente a equipe RH"
+  const hasMultipleTeams = (currentUser?.team_ids?.length ?? 0) > 1;
+
   useEffect(() => {
     if (currentUser) {
-      if (!activeTeamId && currentUser.team_ids.length > 0) {
+      if (currentUser.team_ids.length === 1) {
+        // Usuário com 1 equipe: seleciona ela por padrão
         setActiveTeamId(currentUser.team_ids[0]);
+      } else if (currentUser.team_ids.length > 1 && activeTeamId === currentUser.team_ids[0] && !hasMultipleTeams) {
+        // Usuário recém-promovido a multi-equipes: resetar para "todas"
+        setActiveTeamId('');
       }
+      // Usuário com múltiplas equipes: mantém '' (todas) como padrão ao logar
       loadMovements();
     }
   }, [currentUser]);
@@ -339,9 +348,23 @@ export default function App() {
         {currentUser.team_ids.length > 0 && (
           <div style={{ padding: '10px 10px', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
             <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, padding: '0 2px' }}>
-              {currentUser.team_ids.length > 1 ? 'Equipe ativa' : 'Equipe'}
+              {currentUser.team_ids.length > 1 ? 'Filtrar equipe' : 'Equipe'}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {/* Opção "Todas" — só aparece para usuários com múltiplas equipes */}
+              {currentUser.team_ids.length > 1 && (
+                <button onClick={() => setActiveTeamId('')} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
+                  borderRadius: 8, border: `1px solid ${activeTeamId === '' ? 'var(--accent-border)' : 'transparent'}`,
+                  background: activeTeamId === '' ? 'var(--accent-light)' : 'transparent',
+                  color: activeTeamId === '' ? 'var(--accent)' : 'var(--muted)',
+                  cursor: 'pointer', fontSize: 12, fontWeight: activeTeamId === '' ? 700 : 400,
+                  fontFamily: 'var(--font-body)', textAlign: 'left',
+                }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: activeTeamId === '' ? 'var(--accent)' : 'var(--muted-light)', flexShrink: 0 }} />
+                  Todas as equipes
+                </button>
+              )}
               {currentUser.team_ids.map((teamId: string, index: number) => {
                 const active = teamId === activeTeamId;
                 return (
@@ -429,7 +452,11 @@ function LoginComponent({ setCurrentUser, setView, setActiveTeamId }: any) {
       const { data, error } = await supabase.from('users').select('*').eq('email', email.toLowerCase()).eq('password', password).single();
       if (error || !data) { setError('E-mail ou senha incorretos.'); return; }
       setCurrentUser(data);
-      if (data.team_ids?.length > 0) setActiveTeamId(data.team_ids[0]);
+      if (data.team_ids?.length === 1) {
+        setActiveTeamId(data.team_ids[0]);
+      } else {
+        setActiveTeamId(''); // múltiplos setores: inicia em "Todas"
+      }
       setView('dashboard');
     } catch { setError('Erro ao fazer login.'); }
     finally { setLoadingLogin(false); }
@@ -859,20 +886,31 @@ if (movementType === 'demissao') {
     }
   };
 
+  // activeTeamIds: lista de equipes a considerar no filtro
+  // - '' → todas as equipes do usuário
+  // - 'rh' → apenas rh
+  const activeTeamIds: string[] = activeTeamId === ''
+    ? currentUser?.team_ids ?? []
+    : activeTeamId ? [activeTeamId] : [];
+
   const myMovs = movements.filter((m: Movement) => {
-    if (m.cancelamento) return false; // Não mostra movimentações canceladas na lista principal
+    if (m.cancelamento) return false;
     if (isAdmin) return m.created_by === currentUser?.name || m.selected_teams.some((t: string) => currentUser?.team_ids.includes(t));
-    return m.selected_teams.includes(activeTeamId);
+    // Para não-admin: inclui movimentação se qualquer equipe ativa do usuário está no selected_teams
+    return m.selected_teams.some((t: string) => activeTeamIds.includes(t));
   });
 
   const pending = myMovs.filter((m: Movement) => {
-    if (m.created_by === currentUser?.name && !m.selected_teams.includes(activeTeamId)) return m.status !== 'completed';
-    return m.responses[activeTeamId]?.status === 'pending';
+    if (m.created_by === currentUser?.name && !m.selected_teams.some((t: string) => activeTeamIds.includes(t))) return m.status !== 'completed';
+    // Pendente se qualquer equipe ativa ainda não respondeu
+    return activeTeamIds.some(tid => m.selected_teams.includes(tid) && m.responses[tid]?.status !== 'completed');
   });
 
   const completed = myMovs.filter((m: Movement) => {
-    if (m.created_by === currentUser?.name && !m.selected_teams.includes(activeTeamId)) return m.status === 'completed';
-    return m.responses[activeTeamId]?.status === 'completed';
+    if (m.created_by === currentUser?.name && !m.selected_teams.some((t: string) => activeTeamIds.includes(t))) return m.status === 'completed';
+    // Concluída se todas as equipes ativas responderam
+    const relevantTeams = activeTeamIds.filter(tid => m.selected_teams.includes(tid));
+    return relevantTeams.length > 0 && relevantTeams.every(tid => m.responses[tid]?.status === 'completed');
   });
 
   const getFilteredMovements = () => {
@@ -989,7 +1027,12 @@ if (movementType === 'demissao') {
             {filteredMovements.map((m: Movement) => {
               const Icon = MOVEMENT_TYPES[m.type as MovementType].icon;
               const prog = getProgress(m);
-              const myResp = m.responses[activeTeamId];
+              // Para o badge de status no card: pega o primeiro setor ativo que está na movimentação
+              const myTeamIdForCard = activeTeamId || (currentUser?.team_ids ?? []).find((tid: string) => m.selected_teams.includes(tid)) || '';
+              const myResp = m.responses[myTeamIdForCard];
+              // Conta quantas equipes do usuário ainda estão pendentes
+              const myPendingTeams = (activeTeamId ? [activeTeamId] : (currentUser?.team_ids ?? []))
+                .filter((tid: string) => m.selected_teams.includes(tid) && m.responses[tid]?.status !== 'completed');
               const overdue = isOverdue(m.deadline);
               return (
                 <div key={m.id} className={`border rounded-lg p-4 hover:bg-gray-50 cursor-pointer ${overdue && !showCompleted ? 'border-red-300 bg-red-50' : ''}`} onClick={() => { setSelectedMovement(m); setView('detail'); }}>
@@ -1003,7 +1046,10 @@ if (movementType === 'demissao') {
                     </div>
                     <div className="flex gap-2">
                       {m.deadline && <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${overdue && !showCompleted ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}><Clock className="w-3 h-3" />{new Date(m.deadline).toLocaleDateString('pt-BR')}</span>}
-                      <span className={`text-xs px-2 py-1 rounded ${myResp?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{myResp?.status === 'completed' ? '✓' : '⏳'}</span>
+                      {myPendingTeams.length === 0
+                        ? <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-800">✓ Respondido</span>
+                        : <span className="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800">⏳ {myPendingTeams.length > 1 ? `${myPendingTeams.length} pendentes` : 'Pendente'}</span>
+                      }
                     </div>
                   </div>
                   <div className="text-sm text-gray-600 mb-2">Progresso geral: {prog.completed}/{prog.total} equipes</div>
@@ -1160,27 +1206,48 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   const [loadingSub, setLoadingSub] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState(selectedMovement.details);
-  const [checklist, setChecklist] = useState<Record<string, boolean>>(selectedMovement.responses[activeTeamId]?.checklist || {});
-  const [isEditingResponse, setIsEditingResponse] = useState(false);
   const [showHistory, setShowHistory] = useState<string | null>(null);
-  const [attachments, setAttachments] = useState<Attachment[]>(selectedMovement.responses[activeTeamId]?.attachments || []);
-  const [uploadingFile, setUploadingFile] = useState(false);
   const [editSelectedTeams, setEditSelectedTeams] = useState<string[]>(selectedMovement.selected_teams);
   const [editType, setEditType] = useState<MovementType>(selectedMovement.type as MovementType);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelMotivo, setCancelMotivo] = useState('');
   const [cancelLoading, setCancelLoading] = useState(false);
 
-  const isMyTeam = selectedMovement.selected_teams.includes(activeTeamId);
-  const myResp = activeTeamId ? selectedMovement.responses[activeTeamId] : null;
+  // No modo "Todas" (activeTeamId = ''), o usuário pode responder qualquer equipe que tem acesso
+  // activeResponseTeamId é a equipe sendo respondida atualmente (pode ser escolhida)
+  const userTeamIds: string[] = currentUser?.team_ids ?? [];
+  const myTeamsInMovement = selectedMovement.selected_teams.filter((t: string) => userTeamIds.includes(t));
+
+  // Equipe para resposta: se filtrando por equipe específica, usa ela; senão pega a primeira pendente
+  const defaultResponseTeam = activeTeamId && myTeamsInMovement.includes(activeTeamId)
+    ? activeTeamId
+    : myTeamsInMovement.find((t: string) => selectedMovement.responses[t]?.status !== 'completed') || myTeamsInMovement[0] || '';
+
+  const [respondingTeamId, setRespondingTeamId] = useState<string>(defaultResponseTeam);
+  const [isEditingResponse, setIsEditingResponse] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>(selectedMovement.responses[respondingTeamId]?.attachments || []);
+  const [checklist, setChecklist] = useState<Record<string, boolean>>(selectedMovement.responses[respondingTeamId]?.checklist || {});
+  const [uploadingFile, setUploadingFile] = useState(false);
+
+  // Quando muda a equipe sendo respondida, atualiza checklist e attachments
+  const handleSelectRespondingTeam = (teamId: string) => {
+    setRespondingTeamId(teamId);
+    setChecklist(selectedMovement.responses[teamId]?.checklist || {});
+    setAttachments(selectedMovement.responses[teamId]?.attachments || []);
+    setComment(selectedMovement.responses[teamId]?.comment || '');
+    setIsEditingResponse(false);
+  };
+
+  const myResp = respondingTeamId ? selectedMovement.responses[respondingTeamId] : null;
   const hasResponded = myResp?.status === 'completed';
+  const isMyTeam = myTeamsInMovement.length > 0;
   const isAdmin = currentUser?.role === 'admin';
   const isResponsavel = currentUser?.role === 'responsavel';
   const canEdit = isAdmin || (isResponsavel && selectedMovement.created_by === currentUser?.name);
   const canCancel = isAdmin || (selectedMovement.created_by === currentUser?.name);
   const isCanceled = selectedMovement.cancelamento !== null && selectedMovement.cancelamento !== undefined;
 
-  const userTeamChecklist: string[] = CHECKLISTS[selectedMovement.type as MovementType]?.[activeTeamId || ''] || [];
+  const userTeamChecklist: string[] = CHECKLISTS[selectedMovement.type as MovementType]?.[respondingTeamId || ''] || [];
 
   const handleStartEdit = () => {
     if (myResp) {
@@ -1198,7 +1265,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   const handleAddAttachment = async (file: File) => {
     setUploadingFile(true);
     try {
-      const attachment = await uploadFile(file, selectedMovement.id, activeTeamId);
+      const attachment = await uploadFile(file, selectedMovement.id, respondingTeamId);
       if (attachment) { setAttachments(prev => [...prev, attachment]); }
       else { alert('Erro ao fazer upload do arquivo'); }
     } catch (error) {
@@ -1261,7 +1328,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
       const action = hasResponded ? 'updated' : 'created';
       const existingHistory = myResp?.history || [];
       const newHistoryEntry = { user_name: currentUser.name, user_email: currentUser.email, action: action, date: now.toISOString().split('T')[0], timestamp: now.toISOString() };
-      const updated = { ...selectedMovement.responses, [activeTeamId!]: { status: 'completed', comment: comment.trim(), date: now.toISOString().split('T')[0], checklist: checklist, attachments: attachments, history: [...existingHistory, newHistoryEntry] } };
+      const updated = { ...selectedMovement.responses, [respondingTeamId!]: { status: 'completed', comment: comment.trim(), date: now.toISOString().split('T')[0], checklist: checklist, attachments: attachments, history: [...existingHistory, newHistoryEntry] } };
       const allDone = selectedMovement.selected_teams.every((id: string) => updated[id]?.status === 'completed');
       const { error } = await supabase.from('movements').update({ responses: updated, status: allDone ? 'completed' : 'in_progress' }).eq('id', selectedMovement.id);
       if (error) throw error;
@@ -1523,7 +1590,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
         {selectedMovement.selected_teams.map((id: string) => {
           const team = TEAMS.find(t => t.id === id);
           const resp = selectedMovement.responses[id];
-          const isMine = id === activeTeamId;
+          const isMine = userTeamIds.includes(id);
           if (!isAdmin && !isResponsavel && !isMine) return null;
           if (isResponsavel && !isMine && selectedMovement.created_by !== currentUser?.name) return null;
           return (
@@ -1584,6 +1651,33 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
 
       {isMyTeam && !hasResponded && (
         <div className="border-t pt-6">
+          {/* Seletor de equipe para responder — aparece quando o usuário tem múltiplas equipes na movimentação */}
+          {myTeamsInMovement.length > 1 && (
+            <div className="mb-5">
+              <h3 className="font-semibold mb-2">Respondendo como equipe:</h3>
+              <div className="flex flex-wrap gap-2">
+                {myTeamsInMovement.map((tid: string) => {
+                  const tName = TEAMS.find(t => t.id === tid)?.name || tid;
+                  const tResp = selectedMovement.responses[tid];
+                  const done = tResp?.status === 'completed';
+                  const sel = respondingTeamId === tid;
+                  return (
+                    <button key={tid} onClick={() => !done && handleSelectRespondingTeam(tid)}
+                      disabled={done}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border-2 transition ${
+                        done ? 'border-green-400 bg-green-50 text-green-700 cursor-default opacity-70'
+                        : sel ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-300 hover:border-blue-400 text-gray-700'
+                      }`}>
+                      {tName} {done ? '✓' : ''}
+                    </button>
+                  );
+                })}
+              </div>
+              {respondingTeamId && <p className="text-xs text-gray-500 mt-2">Respondendo como: <strong>{TEAMS.find(t => t.id === respondingTeamId)?.name}</strong></p>}
+            </div>
+          )}
+
           {userTeamChecklist.length > 0 && (
             <div className="mb-6">
               <h3 className="font-semibold mb-3 flex items-center gap-2"><CheckSquare className="w-5 h-5" />Checklist de Verificação</h3>
@@ -1613,6 +1707,30 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
 
       {isMyTeam && hasResponded && !isEditingResponse && (
         <div className="border-t pt-6 space-y-3">
+          {/* Seletor de equipe no modo "respondidas" */}
+          {myTeamsInMovement.length > 1 && (
+            <div className="mb-3">
+              <p className="text-sm font-semibold text-gray-700 mb-2">Visualizando parecer de:</p>
+              <div className="flex flex-wrap gap-2">
+                {myTeamsInMovement.map((tid: string) => {
+                  const tName = TEAMS.find(t => t.id === tid)?.name || tid;
+                  const tResp = selectedMovement.responses[tid];
+                  const done = tResp?.status === 'completed';
+                  const sel = respondingTeamId === tid;
+                  return (
+                    <button key={tid} onClick={() => handleSelectRespondingTeam(tid)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border-2 transition ${
+                        sel ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : done ? 'border-green-400 bg-green-50 text-green-700'
+                        : 'border-gray-300 text-gray-500'
+                      }`}>
+                      {tName} {done ? '✓' : '⏳'}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div className="bg-green-50 p-4 rounded flex items-center justify-between">
             <span className="text-green-800 font-medium">✓ Você já respondeu esta movimentação</span>
             <button onClick={handleStartEdit} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">Editar Parecer</button>
