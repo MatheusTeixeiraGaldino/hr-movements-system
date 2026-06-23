@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight } from 'lucide-react';
+import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight, Camera } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import RelatorioView from './components/RelatorioView';
 import DossieView from './components/DossieView';
 import DossieConfigView from './components/DossieConfigView';
+import AttendanceAnalysisView from './components/AttendanceAnalysisView';
 import { useDossie } from './hooks/useDossie';
 import { TipoDesligamento } from './types/dossie';
 
@@ -316,6 +317,7 @@ export default function App() {
           {[
             { id: 'dashboard', label: 'Dashboard', icon: '▦' },
             { id: 'relatorio', label: 'Relatório', icon: '📊' },
+            { id: 'attendance_analysis', label: 'Fichas de Abono', icon: '📸' },
             ...(((['admin', 'responsavel'] as string[]).includes(currentUser.role)) ? [
               { id: 'dossie', label: 'Acompanhamento Dossiê', icon: '📋' },
             ] : []),
@@ -431,6 +433,9 @@ export default function App() {
         )}
         {view === 'dossie_config' && currentUser.role === 'admin' && (
           <DossieConfigView />
+        )}
+        {view === 'attendance_analysis' && (
+          <AttendanceAnalysisView userId={currentUser.id} userName={currentUser.name} />
         )}
       </main>
     </div>
