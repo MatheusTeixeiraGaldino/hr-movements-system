@@ -4,7 +4,6 @@ import { supabase } from './lib/supabase';
 import RelatorioView from './components/RelatorioView';
 import DossieView from './components/DossieView';
 import DossieConfigView from './components/DossieConfigView';
-import AttendanceAnalysisView from './components/AttendanceAnalysisView';
 import AdmissaoImportView from './components/AdmissaoImportView';
 import AdmissaoView from './components/AdmissaoView';
 import { useDossie } from './hooks/useDossie';
@@ -325,7 +324,6 @@ export default function App() {
           {[
             { id: 'dashboard', label: 'Dashboard', icon: '▦' },
             { id: 'relatorio', label: 'Relatório', icon: '📊' },
-            { id: 'attendance_analysis', label: 'Fichas de Abono', icon: '📸' },
             ...(((['admin', 'responsavel'] as string[]).includes(currentUser.role)) ? [
               { id: 'dossie', label: 'Acompanhamento Dossiê', icon: '📋' },
             ] : []),
@@ -441,9 +439,6 @@ export default function App() {
         )}
         {view === 'dossie_config' && currentUser.role === 'admin' && (
           <DossieConfigView />
-        )}
-        {view === 'attendance_analysis' && (
-          <AttendanceAnalysisView userId={currentUser.id} userName={currentUser.name} />
         )}
       </main>
     </div>
@@ -634,7 +629,8 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
     password: '',
     role: 'team_member' as UserRole,
     can_manage_demissoes: false,
-    can_manage_transferencias: false
+    can_manage_transferencias: false,
+    can_manage_admissoes: false
   });
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [error, setError] = useState('');
@@ -669,6 +665,7 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
           role: formData.role,
           can_manage_demissoes: formData.can_manage_demissoes,
           can_manage_transferencias: formData.can_manage_transferencias,
+          can_manage_admissoes: formData.can_manage_admissoes,
           team_ids: selectedTeamIds,
           team_names: selectedTeamNames
         })
@@ -738,7 +735,7 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
             <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Usuário *</label>
             <div className="grid grid-cols-3 gap-2">
               <label className="flex items-start gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
-                <input type="radio" name="role" value="team_member" checked={formData.role === 'team_member'} onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole, can_manage_demissoes: false, can_manage_transferencias: false })} className="w-4 h-4 mt-0.5" disabled={loading} />
+                <input type="radio" name="role" value="team_member" checked={formData.role === 'team_member'} onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole, can_manage_demissoes: false, can_manage_transferencias: false, can_manage_admissoes: false })} className="w-4 h-4 mt-0.5" disabled={loading} />
                 <div><p className="font-medium text-sm">Membro da Equipe</p><p className="text-xs text-gray-600">Responde pareceres</p></div>
               </label>
               <label className="flex items-start gap-2 p-2 border-2 border-blue-200 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100">
@@ -755,6 +752,10 @@ function RegisterUserModal({ onClose }: { onClose: () => void }) {
             <div className="border-t pt-3">
               <label className="block text-sm font-medium text-gray-700 mb-2">Permissões</label>
               <div className="grid grid-cols-2 gap-2">
+                <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input type="checkbox" checked={formData.can_manage_admissoes} onChange={(e) => setFormData({...formData, can_manage_admissoes: e.target.checked})} className="w-4 h-4" disabled={loading} />
+                  <span className="text-sm">Admissões</span>
+                </label>
                 <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
                   <input type="checkbox" checked={formData.can_manage_demissoes} onChange={(e) => setFormData({...formData, can_manage_demissoes: e.target.checked})} className="w-4 h-4" disabled={loading} />
                   <span className="text-sm">Demissões</span>
@@ -795,6 +796,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
   const isResponsavel = currentUser?.role === 'responsavel';
   const canCreateDemissao = (isAdmin || isResponsavel) && currentUser?.can_manage_demissoes;
   const canCreateTransferencia = (isAdmin || isResponsavel) && currentUser?.can_manage_transferencias;
+  const canCreateAdmissao = (isAdmin || isResponsavel) && currentUser?.can_manage_admissoes;
 
   const isOverdue = (deadline?: string | null) => {
     if (!deadline) return false;
@@ -974,14 +976,16 @@ if (movementType === 'demissao') {
           </div>
         </div>
 
-        {(canCreateDemissao || canCreateTransferencia) && (
+        {(canCreateAdmissao || canCreateDemissao || canCreateTransferencia) && (
           <div className="mb-6 pb-6 border-b">
             <h3 className="font-semibold mb-3">Nova Movimentação</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <button onClick={() => setShowImportAdmissao(true)} className="p-4 border-2 border-emerald-200 rounded-lg hover:bg-emerald-50">
-                <UserPlus className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
-                <p className="text-sm font-medium">Admissão (importar .txt)</p>
-              </button>
+              {canCreateAdmissao && (
+                <button onClick={() => setShowImportAdmissao(true)} className="p-4 border-2 border-emerald-200 rounded-lg hover:bg-emerald-50">
+                  <UserPlus className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
+                  <p className="text-sm font-medium">Admissão (importar .txt)</p>
+                </button>
+              )}
               {canCreateDemissao && (
                 <button onClick={() => { setShowNewMovement(true); setMovementType('demissao'); }} className="p-4 border-2 border-red-200 rounded-lg hover:bg-red-50">
                   <UserX className="w-8 h-8 text-red-600 mx-auto mb-2" />
@@ -2006,6 +2010,7 @@ interface UsuarioEdit {
   role: UserRole;
   can_manage_demissoes: boolean;
   can_manage_transferencias: boolean;
+  can_manage_admissoes: boolean;
   team_ids: string[];
   team_names: string[];
 }
@@ -2025,14 +2030,14 @@ function UsuariosView() {
 
   const loadUsuarios = async () => {
     setLoading(true);
-    const { data } = await supabase.from('users').select('id, name, email, role, can_manage_demissoes, can_manage_transferencias, team_ids, team_names').order('name');
+    const { data } = await supabase.from('users').select('id, name, email, role, can_manage_demissoes, can_manage_transferencias, can_manage_admissoes, team_ids, team_names').order('name');
     if (data) setUsuarios(data as UsuarioEdit[]);
     setLoading(false);
   };
 
   const abrirEditar = (u: UsuarioEdit) => {
     setEditando(u);
-    setFormEdit({ role: u.role, can_manage_demissoes: u.can_manage_demissoes, can_manage_transferencias: u.can_manage_transferencias, team_ids: u.team_ids || [], team_names: u.team_names || [] });
+    setFormEdit({ role: u.role, can_manage_demissoes: u.can_manage_demissoes, can_manage_transferencias: u.can_manage_transferencias, can_manage_admissoes: u.can_manage_admissoes, team_ids: u.team_ids || [], team_names: u.team_names || [] });
   };
 
   const toggleTeam = (teamId: string, teamName: string) => {
@@ -2047,7 +2052,7 @@ function UsuariosView() {
   const salvar = async () => {
     if (!editando) return;
     setSaving(true);
-    const { error } = await supabase.from('users').update({ role: formEdit.role, can_manage_demissoes: formEdit.can_manage_demissoes, can_manage_transferencias: formEdit.can_manage_transferencias, team_ids: formEdit.team_ids, team_names: formEdit.team_names }).eq('id', editando.id);
+    const { error } = await supabase.from('users').update({ role: formEdit.role, can_manage_demissoes: formEdit.can_manage_demissoes, can_manage_transferencias: formEdit.can_manage_transferencias, can_manage_admissoes: formEdit.can_manage_admissoes, team_ids: formEdit.team_ids, team_names: formEdit.team_names }).eq('id', editando.id);
     if (error) { alert('Erro: ' + error.message); setSaving(false); return; }
     setUsuarios(prev => prev.map(u => u.id === editando.id ? { ...u, ...formEdit } as UsuarioEdit : u));
     setEditando(null); setSaving(false);
@@ -2129,7 +2134,7 @@ function UsuariosView() {
                   const cfg = ROLE_CONFIG[role];
                   const sel = formEdit.role === role;
                   return (
-                    <button key={role} onClick={() => setFormEdit(f => ({ ...f, role, can_manage_demissoes: role === 'team_member' ? false : f.can_manage_demissoes, can_manage_transferencias: role === 'team_member' ? false : f.can_manage_transferencias }))} style={{ padding: '10px 8px', borderRadius: 10, cursor: 'pointer', textAlign: 'center', border: `2px solid ${sel ? cfg.color : '#e2e8f0'}`, background: sel ? cfg.bg : 'white', transition: 'all 0.15s', fontFamily: 'inherit' }}>
+                    <button key={role} onClick={() => setFormEdit(f => ({ ...f, role, can_manage_demissoes: role === 'team_member' ? false : f.can_manage_demissoes, can_manage_transferencias: role === 'team_member' ? false : f.can_manage_transferencias, can_manage_admissoes: role === 'team_member' ? false : f.can_manage_admissoes }))} style={{ padding: '10px 8px', borderRadius: 10, cursor: 'pointer', textAlign: 'center', border: `2px solid ${sel ? cfg.color : '#e2e8f0'}`, background: sel ? cfg.bg : 'white', transition: 'all 0.15s', fontFamily: 'inherit' }}>
                       <p style={{ fontSize: 12, fontWeight: 700, color: sel ? cfg.color : '#334155' }}>{cfg.label}</p>
                       <p style={{ fontSize: 10, color: sel ? cfg.color : '#94a3b8', marginTop: 2 }}>{cfg.desc}</p>
                     </button>
@@ -2141,7 +2146,7 @@ function UsuariosView() {
               <div style={{ marginBottom: 20, padding: '14px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
                 <p style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Pode Cadastrar</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {[{ key: 'can_manage_demissoes', label: 'Demissões', desc: 'Pode criar movimentações de demissão' }, { key: 'can_manage_transferencias', label: 'Transferências / Alterações / Promoções', desc: 'Pode criar os demais tipos' }].map(({ key, label, desc }) => {
+                  {[{ key: 'can_manage_admissoes', label: 'Admissões', desc: 'Pode importar movimentações de admissão (.txt)' }, { key: 'can_manage_demissoes', label: 'Demissões', desc: 'Pode criar movimentações de demissão' }, { key: 'can_manage_transferencias', label: 'Transferências / Alterações / Promoções', desc: 'Pode criar os demais tipos' }].map(({ key, label, desc }) => {
                     const checked = formEdit[key as keyof typeof formEdit] as boolean;
                     return (
                       <label key={key} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: '10px 12px', borderRadius: 8, background: checked ? '#eff6ff' : 'white', border: `1px solid ${checked ? '#bfdbfe' : '#e2e8f0'}`, transition: 'all 0.15s' }}>
@@ -2200,8 +2205,9 @@ function UsuariosView() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
                   <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 700, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>{cfg.label}</span>
-                  {(u.can_manage_demissoes || u.can_manage_transferencias) && (
+                  {(u.can_manage_demissoes || u.can_manage_transferencias || u.can_manage_admissoes) && (
                     <div style={{ display: 'flex', gap: 4 }}>
+                      {u.can_manage_admissoes && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', fontWeight: 600 }}>Admissões</span>}
                       {u.can_manage_demissoes && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', fontWeight: 600 }}>Demissões</span>}
                       {u.can_manage_transferencias && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', fontWeight: 600 }}>Transferências</span>}
                     </div>
