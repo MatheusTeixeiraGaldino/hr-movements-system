@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight, Camera } from 'lucide-react';
+import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import RelatorioView from './components/RelatorioView';
 import DossieView from './components/DossieView';
 import DossieConfigView from './components/DossieConfigView';
 import AttendanceAnalysisView from './components/AttendanceAnalysisView';
+import AdmissaoImportView from './components/AdmissaoImportView';
+import AdmissaoView from './components/AdmissaoView';
 import { useDossie } from './hooks/useDossie';
 import { TipoDesligamento } from './types/dossie';
 
 type UserRole = 'admin' | 'responsavel' | 'team_member';
-type MovementType = 'demissao' | 'transferencia' | 'alteracao' | 'promocao';
+type MovementType = 'demissao' | 'transferencia' | 'alteracao' | 'promocao' | 'admissao';
 
 interface Attachment {
   name: string;
@@ -69,7 +71,8 @@ const MOVEMENT_TYPES = {
   demissao: { label: 'Demissão', icon: UserX },
   transferencia: { label: 'Transferência', icon: Users },
   alteracao: { label: 'Alteração Salarial', icon: TrendingUp },
-  promocao: { label: 'Promoção', icon: TrendingUp }
+  promocao: { label: 'Promoção', icon: TrendingUp },
+  admissao: { label: 'Admissão', icon: UserPlus }
 };
 
 const CHECKLISTS: Record<MovementType, Record<string, string[]>> = {
@@ -781,6 +784,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
   const [filterType, setFilterType] = useState<MovementType | 'all'>('all');
   const [showCompleted, setShowCompleted] = useState(false);
   const [selectedSetorIds, setSelectedSetorIds] = useState<string[]>([]);
+  const [showImportAdmissao, setShowImportAdmissao] = useState(false);
 
   const isAdmin = currentUser?.role === 'admin';
   const isResponsavel = currentUser?.role === 'responsavel';
@@ -969,6 +973,10 @@ if (movementType === 'demissao') {
           <div className="mb-6 pb-6 border-b">
             <h3 className="font-semibold mb-3">Nova Movimentação</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <button onClick={() => setShowImportAdmissao(true)} className="p-4 border-2 border-emerald-200 rounded-lg hover:bg-emerald-50">
+                <UserPlus className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
+                <p className="text-sm font-medium">Admissão (importar .txt)</p>
+              </button>
               {canCreateDemissao && (
                 <button onClick={() => { setShowNewMovement(true); setMovementType('demissao'); }} className="p-4 border-2 border-red-200 rounded-lg hover:bg-red-50">
                   <UserX className="w-8 h-8 text-red-600 mx-auto mb-2" />
@@ -1018,6 +1026,9 @@ if (movementType === 'demissao') {
             <button onClick={() => setFilterType('promocao')} className={`p-3 border-2 rounded-lg transition ${filterType === 'promocao' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
               <div className="text-center"><TrendingUp className="w-6 h-6 mx-auto mb-1 text-purple-600" /><p className="text-xl font-bold">{getCountByType('promocao', showCompleted)}</p><p className="text-xs font-medium">Promoções</p></div>
             </button>
+            <button onClick={() => setFilterType('admissao')} className={`p-3 border-2 rounded-lg transition ${filterType === 'admissao' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
+              <div className="text-center"><UserPlus className="w-6 h-6 mx-auto mb-1 text-emerald-600" /><p className="text-xl font-bold">{getCountByType('admissao', showCompleted)}</p><p className="text-xs font-medium">Admissões</p></div>
+            </button>
           </div>
         </div>
 
@@ -1033,8 +1044,6 @@ if (movementType === 'demissao') {
               const Icon = MOVEMENT_TYPES[m.type as MovementType].icon;
               const prog = getProgress(m);
               // Para o badge de status no card: pega o primeiro setor ativo que está na movimentação
-              const myTeamIdForCard = activeTeamId || (currentUser?.team_ids ?? []).find((tid: string) => m.selected_teams.includes(tid)) || '';
-              const myResp = m.responses[myTeamIdForCard];
               // Conta quantas equipes do usuário ainda estão pendentes
               const myPendingTeams = (activeTeamId ? [activeTeamId] : (currentUser?.team_ids ?? []))
                 .filter((tid: string) => m.selected_teams.includes(tid) && m.responses[tid]?.status !== 'completed');
@@ -1082,6 +1091,13 @@ if (movementType === 'demissao') {
           onClose={() => { setShowNewMovement(false); setMovementType(null); setFormData({}); setSelectedTeams([]); setSelectedSetorIds([]); }}
           onSubmit={handleCreate} isPost20th={isPost20th}
           currentUser={currentUser}
+        />
+      )}
+      {showImportAdmissao && (
+        <AdmissaoImportView
+          currentUser={currentUser}
+          onClose={() => setShowImportAdmissao(false)}
+          onImportado={() => { setShowImportAdmissao(false); loadMovements(); }}
         />
       )}
     </div>
@@ -1428,6 +1444,23 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
             </div>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (selectedMovement.type === 'admissao') {
+    return (
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h2 className="text-2xl font-bold">{selectedMovement.employee_name}</h2>
+            <p className="text-gray-600">Admissão</p>
+          </div>
+          <button onClick={() => { setSelectedMovement(null); setView('dashboard'); }} className="px-4 py-2 border rounded-lg hover:bg-gray-50">
+            Voltar
+          </button>
+        </div>
+        <AdmissaoView movimentoId={selectedMovement.id} currentUser={currentUser} />
       </div>
     );
   }
