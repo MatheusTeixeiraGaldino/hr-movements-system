@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, X, CheckCircle, AlertCircle, Loader2, Download, Eye, EyeOff } from 'lucide-react';
 import { useAttendanceAnalysis } from '../hooks/useAttendanceAnalysis';
-import { ExtractedAttendanceData, AttendanceRecord } from '../types/attendance-record';
+import { AttendanceRecord } from '../types/attendance-record';
 import { supabase } from '../lib/supabase';
 
 interface AttendanceAnalysisViewProps {
@@ -13,7 +13,7 @@ interface HistoryRecord extends AttendanceRecord {
   user_name?: string;
 }
 
-export default function AttendanceAnalysisView({ userId, userName }: AttendanceAnalysisViewProps) {
+export default function AttendanceAnalysisView({ userId }: AttendanceAnalysisViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -22,7 +22,7 @@ export default function AttendanceAnalysisView({ userId, userName }: AttendanceA
   const [showHistory, setShowHistory] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<HistoryRecord | null>(null);
 
-  const { loading, error, extractedData, record, analyzeImage, reset } = useAttendanceAnalysis();
+  const { loading, error, extractedData, analyzeImage, reset } = useAttendanceAnalysis();
 
   // Carregar histórico de fichas processadas
   useEffect(() => {
