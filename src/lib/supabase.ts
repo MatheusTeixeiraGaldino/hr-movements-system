@@ -192,3 +192,42 @@ export interface ConfiguracaoDossie {
   created_at?: string
   updated_at?: string
 }
+
+// ============================================
+// TIPOS PARA ACOMPANHAMENTO ADMISSÃO
+// ============================================
+
+export interface ItemChecklistAdmissao {
+  regra_id: string
+  marcado: boolean
+  secundario_selecionado?: string
+  valor_texto?: string
+  observacao?: string
+  data_marcacao?: string
+  usuario_marcacao?: string
+  email_usuario_marcacao?: string
+}
+
+export interface AuditoriaItemAdmissao {
+  usuario: string
+  email_usuario: string
+  acao: 'importacao' | 'marcacao_checklist' | 'desmarcacao_checklist' | 'edicao_observacao' | 'edicao_campo'
+  campo_ou_item?: string
+  data_hora: string
+  detalhes?: string
+}
+
+export interface AcompanhamentoAdmissao {
+  id: string
+  movimento_id: string
+  dados: Record<string, string>
+  checklist: ItemChecklistAdmissao[]
+  status: 'pendente' | 'em_andamento' | 'concluido'
+  data_criacao: string
+  data_conclusao?: string
+  usuario_criacao: string
+  email_usuario_criacao: string
+  historico_auditoria: AuditoriaItemAdmissao[]
+  created_at?: string
+  updated_at?: string
+}
