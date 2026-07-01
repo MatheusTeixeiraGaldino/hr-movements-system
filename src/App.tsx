@@ -125,7 +125,12 @@ const CHECKLISTS: Record<MovementType, Record<string, string[]>> = {
     beneficios: ['Alteração plano de saúde'],  // ✨ NOVO
     dp: ['Promoção programada', 'Necessário criação de função ou seção', 'Alteração seguro de vida'],
     comunicacao:['Programado post de promoção']
-  }
+  },
+
+  // A movimentação de Admissão não usa o checklist genérico por equipe/setor:
+  // ela tem seu próprio checklist (por regra de negócio) renderizado pelo
+  // componente AdmissaoView / src/types/admissao.ts.
+  admissao: {}
 };
 
 async function uploadFile(file: File, movementId: string, teamId: string): Promise<Attachment | null> {
