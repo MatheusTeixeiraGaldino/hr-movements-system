@@ -1469,7 +1469,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
             Voltar
           </button>
         </div>
-        <AdmissaoView movimentoId={selectedMovement.id} currentUser={currentUser} />
+        <AdmissaoView movimentoId={selectedMovement.id} currentUser={currentUser} activeTeamId={activeTeamId} />
       </div>
     );
   }
