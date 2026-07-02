@@ -169,10 +169,8 @@ export const EQUIPES_ACESSO_CAMPO: Record<CampoAdmissao, 'TODAS' | string[]> = {
 export function campoVisivelParaUsuario(
   campo: CampoAdmissao,
   equipesUsuario: string[],
-  isCriador: boolean,
-  isAdmin?: boolean
+  isCriador: boolean
 ): boolean {
-  if (isAdmin) return true;
   const regra = EQUIPES_ACESSO_CAMPO[campo];
   if (regra === 'TODAS') return true;
   if (regra.includes(CRIADOR_MOVIMENTACAO) && isCriador) return true;
@@ -183,12 +181,11 @@ export function campoVisivelParaUsuario(
 export function filtrarCamposVisiveis(
   dados: Partial<Record<CampoAdmissao, string>>,
   equipesUsuario: string[],
-  isCriador: boolean,
-  isAdmin?: boolean
+  isCriador: boolean
 ): Partial<Record<CampoAdmissao, string>> {
   const resultado: Partial<Record<CampoAdmissao, string>> = {};
   (Object.keys(dados) as CampoAdmissao[]).forEach(campo => {
-    if (campoVisivelParaUsuario(campo, equipesUsuario, isCriador, isAdmin)) {
+    if (campoVisivelParaUsuario(campo, equipesUsuario, isCriador)) {
       resultado[campo] = dados[campo];
     }
   });
