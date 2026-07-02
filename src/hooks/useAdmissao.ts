@@ -6,6 +6,7 @@ import {
   AuditoriaItemAdmissao,
   CampoAdmissao,
   StatusAdmissao,
+  LABEL_CAMPO_ADMISSAO,
   buildChecklistInicialAdmissao,
   checklistCompletoAdmissao,
   CHECKLIST_REGRAS_ADMISSAO,
@@ -17,13 +18,16 @@ function normalizarAdmissao(d: any): AcompanhamentoAdmissao {
     status: (d.status || 'pendente').toLowerCase(),
     dados: d.dados || {},
     checklist: Array.isArray(d.checklist) ? d.checklist : [],
+    observacoes_equipe: d.observacoes_equipe || {},
     historico_auditoria: Array.isArray(d.historico_auditoria) ? d.historico_auditoria : [],
   };
 }
 
-function calcularStatus(checklist: ItemChecklistAdmissao[]): StatusAdmissao {
-  if (checklistCompletoAdmissao(checklist)) return 'concluido';
-  const algumMarcado = checklist.some(i => i.marcado || i.secundario_selecionado || i.valor_texto);
+function calcularStatus(checklist: ItemChecklistAdmissao[], observacoesEquipe: Record<string, string>): StatusAdmissao {
+  if (checklistCompletoAdmissao(checklist, observacoesEquipe)) return 'concluido';
+  const algumMarcado =
+    checklist.some(i => i.marcado || i.secundario_selecionado || i.valor_texto) ||
+    Object.values(observacoesEquipe).some(v => v?.trim());
   return algumMarcado ? 'em_andamento' : 'pendente';
 }
 
@@ -137,6 +141,7 @@ export function useAdmissao() {
                 movimento_id: movimento.id,
                 dados: registro.dados,
                 checklist,
+                observacoes_equipe: {},
                 status: 'pendente',
                 historico_auditoria: [auditoria],
                 data_criacao: new Date().toISOString(),
@@ -162,7 +167,7 @@ export function useAdmissao() {
   );
 
   // =============================
-  // ATUALIZAR ITEM DE CHECKLIST (checkbox principal / secundário / texto / observação)
+  // ATUALIZAR ITEM DE CHECKLIST (checkbox principal / secundário / texto / observação do item)
   // =============================
   const atualizarItemChecklist = useCallback(
     async (
@@ -196,7 +201,7 @@ export function useAdmissao() {
           email_usuario_marcacao: email,
         };
 
-        const status = calcularStatus(checklist);
+        const status = calcularStatus(checklist, admissao.observacoes_equipe);
 
         const historico = [
           ...(admissao.historico_auditoria || []),
@@ -231,6 +236,98 @@ export function useAdmissao() {
     [loadAdmissaoById]
   );
 
+  // =============================
+  // ATUALIZAR OBSERVAÇÃO OBRIGATÓRIA DE UMA EQUIPE
+  // =============================
+  const atualizarObservacaoEquipe = useCallback(
+    async (id: string, equipe: string, texto: string, user: string, email: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const admissao = await loadAdmissaoById(id);
+        if (!admissao) throw new Error('Registro de admissão não encontrado');
+
+        const observacoesEquipe = { ...admissao.observacoes_equipe, [equipe]: texto };
+        const status = calcularStatus(admissao.checklist, observacoesEquipe);
+
+        const historico = [
+          ...(admissao.historico_auditoria || []),
+          {
+            usuario: user,
+            email_usuario: email,
+            acao: 'edicao_observacao' as AuditoriaItemAdmissao['acao'],
+            campo_ou_item: `Observação - ${equipe}`,
+            data_hora: new Date().toISOString(),
+          },
+        ];
+
+        const { error } = await supabase
+          .from('acompanhamento_admissao')
+          .update({ observacoes_equipe: observacoesEquipe, status, historico_auditoria: historico })
+          .eq('id', id);
+
+        if (error) throw error;
+
+        setAdmissoes(prev =>
+          prev.map(a => (a.id === id ? { ...a, observacoes_equipe: observacoesEquipe, status, historico_auditoria: historico } : a))
+        );
+        return true;
+      } catch (err: any) {
+        setError(err.message);
+        console.error(err);
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loadAdmissaoById]
+  );
+
+  // =============================
+  // ATUALIZAR UM CAMPO DOS DADOS DA ADMISSÃO (ex: Data de Início)
+  // =============================
+  const atualizarCampoDados = useCallback(
+    async (id: string, campo: CampoAdmissao, valor: string, user: string, email: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const admissao = await loadAdmissaoById(id);
+        if (!admissao) throw new Error('Registro de admissão não encontrado');
+
+        const dados = { ...admissao.dados, [campo]: valor };
+
+        const historico = [
+          ...(admissao.historico_auditoria || []),
+          {
+            usuario: user,
+            email_usuario: email,
+            acao: 'edicao_campo' as AuditoriaItemAdmissao['acao'],
+            campo_ou_item: LABEL_CAMPO_ADMISSAO[campo],
+            data_hora: new Date().toISOString(),
+            detalhes: `Novo valor: ${valor}`,
+          },
+        ];
+
+        const { error } = await supabase
+          .from('acompanhamento_admissao')
+          .update({ dados, historico_auditoria: historico })
+          .eq('id', id);
+
+        if (error) throw error;
+
+        setAdmissoes(prev => prev.map(a => (a.id === id ? { ...a, dados, historico_auditoria: historico } : a)));
+        return true;
+      } catch (err: any) {
+        setError(err.message);
+        console.error(err);
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loadAdmissaoById]
+  );
+
   return {
     admissoes,
     loading,
@@ -240,5 +337,7 @@ export function useAdmissao() {
     loadAdmissaoByMovimentoId,
     criarAdmissoesEmLote,
     atualizarItemChecklist,
+    atualizarObservacaoEquipe,
+    atualizarCampoDados,
   };
 }
