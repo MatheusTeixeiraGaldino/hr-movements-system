@@ -274,17 +274,17 @@ export const CHECKLIST_REGRAS_ADMISSAO: RegraChecklistAdmissao[] = [
 
   // Benefícios
   {
-    id: 'benef_plano_saude', equipe: 'Beneficios', campo_principal: 'SOLICITAÇÃO PLANO DE SAÚDE ENVIADA', tipo_campo: 'checkbox',
+    id: 'benef_plano_saude', equipe: 'Benefícios', campo_principal: 'SOLICITAÇÃO PLANO DE SAÚDE ENVIADA', tipo_campo: 'checkbox',
     campos_secundarios: ['NÃO ADERIU AO PLANO, DOCUMENTAÇÃO ARQUIVADA', 'NÃO PARTICIPANTE DO BENEFÍCIO'],
     validacao: 'principal_ou_secundario',
   },
   {
-    id: 'benef_plano_odonto', equipe: 'Beneficios', campo_principal: 'SOLICITAÇÃO PLANO ODONTOLÓGICO ENVIADA', tipo_campo: 'checkbox',
+    id: 'benef_plano_odonto', equipe: 'Benefícios', campo_principal: 'SOLICITAÇÃO PLANO ODONTOLÓGICO ENVIADA', tipo_campo: 'checkbox',
     campos_secundarios: ['NÃO ADERIU AO PLANO, DOCUMENTAÇÃO ARQUIVADA', 'NÃO PARTICIPANTE DO BENEFÍCIO'],
     validacao: 'principal_ou_secundario',
   },
   {
-    id: 'benef_seguro_vida', equipe: 'Beneficios', campo_principal: 'DESIGNAÇÃO DEPENDENTES SEGURO DE VIDA', tipo_campo: 'checkbox',
+    id: 'benef_seguro_vida', equipe: 'Benefícios', campo_principal: 'DESIGNAÇÃO DEPENDENTES SEGURO DE VIDA', tipo_campo: 'checkbox',
     campos_secundarios: ['DOCUMENTAÇÃO ARQUIVADA'],
     validacao: 'obrigatorio',
   },
@@ -298,7 +298,7 @@ export const CHECKLIST_REGRAS_ADMISSAO: RegraChecklistAdmissao[] = [
   },
 
   // Ambulatório
-  { id: 'amb_aso', equipe: 'Ambulatorio', campo_principal: 'ASO', tipo_campo: 'checkbox', validacao: 'obrigatorio' },
+  { id: 'amb_aso', equipe: 'Ambulatório', campo_principal: 'ASO', tipo_campo: 'checkbox', validacao: 'obrigatorio' },
 
   // DP
   { id: 'dp_conta_bancaria', equipe: 'DP', campo_principal: 'CONTA BANCÁRIA CADASTRADA', tipo_campo: 'checkbox', validacao: 'obrigatorio' },
