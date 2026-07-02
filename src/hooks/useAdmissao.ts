@@ -140,6 +140,79 @@ export function useAdmissao() {
   );
 
   // =============================
+  // CRIAR EM LOTE (importação com várias pessoas por arquivo)
+  // Cria 1 movimentação (type: 'admissao') + 1 acompanhamento_admissao por pessoa.
+  // =============================
+  const criarAdmissoesEmLote = useCallback(
+    async (
+      registros: Array<{ dados: Partial<Record<CampoAdmissao, string>>; nomeMovimento: string }>,
+      usuario: string,
+      email: string
+    ) => {
+      setLoading(true);
+      setError(null);
+      const sucesso: string[] = [];
+      const falhas: Array<{ nome: string; motivo: string }> = [];
+
+      try {
+        for (const registro of registros) {
+          try {
+            const { data: movimento, error: errMov } = await supabase
+              .from('movements')
+              .insert([
+                {
+                  type: 'admissao',
+                  employee_name: registro.nomeMovimento,
+                  status: 'in_progress',
+                  created_by: usuario,
+                  selected_teams: [],
+                  responses: {},
+                },
+              ])
+              .select()
+              .single();
+
+            if (errMov || !movimento) throw errMov || new Error('Falha ao criar movimentação');
+
+            const checklist = buildChecklistInicialAdmissao();
+            const auditoria: AuditoriaItemAdmissao = {
+              usuario,
+              email_usuario: email,
+              acao: 'importacao',
+              data_hora: new Date().toISOString(),
+              detalhes: 'Registro criado via importação de arquivo (.txt/.csv)',
+            };
+
+            const { error: errAdm } = await supabase.from('acompanhamento_admissao').insert([
+              {
+                movimento_id: movimento.id,
+                dados: registro.dados,
+                checklist,
+                status: 'pendente',
+                historico_auditoria: [auditoria],
+                data_criacao: new Date().toISOString(),
+                usuario_criacao: usuario,
+                email_usuario_criacao: email,
+              },
+            ]);
+
+            if (errAdm) throw errAdm;
+            sucesso.push(registro.nomeMovimento);
+          } catch (err: any) {
+            falhas.push({ nome: registro.nomeMovimento, motivo: err.message || 'Erro desconhecido' });
+          }
+        }
+
+        await loadAdmissoes();
+        return { sucesso, falhas };
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loadAdmissoes]
+  );
+
+  // =============================
   // ATUALIZAR ITEM DE CHECKLIST (checkbox principal / secundário / texto / observação)
   // =============================
   const atualizarItemChecklist = useCallback(
@@ -217,6 +290,7 @@ export function useAdmissao() {
     loadAdmissaoById,
     loadAdmissaoByMovimentoId,
     criarAdmissaoFromImport,
+    criarAdmissoesEmLote,
     atualizarItemChecklist,
   };
 }
