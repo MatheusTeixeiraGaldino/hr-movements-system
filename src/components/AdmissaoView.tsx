@@ -21,9 +21,11 @@ interface AdmissaoViewProps {
     id: string;
     name: string;
     email: string;
+    team_ids: string[];
     team_names: string[];
-    role?: string;
   };
+  /** Equipe ativa selecionada em "Filtrar equipe" na barra lateral ('' = todas as equipes do usuário) */
+  activeTeamId?: string;
 }
 
 const BADGE_STATUS: Record<StatusChecklistEquipe, { label: string; className: string; Icon: any }> = {
@@ -40,13 +42,15 @@ const BADGE_STATUS: Record<StatusChecklistEquipe, { label: string; className: st
  *  - Se não pertence: vê apenas um resumo (Respondido / Em andamento / Não iniciado)
  *    das demais equipes, sem detalhes dos itens.
  */
-export default function AdmissaoView({ movimentoId, currentUser }: AdmissaoViewProps) {
+export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }: AdmissaoViewProps) {
   const { loadAdmissaoByMovimentoId, atualizarItemChecklist, atualizarObservacaoEquipe, atualizarCampoDados, loading } = useAdmissao();
   const [admissao, setAdmissao] = useState<AcompanhamentoAdmissao | null>(null);
   const [editandoDataInicio, setEditandoDataInicio] = useState(false);
   const [valorDataInicio, setValorDataInicio] = useState('');
 
-  const isAdmin = currentUser.role === 'admin';
+  // Nome da equipe correspondente ao filtro "Filtrar equipe" da barra lateral
+  // ('' ou indefinido = "Todas as equipes", mostra todas as equipes do usuário expandidas)
+  const activeTeamName = activeTeamId ? currentUser.team_names[currentUser.team_ids.indexOf(activeTeamId)] : '';
 
   const recarregar = async () => {
     const atualizado = await loadAdmissaoByMovimentoId(movimentoId);
@@ -64,7 +68,7 @@ export default function AdmissaoView({ movimentoId, currentUser }: AdmissaoViewP
   }
 
   const isCriador = admissao.email_usuario_criacao === currentUser.email;
-  const dadosVisiveis = filtrarCamposVisiveis(admissao.dados, currentUser.team_names, isCriador, isAdmin);
+  const dadosVisiveis = filtrarCamposVisiveis(admissao.dados, currentUser.team_names, isCriador);
   const categorias: Array<'Dados do Colaborador' | 'Dados da Contratação' | 'Remuneração'> = [
     'Dados do Colaborador',
     'Dados da Contratação',
@@ -177,7 +181,10 @@ export default function AdmissaoView({ movimentoId, currentUser }: AdmissaoViewP
 
       {/* Checklist por equipe: completo para quem pertence à equipe, resumo para os demais */}
       {EQUIPES_CHECKLIST_ADMISSAO.map(equipe => {
-        const pertenceAEquipe = isAdmin || currentUser.team_names.includes(equipe);
+        // Só expande o checklist da equipe se: o usuário pertence a ela E
+        // (o filtro "Filtrar equipe" está em "Todas as equipes" OU está apontando exatamente para essa equipe).
+        const pertenceAEquipe =
+          currentUser.team_names.includes(equipe) && (!activeTeamId || activeTeamName === equipe);
         const observacaoEquipe = admissao.observacoes_equipe[equipe] || '';
 
         if (!pertenceAEquipe) {
