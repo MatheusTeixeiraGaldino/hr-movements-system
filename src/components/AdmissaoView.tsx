@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Circle, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Circle, AlertCircle, Pencil, Check, X, Clock, MinusCircle } from 'lucide-react';
 import { useAdmissao } from '../hooks/useAdmissao';
 import {
   AcompanhamentoAdmissao,
@@ -11,6 +11,8 @@ import {
   EQUIPES_CHECKLIST_ADMISSAO,
   itemChecklistAtendido,
   calcularPercentualConclusaoAdmissao,
+  statusChecklistEquipe,
+  StatusChecklistEquipe,
 } from '../types/admissao';
 
 interface AdmissaoViewProps {
@@ -24,20 +26,38 @@ interface AdmissaoViewProps {
   };
 }
 
+const BADGE_STATUS: Record<StatusChecklistEquipe, { label: string; className: string; Icon: any }> = {
+  completo: { label: 'Respondido', className: 'bg-green-50 text-green-700 border-green-200', Icon: CheckCircle2 },
+  pendente: { label: 'Em andamento', className: 'bg-amber-50 text-amber-700 border-amber-200', Icon: Clock },
+  nao_iniciado: { label: 'Não iniciado', className: 'bg-gray-50 text-gray-500 border-gray-200', Icon: MinusCircle },
+};
+
 /**
  * Exibe os dados da admissão (respeitando visibilidade por equipe) e o checklist
- * de documentos, também segmentado por equipe: cada equipe só vê e edita os
- * itens que são de sua responsabilidade (conforme REGRAS_DE_NEGOCIO).
+ * de documentos, segmentado por equipe:
+ *  - Se o usuário pertence à equipe (ou é admin): vê e edita o checklist completo
+ *    daquela equipe, incluindo a observação obrigatória.
+ *  - Se não pertence: vê apenas um resumo (Respondido / Em andamento / Não iniciado)
+ *    das demais equipes, sem detalhes dos itens.
  */
 export default function AdmissaoView({ movimentoId, currentUser }: AdmissaoViewProps) {
-  const { loadAdmissaoByMovimentoId, atualizarItemChecklist, loading } = useAdmissao();
+  const { loadAdmissaoByMovimentoId, atualizarItemChecklist, atualizarObservacaoEquipe, atualizarCampoDados, loading } = useAdmissao();
   const [admissao, setAdmissao] = useState<AcompanhamentoAdmissao | null>(null);
+  const [editandoDataInicio, setEditandoDataInicio] = useState(false);
+  const [valorDataInicio, setValorDataInicio] = useState('');
 
   const isAdmin = currentUser.role === 'admin';
 
+  const recarregar = async () => {
+    const atualizado = await loadAdmissaoByMovimentoId(movimentoId);
+    setAdmissao(atualizado);
+    return atualizado;
+  };
+
   useEffect(() => {
-    loadAdmissaoByMovimentoId(movimentoId).then(setAdmissao);
-  }, [movimentoId, loadAdmissaoByMovimentoId]);
+    recarregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movimentoId]);
 
   if (!admissao) {
     return <div className="p-6 text-sm text-gray-500">Carregando dados de admissão...</div>;
@@ -51,16 +71,11 @@ export default function AdmissaoView({ movimentoId, currentUser }: AdmissaoViewP
     'Remuneração',
   ];
 
-  const equipesVisiveisChecklist = isAdmin
-    ? EQUIPES_CHECKLIST_ADMISSAO
-    : EQUIPES_CHECKLIST_ADMISSAO.filter(eq => currentUser.team_names.includes(eq));
-
-  const percentual = calcularPercentualConclusaoAdmissao(admissao.checklist);
+  const percentual = calcularPercentualConclusaoAdmissao(admissao.checklist, admissao.observacoes_equipe);
 
   const handleToggle = async (regraId: string, novoValor: boolean) => {
     await atualizarItemChecklist(admissao.id, regraId, { marcado: novoValor }, currentUser.name, currentUser.email);
-    const atualizado = await loadAdmissaoByMovimentoId(movimentoId);
-    setAdmissao(atualizado);
+    await recarregar();
   };
 
   const handleSecundario = async (regraId: string, opcao: string) => {
@@ -71,16 +86,31 @@ export default function AdmissaoView({ movimentoId, currentUser }: AdmissaoViewP
       currentUser.name,
       currentUser.email
     );
-    const atualizado = await loadAdmissaoByMovimentoId(movimentoId);
-    setAdmissao(atualizado);
+    await recarregar();
   };
 
   const handleTexto = async (regraId: string, valor: string) => {
     await atualizarItemChecklist(admissao.id, regraId, { valor_texto: valor }, currentUser.name, currentUser.email);
   };
 
-  const handleObservacao = async (regraId: string, observacao: string) => {
+  const handleObservacaoItem = async (regraId: string, observacao: string) => {
     await atualizarItemChecklist(admissao.id, regraId, { observacao }, currentUser.name, currentUser.email);
+  };
+
+  const handleObservacaoEquipe = async (equipe: string, texto: string) => {
+    await atualizarObservacaoEquipe(admissao.id, equipe, texto, currentUser.name, currentUser.email);
+    await recarregar();
+  };
+
+  const iniciarEdicaoDataInicio = () => {
+    setValorDataInicio(admissao.dados[CampoAdmissao.DATA_INICIO] || '');
+    setEditandoDataInicio(true);
+  };
+
+  const salvarDataInicio = async () => {
+    await atualizarCampoDados(admissao.id, CampoAdmissao.DATA_INICIO, valorDataInicio, currentUser.name, currentUser.email);
+    setEditandoDataInicio(false);
+    await recarregar();
   };
 
   return (
@@ -94,12 +124,40 @@ export default function AdmissaoView({ movimentoId, currentUser }: AdmissaoViewP
             <div key={cat} className="p-4">
               <p className="text-xs font-semibold text-gray-500 uppercase mb-2">{cat}</p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                {campos.map(c => (
-                  <div key={c} className="flex justify-between gap-2">
-                    <span className="text-gray-500">{LABEL_CAMPO_ADMISSAO[c]}</span>
-                    <span className="font-medium text-right">{dadosVisiveis[c]}</span>
-                  </div>
-                ))}
+                {campos.map(c => {
+                  const editavel = c === CampoAdmissao.DATA_INICIO;
+                  return (
+                    <div key={c} className="flex justify-between gap-2 items-center">
+                      <span className="text-gray-500">{LABEL_CAMPO_ADMISSAO[c]}</span>
+                      {editavel && editandoDataInicio ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            value={valorDataInicio}
+                            onChange={e => setValorDataInicio(e.target.value)}
+                            placeholder="dd/mm/aaaa"
+                            className="border rounded px-1.5 py-0.5 text-sm w-28 text-right"
+                          />
+                          <button onClick={salvarDataInicio} className="text-green-600 hover:text-green-700">
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => setEditandoDataInicio(false)} className="text-gray-400 hover:text-gray-600">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="font-medium text-right flex items-center gap-1.5">
+                          {dadosVisiveis[c]}
+                          {editavel && (
+                            <button onClick={iniciarEdicaoDataInicio} className="text-gray-300 hover:text-blue-500">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );
@@ -117,16 +175,41 @@ export default function AdmissaoView({ movimentoId, currentUser }: AdmissaoViewP
         </div>
       </div>
 
-      {/* Checklist por equipe */}
-      {equipesVisiveisChecklist.length === 0 && (
-        <p className="text-sm text-gray-500">Sua equipe não possui itens de checklist neste módulo.</p>
-      )}
+      {/* Checklist por equipe: completo para quem pertence à equipe, resumo para os demais */}
+      {EQUIPES_CHECKLIST_ADMISSAO.map(equipe => {
+        const pertenceAEquipe = isAdmin || currentUser.team_names.includes(equipe);
+        const observacaoEquipe = admissao.observacoes_equipe[equipe] || '';
 
-      {equipesVisiveisChecklist.map(equipe => {
+        if (!pertenceAEquipe) {
+          const status = statusChecklistEquipe(admissao.checklist, equipe, observacaoEquipe);
+          const badge = BADGE_STATUS[status];
+          return (
+            <div key={equipe} className="border rounded-lg px-4 py-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700">{equipe}</span>
+              <span className={`text-xs px-2.5 py-1 rounded-full border flex items-center gap-1.5 ${badge.className}`}>
+                <badge.Icon className="w-3.5 h-3.5" />
+                {badge.label}
+              </span>
+            </div>
+          );
+        }
+
         const regras = CHECKLIST_REGRAS_ADMISSAO.filter(r => r.equipe === equipe);
         return (
           <div key={equipe} className="border rounded-lg overflow-hidden">
-            <div className="bg-gray-50 px-4 py-2 text-sm font-semibold">{equipe}</div>
+            <div className="bg-gray-50 px-4 py-2 text-sm font-semibold flex items-center justify-between">
+              {equipe}
+              {(() => {
+                const status = statusChecklistEquipe(admissao.checklist, equipe, observacaoEquipe);
+                const badge = BADGE_STATUS[status];
+                return (
+                  <span className={`text-xs px-2.5 py-1 rounded-full border flex items-center gap-1.5 ${badge.className}`}>
+                    <badge.Icon className="w-3.5 h-3.5" />
+                    {badge.label}
+                  </span>
+                );
+              })()}
+            </div>
             <div className="divide-y">
               {regras.map(regra => {
                 const item = admissao.checklist.find(i => i.regra_id === regra.id) || {
@@ -192,7 +275,7 @@ export default function AdmissaoView({ movimentoId, currentUser }: AdmissaoViewP
                         <input
                           type="text"
                           defaultValue={item.observacao || ''}
-                          onBlur={e => handleObservacao(regra.id, e.target.value)}
+                          onBlur={e => handleObservacaoItem(regra.id, e.target.value)}
                           placeholder="Observação obrigatória (documento não entregue)"
                           className="border rounded px-2 py-1 text-xs w-full"
                         />
@@ -201,6 +284,23 @@ export default function AdmissaoView({ movimentoId, currentUser }: AdmissaoViewP
                   </div>
                 );
               })}
+
+              {/* Observação obrigatória da equipe */}
+              <div className="p-3 bg-gray-50">
+                <label className="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                  Observação da equipe <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  defaultValue={observacaoEquipe}
+                  onBlur={e => handleObservacaoEquipe(equipe, e.target.value)}
+                  placeholder={`Observação obrigatória de ${equipe} sobre esta admissão`}
+                  rows={2}
+                  className={`mt-1 w-full border rounded px-2 py-1.5 text-sm ${!observacaoEquipe.trim() ? 'border-red-300 bg-red-50' : ''}`}
+                />
+                {!observacaoEquipe.trim() && (
+                  <p className="text-xs text-red-500 mt-1">Preencha a observação para concluir o checklist desta equipe.</p>
+                )}
+              </div>
             </div>
           </div>
         );
