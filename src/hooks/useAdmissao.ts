@@ -87,59 +87,6 @@ export function useAdmissao() {
   }, []);
 
   // =============================
-  // CRIAR A PARTIR DA IMPORTAÇÃO DO TXT
-  // =============================
-  const criarAdmissaoFromImport = useCallback(
-    async (
-      movimentoId: string,
-      dados: Partial<Record<CampoAdmissao, string>>,
-      usuario: string,
-      email: string
-    ) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const checklist = buildChecklistInicialAdmissao();
-        const auditoria: AuditoriaItemAdmissao = {
-          usuario,
-          email_usuario: email,
-          acao: 'importacao',
-          data_hora: new Date().toISOString(),
-          detalhes: 'Registro criado via importação de arquivo .txt',
-        };
-
-        const { data, error } = await supabase
-          .from('acompanhamento_admissao')
-          .insert([
-            {
-              movimento_id: movimentoId,
-              dados,
-              checklist,
-              status: 'pendente',
-              historico_auditoria: [auditoria],
-              data_criacao: new Date().toISOString(),
-              usuario_criacao: usuario,
-              email_usuario_criacao: email,
-            },
-          ])
-          .select()
-          .single();
-
-        if (error) throw error;
-        await loadAdmissoes();
-        return data ? normalizarAdmissao(data) : null;
-      } catch (err: any) {
-        setError(err.message);
-        console.error(err);
-        return null;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [loadAdmissoes]
-  );
-
-  // =============================
   // CRIAR EM LOTE (importação com várias pessoas por arquivo)
   // Cria 1 movimentação (type: 'admissao') + 1 acompanhamento_admissao por pessoa.
   // =============================
@@ -163,10 +110,12 @@ export function useAdmissao() {
                 {
                   type: 'admissao',
                   employee_name: registro.nomeMovimento,
-                  status: 'in_progress',
-                  created_by: usuario,
-                  selected_teams: [],
+                  status: 'pending',
                   responses: {},
+                  selected_teams: [],
+                  created_by: usuario,
+                  details: {},
+                  cancelamento: null,
                 },
               ])
               .select()
@@ -289,7 +238,6 @@ export function useAdmissao() {
     loadAdmissoes,
     loadAdmissaoById,
     loadAdmissaoByMovimentoId,
-    criarAdmissaoFromImport,
     criarAdmissoesEmLote,
     atualizarItemChecklist,
   };
