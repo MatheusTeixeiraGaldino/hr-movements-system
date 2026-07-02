@@ -366,21 +366,67 @@ export function getPendenciasChecklistEquipe(
   });
 }
 
-/** Percentual de conclusão do checklist inteiro (todas as equipes) */
-export function calcularPercentualConclusaoAdmissao(checklist: ItemChecklistAdmissao[]): number {
-  if (CHECKLIST_REGRAS_ADMISSAO.length === 0) return 0;
-  const atendidos = CHECKLIST_REGRAS_ADMISSAO.filter(regra => {
+export type StatusChecklistEquipe = 'nao_iniciado' | 'pendente' | 'completo';
+
+/**
+ * Status resumido do checklist de UMA equipe: usado para mostrar apenas
+ * "respondido / não respondido" para quem não pertence à equipe.
+ * Considera também a observação obrigatória da equipe.
+ */
+export function statusChecklistEquipe(
+  checklist: ItemChecklistAdmissao[],
+  equipe: string,
+  observacaoEquipe?: string
+): StatusChecklistEquipe {
+  const regrasEquipe = CHECKLIST_REGRAS_ADMISSAO.filter(r => r.equipe === equipe);
+  const itensRespondidos = regrasEquipe.filter(regra => {
     const item = checklist.find(i => i.regra_id === regra.id);
-    return item ? itemChecklistAtendido(item, regra) : false;
-  }).length;
-  return Math.round((atendidos / CHECKLIST_REGRAS_ADMISSAO.length) * 100);
+    return item && (item.marcado || item.secundario_selecionado || item.valor_texto);
+  });
+
+  const completo = equipeChecklistCompleto(checklist, equipe, observacaoEquipe);
+  if (completo) return 'completo';
+  if (itensRespondidos.length > 0 || observacaoEquipe?.trim()) return 'pendente';
+  return 'nao_iniciado';
 }
 
-export function checklistCompletoAdmissao(checklist: ItemChecklistAdmissao[]): boolean {
-  return CHECKLIST_REGRAS_ADMISSAO.every(regra => {
+/** Verifica se TODOS os itens de uma equipe estão atendidos E a observação obrigatória da equipe foi preenchida */
+export function equipeChecklistCompleto(
+  checklist: ItemChecklistAdmissao[],
+  equipe: string,
+  observacaoEquipe?: string
+): boolean {
+  const regrasEquipe = CHECKLIST_REGRAS_ADMISSAO.filter(r => r.equipe === equipe);
+  const todosItensOk = regrasEquipe.every(regra => {
     const item = checklist.find(i => i.regra_id === regra.id);
     return item ? itemChecklistAtendido(item, regra) : false;
   });
+  return todosItensOk && !!observacaoEquipe?.trim();
+}
+
+/** Percentual de conclusão do checklist inteiro (todas as equipes), incluindo a observação obrigatória de cada equipe */
+export function calcularPercentualConclusaoAdmissao(
+  checklist: ItemChecklistAdmissao[],
+  observacoesEquipe: Record<string, string> = {}
+): number {
+  const totalItens = CHECKLIST_REGRAS_ADMISSAO.length + EQUIPES_CHECKLIST_ADMISSAO.length; // + 1 observação obrigatória por equipe
+  if (totalItens === 0) return 0;
+
+  const itensAtendidos = CHECKLIST_REGRAS_ADMISSAO.filter(regra => {
+    const item = checklist.find(i => i.regra_id === regra.id);
+    return item ? itemChecklistAtendido(item, regra) : false;
+  }).length;
+
+  const observacoesPreenchidas = EQUIPES_CHECKLIST_ADMISSAO.filter(eq => observacoesEquipe[eq]?.trim()).length;
+
+  return Math.round(((itensAtendidos + observacoesPreenchidas) / totalItens) * 100);
+}
+
+export function checklistCompletoAdmissao(
+  checklist: ItemChecklistAdmissao[],
+  observacoesEquipe: Record<string, string> = {}
+): boolean {
+  return EQUIPES_CHECKLIST_ADMISSAO.every(equipe => equipeChecklistCompleto(checklist, equipe, observacoesEquipe[equipe]));
 }
 
 // ============================================
@@ -403,6 +449,7 @@ export interface AcompanhamentoAdmissao {
   movimento_id: string;
   dados: Partial<Record<CampoAdmissao, string>>; // dados vindos do TXT importado
   checklist: ItemChecklistAdmissao[];
+  observacoes_equipe: Record<string, string>; // observação obrigatória de cada equipe (ex: "DP": "texto...")
   status: StatusAdmissao;
   data_criacao: string;
   data_conclusao?: string;
