@@ -284,17 +284,23 @@ export function useAdmissao() {
   );
 
   // =============================
-  // ATUALIZAR UM CAMPO DOS DADOS DA ADMISSÃO (ex: Data de Início)
+  // ATUALIZAR UM CAMPO DOS DADOS DA ADMISSÃO (ex: Data de Início, campos de Remuneração)
+  // Para campos de Remuneração, o "motivo" é obrigatório e fica registrado na auditoria.
   // =============================
   const atualizarCampoDados = useCallback(
-    async (id: string, campo: CampoAdmissao, valor: string, user: string, email: string) => {
+    async (id: string, campo: CampoAdmissao, valor: string, user: string, email: string, motivo?: string) => {
       setLoading(true);
       setError(null);
       try {
         const admissao = await loadAdmissaoById(id);
         if (!admissao) throw new Error('Registro de admissão não encontrado');
 
+        const valorAnterior = admissao.dados[campo] || '(vazio)';
         const dados = { ...admissao.dados, [campo]: valor };
+
+        const detalhes = motivo
+          ? `De "${valorAnterior}" para "${valor}". Motivo: ${motivo}`
+          : `De "${valorAnterior}" para "${valor}"`;
 
         const historico = [
           ...(admissao.historico_auditoria || []),
@@ -304,7 +310,7 @@ export function useAdmissao() {
             acao: 'edicao_campo' as AuditoriaItemAdmissao['acao'],
             campo_ou_item: LABEL_CAMPO_ADMISSAO[campo],
             data_hora: new Date().toISOString(),
-            detalhes: `Novo valor: ${valor}`,
+            detalhes,
           },
         ];
 
