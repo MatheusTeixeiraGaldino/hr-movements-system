@@ -261,6 +261,7 @@ export default function App() {
   const [selectedMovement, setSelectedMovement] = useState<Movement | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTeamId, setActiveTeamId] = useState<string>('');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // activeTeamId = '' significa "Todas as equipes do usuário"
   // activeTeamId = 'rh' significa "Somente a equipe RH"
@@ -301,26 +302,57 @@ export default function App() {
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', fontFamily: 'var(--font-body)' }}>
       {/* ── SIDEBAR ── */}
       <aside style={{
-        position: 'fixed', top: 0, left: 0, width: 240, height: '100vh',
+        position: 'fixed', top: 0, left: 0, width: sidebarCollapsed ? 68 : 240, height: '100vh',
         background: 'var(--sidebar-bg)', borderRight: '1px solid var(--sidebar-border)',
         display: 'flex', flexDirection: 'column', zIndex: 100,
+        transition: 'width 0.18s ease',
       }}>
-        {/* Logo */}
-        <div style={{ padding: '20px 18px 16px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+        {/* Logo + botão de recolher */}
+        <div style={{ padding: sidebarCollapsed ? '20px 12px 16px' : '20px 18px 16px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+              </div>
+              {!sidebarCollapsed && (
+                <div style={{ whiteSpace: 'nowrap' }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>RH Movimentações</p>
+                  <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>Sistema Trabalhista</p>
+                </div>
+              )}
             </div>
-            <div>
-              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>RH Movimentações</p>
-              <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>Sistema Trabalhista</p>
-            </div>
+            {!sidebarCollapsed && (
+              <button
+                onClick={() => setSidebarCollapsed(true)}
+                title="Recolher menu"
+                style={{
+                  width: 24, height: 24, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent',
+                  color: 'var(--muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+            )}
           </div>
+          {sidebarCollapsed && (
+            <button
+              onClick={() => setSidebarCollapsed(false)}
+              title="Expandir menu"
+              style={{
+                width: '100%', height: 22, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent',
+                color: 'var(--muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 10,
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          )}
         </div>
 
         {/* Nav */}
-        <nav style={{ flex: 1, padding: '12px 10px', overflowY: 'auto' }}>
-          <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '0 8px 8px' }}>Menu</p>
+        <nav style={{ flex: 1, padding: sidebarCollapsed ? '12px 8px' : '12px 10px', overflowY: 'auto' }}>
+          {!sidebarCollapsed && (
+            <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '0 8px 8px' }}>Menu</p>
+          )}
           {[
             { id: 'dashboard', label: 'Dashboard', icon: '▦' },
             { id: 'relatorio', label: 'Relatório', icon: '📊' },
@@ -335,9 +367,10 @@ export default function App() {
           ].map(item => {
             const active = view === item.id;
             return (
-              <button key={item.id} onClick={() => setView(item.id)} style={{
+              <button key={item.id} onClick={() => setView(item.id)} title={sidebarCollapsed ? item.label : undefined} style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 9,
-                padding: '9px 10px', borderRadius: 9, border: 'none', cursor: 'pointer',
+                justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                padding: sidebarCollapsed ? '9px 0' : '9px 10px', borderRadius: 9, border: 'none', cursor: 'pointer',
                 marginBottom: 2, textAlign: 'left', fontSize: 13,
                 fontWeight: active ? 700 : 400,
                 background: active ? 'var(--accent-light)' : 'transparent',
@@ -345,8 +378,8 @@ export default function App() {
                 transition: 'all 0.15s', fontFamily: 'var(--font-body)',
               }}>
                 <span style={{ fontSize: 14, width: 18, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
-                {item.label}
-                {active && <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />}
+                {!sidebarCollapsed && item.label}
+                {!sidebarCollapsed && active && <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />}
               </button>
             );
           })}
@@ -354,15 +387,18 @@ export default function App() {
 
         {/* Equipe ativa */}
         {currentUser.team_ids.length > 0 && (
-          <div style={{ padding: '10px 10px', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
-            <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, padding: '0 2px' }}>
-              {currentUser.team_ids.length > 1 ? 'Filtrar equipe' : 'Equipe'}
-            </p>
+          <div style={{ padding: sidebarCollapsed ? '10px 8px' : '10px 10px', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
+            {!sidebarCollapsed && (
+              <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, padding: '0 2px' }}>
+                {currentUser.team_ids.length > 1 ? 'Filtrar equipe' : 'Equipe'}
+              </p>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               {/* Opção "Todas" — só aparece para usuários com múltiplas equipes */}
               {currentUser.team_ids.length > 1 && (
-                <button onClick={() => setActiveTeamId('')} style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
+                <button onClick={() => setActiveTeamId('')} title={sidebarCollapsed ? 'Todas as equipes' : undefined} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: sidebarCollapsed ? '7px 0' : '7px 10px',
+                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
                   borderRadius: 8, border: `1px solid ${activeTeamId === '' ? 'var(--accent-border)' : 'transparent'}`,
                   background: activeTeamId === '' ? 'var(--accent-light)' : 'transparent',
                   color: activeTeamId === '' ? 'var(--accent)' : 'var(--muted)',
@@ -370,14 +406,15 @@ export default function App() {
                   fontFamily: 'var(--font-body)', textAlign: 'left',
                 }}>
                   <span style={{ width: 7, height: 7, borderRadius: '50%', background: activeTeamId === '' ? 'var(--accent)' : 'var(--muted-light)', flexShrink: 0 }} />
-                  Todas as equipes
+                  {!sidebarCollapsed && 'Todas as equipes'}
                 </button>
               )}
               {currentUser.team_ids.map((teamId: string, index: number) => {
                 const active = teamId === activeTeamId;
                 return (
-                  <button key={teamId} onClick={() => setActiveTeamId(teamId)} style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
+                  <button key={teamId} onClick={() => setActiveTeamId(teamId)} title={sidebarCollapsed ? currentUser.team_names[index] : undefined} style={{
+                    display: 'flex', alignItems: 'center', gap: 8, padding: sidebarCollapsed ? '7px 0' : '7px 10px',
+                    justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
                     borderRadius: 8, border: `1px solid ${active ? 'var(--accent-border)' : 'transparent'}`,
                     background: active ? 'var(--accent-light)' : 'transparent',
                     color: active ? 'var(--accent)' : 'var(--muted)',
@@ -385,7 +422,7 @@ export default function App() {
                     fontFamily: 'var(--font-body)', textAlign: 'left',
                   }}>
                     <span style={{ width: 7, height: 7, borderRadius: '50%', background: active ? 'var(--accent)' : 'var(--muted-light)', flexShrink: 0 }} />
-                    {currentUser.team_names[index]}
+                    {!sidebarCollapsed && currentUser.team_names[index]}
                   </button>
                 );
               })}
@@ -394,27 +431,30 @@ export default function App() {
         )}
 
         {/* Usuário + logout */}
-        <div style={{ padding: '12px 10px' }}>
-          <div style={{ padding: '6px 10px', marginBottom: 4 }}>
-            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>{currentUser.name}</p>
-            <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
-              {currentUser.role === 'admin' ? 'Administrador' : currentUser.role === 'responsavel' ? 'Responsável' : 'Membro de equipe'}
-            </p>
-          </div>
-          <button onClick={() => { setCurrentUser(null); setView('login'); }} style={{
+        <div style={{ padding: sidebarCollapsed ? '12px 8px' : '12px 10px' }}>
+          {!sidebarCollapsed && (
+            <div style={{ padding: '6px 10px', marginBottom: 4 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>{currentUser.name}</p>
+              <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
+                {currentUser.role === 'admin' ? 'Administrador' : currentUser.role === 'responsavel' ? 'Responsável' : 'Membro de equipe'}
+              </p>
+            </div>
+          )}
+          <button onClick={() => { setCurrentUser(null); setView('login'); }} title={sidebarCollapsed ? `Sair (${currentUser.name})` : undefined} style={{
             width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-            padding: '8px 10px', borderRadius: 9, border: 'none', cursor: 'pointer',
+            justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+            padding: sidebarCollapsed ? '8px 0' : '8px 10px', borderRadius: 9, border: 'none', cursor: 'pointer',
             background: 'transparent', color: 'var(--muted)', fontSize: 13,
             fontFamily: 'var(--font-body)', transition: 'all 0.15s',
           }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-            Sair
+            {!sidebarCollapsed && 'Sair'}
           </button>
         </div>
       </aside>
 
       {/* ── CONTEÚDO ── */}
-      <main style={{ flex: 1, marginLeft: 240, padding: '32px 36px', minHeight: '100vh', animation: 'fadeIn 0.2s ease' }}>
+      <main style={{ flex: 1, marginLeft: sidebarCollapsed ? 68 : 240, padding: '32px 36px', minHeight: '100vh', animation: 'fadeIn 0.2s ease', transition: 'margin-left 0.18s ease' }}>
         {view === 'dashboard' && (
           <DashboardView currentUser={currentUser} movements={movements} loading={loading} loadMovements={loadMovements} setSelectedMovement={setSelectedMovement} setView={setView} activeTeamId={activeTeamId} />
         )}
