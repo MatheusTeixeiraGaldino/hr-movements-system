@@ -1,6 +1,6 @@
 // src/components/RelatorioView.tsx
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { Loader2, FileSpreadsheet, FileText, Printer, ChevronDown, X } from 'lucide-react';
+import { Loader2, FileSpreadsheet, FileText, Printer, ChevronDown, X, Lock } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface Movement {
@@ -463,7 +463,12 @@ interface Row {
 
 function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
   return movements
-    .filter(m => currentUser.role === 'admin' || m.created_by === currentUser.name || m.selected_teams.some((t: string) => currentUser.team_ids.includes(t)))
+    .filter(m =>
+      currentUser.role === 'admin' ||
+      m.created_by === currentUser.name ||
+      m.selected_teams.some((t: string) => currentUser.team_ids.includes(t)) ||
+      (m.type === 'admissao' && currentUser.team_names.includes('DP'))
+    )
     .map(m => {
       const respondidas = m.selected_teams.filter(id => m.responses[id]?.status === 'completed');
       const pendentes   = m.selected_teams.filter(id => m.responses[id]?.status !== 'completed');
@@ -674,6 +679,10 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
 
   const allRows = useMemo(() => buildRows(movements, currentUser), [movements, currentUser]);
 
+  // Só quem tem acesso a DP pode gerar PDF de movimentações de Admissão
+  const podeGerarPdfAdmissao = currentUser.team_names.includes('DP');
+  const podeGerarPdf = (row: Row) => row._type !== 'admissao' || podeGerarPdfAdmissao;
+
   const toStart = (s: string) => s ? new Date(s + 'T00:00:00') : null;
   const toEnd   = (s: string) => s ? new Date(s + 'T23:59:59') : null;
 
@@ -785,20 +794,22 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   };
 
   const toggleSelectAll = () => {
-    if (selected.size === sortedFiltered.length) {
+    const selecionaveis = sortedFiltered.filter(podeGerarPdf);
+    if (selected.size === selecionaveis.length && selecionaveis.length > 0) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(sortedFiltered.map(r => r._id)));
+      setSelected(new Set(selecionaveis.map(r => r._id)));
     }
   };
 
   const handlePrintSelected = () => {
-    const rows = sortedFiltered.filter(r => selected.has(r._id));
-    if (rows.length === 0) { alert('Selecione ao menos uma movimentação.'); return; }
+    const rows = sortedFiltered.filter(r => selected.has(r._id) && podeGerarPdf(r));
+    if (rows.length === 0) { alert('Selecione ao menos uma movimentação (admissões exigem acesso de DP).'); return; }
     rows.forEach(r => printMovementPDF(r._movement));
   };
 
   const handlePrintOne = (row: Row) => {
+    if (!podeGerarPdf(row)) { alert('Apenas usuários com acesso a DP podem gerar o PDF de uma Admissão.'); return; }
     printMovementPDF(row._movement);
   };
 
@@ -1075,7 +1086,14 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
                   return (
                     <tr key={row._id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} ${isChecked ? 'ring-1 ring-inset ring-blue-300' : ''} ${row._isCanceled ? 'opacity-75' : ''}`}>
                       <td className="px-2 py-2 border-b border-gray-100">
-                        <input type="checkbox" checked={isChecked} onChange={() => toggleSelect(row._id)} className="w-3.5 h-3.5 cursor-pointer" />
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          disabled={!podeGerarPdf(row)}
+                          onChange={() => toggleSelect(row._id)}
+                          title={!podeGerarPdf(row) ? 'Apenas usuários com acesso a DP podem gerar PDF de Admissão' : undefined}
+                          className="w-3.5 h-3.5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                        />
                       </td>
                       <td className="px-2 py-2 border-b border-gray-100 font-medium text-gray-900 max-w-[140px] truncate" title={row.Nome}>{row.Nome}</td>
                       <td className="px-2 py-2 border-b border-gray-100 text-gray-600 whitespace-nowrap">{row.Tipo}</td>
@@ -1111,10 +1129,19 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
                         {row['Cancelado por'] === '—' ? <span className="text-gray-300">—</span> : row['Cancelado por']}
                       </td>
                       <td className="px-2 py-2 border-b border-gray-100">
-                        <button onClick={() => handlePrintOne(row)}
-                          className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 border border-red-200 bg-red-50 rounded hover:bg-red-100 transition whitespace-nowrap">
-                          <FileText className="w-3 h-3" />PDF
-                        </button>
+                        {podeGerarPdf(row) ? (
+                          <button onClick={() => handlePrintOne(row)}
+                            className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 border border-red-200 bg-red-50 rounded hover:bg-red-100 transition whitespace-nowrap">
+                            <FileText className="w-3 h-3" />PDF
+                          </button>
+                        ) : (
+                          <span
+                            title="Apenas usuários com acesso a DP podem gerar o PDF de uma Admissão"
+                            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 border border-gray-200 bg-gray-50 rounded whitespace-nowrap cursor-not-allowed"
+                          >
+                            <Lock className="w-3 h-3" />PDF
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );
