@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Circle, AlertCircle, Pencil, Check, X, Clock, MinusCircle, History } from 'lucide-react';
+import { CheckCircle2, Circle, XCircle, AlertCircle, Pencil, Check, X, Clock, MinusCircle, History } from 'lucide-react';
 import { useAdmissao } from '../hooks/useAdmissao';
 import {
   AcompanhamentoAdmissao,
@@ -93,7 +93,28 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
   const percentual = calcularPercentualConclusaoAdmissao(admissao.checklist, admissao.observacoes_equipe);
 
   const handleToggle = async (regraId: string, novoValor: boolean) => {
-    await atualizarItemChecklist(admissao.id, regraId, { marcado: novoValor }, currentUser.name, currentUser.email);
+    // Ao marcar o campo principal, garante que nenhuma opção secundária "fantasma" fique
+    // registrada por baixo (senão o item continuaria contando como atendido depois de
+    // desmarcado o principal, mesmo sem o usuário perceber).
+    await atualizarItemChecklist(
+      admissao.id,
+      regraId,
+      { marcado: novoValor, secundario_selecionado: novoValor ? '' : undefined },
+      currentUser.name,
+      currentUser.email
+    );
+    await recarregar();
+  };
+
+  /** Limpa completamente um item do checklist: desmarca principal, opção secundária e texto */
+  const handleDesmarcar = async (regraId: string) => {
+    await atualizarItemChecklist(
+      admissao.id,
+      regraId,
+      { marcado: false, secundario_selecionado: '', valor_texto: '' },
+      currentUser.name,
+      currentUser.email
+    );
     await recarregar();
   };
 
@@ -307,7 +328,12 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
                           className="border rounded px-2 py-1 text-sm w-40"
                         />
                         {atendido ? (
-                          <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                            <button onClick={() => handleDesmarcar(regra.id)} title="Desmarcar" className="text-gray-300 hover:text-red-500 shrink-0">
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                          </>
                         ) : (
                           <Circle className="w-4 h-4 text-gray-300 shrink-0" />
                         )}
@@ -322,7 +348,16 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
                         />
                         <span className="text-sm font-medium flex-1">{regra.campo_principal}</span>
                         {atendido ? (
-                          <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                            <button
+                              onClick={e => { e.preventDefault(); handleDesmarcar(regra.id); }}
+                              title="Desmarcar"
+                              className="text-gray-300 hover:text-red-500 shrink-0"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                          </>
                         ) : (
                           <Circle className="w-4 h-4 text-gray-300 shrink-0" />
                         )}
