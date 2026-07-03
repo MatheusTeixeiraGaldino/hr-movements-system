@@ -2,6 +2,18 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { Loader2, FileSpreadsheet, FileText, Printer, ChevronDown, X, Lock } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { supabase } from '../lib/supabase';
+import {
+  CampoAdmissao,
+  CATEGORIA_CAMPO,
+  LABEL_CAMPO_ADMISSAO,
+  CHECKLIST_REGRAS_ADMISSAO,
+  EQUIPES_CHECKLIST_ADMISSAO,
+  itemChecklistAtendido,
+  checklistCompletoAdmissao,
+  statusChecklistEquipe,
+  ItemChecklistAdmissao,
+} from '../types/admissao';
 
 interface Movement {
   id: string;
@@ -325,10 +337,218 @@ function buildMovementPDFHtml(m: Movement): string {
 </html>`;
 }
 
-function printMovementPDF(m: Movement) {
-  const html = buildMovementPDFHtml(m);
+// ─── PDF generation — ADMISSÃO (estrutura própria: dados + checklist por equipe) ──
+function buildAdmissaoPDFHtml(m: Movement, admissao: {
+  dados: Partial<Record<CampoAdmissao, string>>;
+  checklist: ItemChecklistAdmissao[];
+  observacoes_equipe: Record<string, string>;
+} | null): string {
+  const criacao = formatDate(m.created_at);
+  const isCanceled = m.cancelamento !== null && m.cancelamento !== undefined;
+
+  const checklist = admissao?.checklist || [];
+  const observacoesEquipe = admissao?.observacoes_equipe || {};
+  const dados = admissao?.dados || {};
+
+  const aprovado = !isCanceled && admissao ? checklistCompletoAdmissao(checklist, observacoesEquipe) : false;
+
+  const statusColor = isCanceled ? '#dc2626' : (aprovado ? '#166534' : '#92400e');
+  const statusBg    = isCanceled ? '#fee2e2' : (aprovado ? '#dcfce7' : '#fef3c7');
+  const statusText  = isCanceled ? '✕ CANCELADO' : (aprovado ? '✓ APROVADO — TODOS OS PARECERES EMITIDOS' : '⏳ PENDENTE — AGUARDANDO PARECERES');
+  const statusBorder = isCanceled ? '#fca5a5' : (aprovado ? '#86efac' : '#fde68a');
+
+  const categorias: Array<'Dados do Colaborador' | 'Dados da Contratação' | 'Remuneração'> = [
+    'Dados do Colaborador', 'Dados da Contratação', 'Remuneração',
+  ];
+
+  const dadosHtml = categorias.map(cat => {
+    const campos = (Object.keys(dados) as CampoAdmissao[]).filter(c => CATEGORIA_CAMPO[c] === cat && dados[c]);
+    if (campos.length === 0) return '';
+    return `
+      <div style="margin-bottom:10px">
+        <p style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-bottom:4px">${cat}</p>
+        <table class="info-table">
+          ${campos.map(c => `<tr><td class="detail-label">${LABEL_CAMPO_ADMISSAO[c]}</td><td class="detail-value">${dados[c]}</td></tr>`).join('')}
+        </table>
+      </div>`;
+  }).join('');
+
+  let cancelamentoHtml = '';
+  if (isCanceled) {
+    cancelamentoHtml = `
+    <div class="cancellation-box">
+      <p class="cancellation-title">Informações do Cancelamento</p>
+      <table class="info-table">
+        <tr><td class="detail-label">Cancelado por</td><td class="detail-value">${m.cancelamento?.cancelado_por || '—'} (${m.cancelamento?.cancelado_por_email || '—'})</td></tr>
+        <tr><td class="detail-label">Data/Hora do cancelamento</td><td class="detail-value">${formatDateTime(m.cancelamento?.cancelado_em)}</td></tr>
+        <tr><td class="detail-label" style="vertical-align:top">Motivo</td><td class="detail-value" style="font-style:italic">${m.cancelamento?.motivo || '—'}</td></tr>
+      </table>
+    </div>`;
+  }
+
+  let equipeSections = '';
+  const equipesCompletas = EQUIPES_CHECKLIST_ADMISSAO.filter(eq => statusChecklistEquipe(checklist, eq, observacoesEquipe[eq]) === 'completo').length;
+
+  if (!isCanceled) {
+    equipeSections = EQUIPES_CHECKLIST_ADMISSAO.map(equipe => {
+      const status = statusChecklistEquipe(checklist, equipe, observacoesEquipe[equipe]);
+      const done   = status === 'completo';
+      const color  = done ? '#166534' : '#92400e';
+      const bg     = done ? '#f0fdf4' : '#fffbeb';
+      const border = done ? '#86efac' : '#fde68a';
+      const regras = CHECKLIST_REGRAS_ADMISSAO.filter(r => r.equipe === equipe);
+      const observacao = observacoesEquipe[equipe] || '';
+
+      const itensHtml = regras.map(regra => {
+        const item = checklist.find(i => i.regra_id === regra.id) || { regra_id: regra.id, marcado: false };
+        const atendido = itemChecklistAtendido(item, regra);
+        let valorExibido = '';
+        if (regra.tipo_campo === 'texto') {
+          valorExibido = item.valor_texto ? ` — <strong>${item.valor_texto}</strong>` : '';
+        } else if (item.secundario_selecionado) {
+          valorExibido = ` — <strong>${item.secundario_selecionado}</strong>`;
+        }
+        const quem = item.usuario_marcacao ? ` <span style="color:#6b7280;font-size:9px">(${item.usuario_marcacao}${item.data_marcacao ? `, ${formatDateTime(item.data_marcacao)}` : ''})</span>` : '';
+        const obsItem = item.observacao ? `<div style="font-size:9px;color:#6b7280;font-style:italic;margin-left:17px">Obs.: ${item.observacao}</div>` : '';
+        return `
+          <div class="check-item" style="flex-direction:column;align-items:flex-start">
+            <div style="display:flex;gap:6px">
+              <span class="check-icon" style="color:${atendido ? '#16a34a' : '#dc2626'}">${atendido ? '✓' : '✗'}</span>
+              <span style="color:${atendido ? '#111' : '#6b7280'}">${regra.campo_principal}${valorExibido}${quem}</span>
+            </div>
+            ${obsItem}
+          </div>`;
+      }).join('');
+
+      return `
+        <div class="team-card" style="border-color:${border};background:${bg}">
+          <div class="team-header">
+            <span class="team-name">${equipe}</span>
+            <span class="status-badge" style="color:${color};background:${done ? '#dcfce7' : '#fef3c7'};border:1px solid ${border}">
+              ${done ? '✓ Parecer Emitido' : '⏳ Pendente'}
+            </span>
+          </div>
+          <div class="checklist-wrap">
+            <p class="checklist-title">Checklist</p>
+            ${itensHtml}
+          </div>
+          <div class="parecer-box">
+            <p class="parecer-label">Observação da Equipe</p>
+            <p class="parecer-text">${observacao || '—'}</p>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  const now = new Date().toLocaleString('pt-BR');
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Admissão — ${m.employee_name}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;background:#fff;padding:28px 32px}
+    .doc-header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:3px solid #1e3a5f;margin-bottom:18px}
+    .doc-title{font-size:20px;font-weight:700;color:#1e3a5f;letter-spacing:-.3px}
+    .doc-subtitle{font-size:11px;color:#555;margin-top:3px}
+    .doc-meta{text-align:right;font-size:10px;color:#555;line-height:1.6}
+    .doc-meta strong{color:#111}
+    .status-geral{display:inline-block;padding:4px 14px;border-radius:6px;font-size:12px;font-weight:700;letter-spacing:.5px;margin-bottom:16px}
+    .section{margin-bottom:20px}
+    .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1e3a5f;border-bottom:1.5px solid #bfdbfe;padding-bottom:4px;margin-bottom:10px}
+    .info-table{width:100%;border-collapse:collapse}
+    .detail-label{width:36%;font-weight:600;color:#374151;padding:4px 8px 4px 0;vertical-align:top;white-space:nowrap}
+    .detail-value{color:#111;padding:4px 0;vertical-align:top}
+    .cancellation-box{background:#fee2e2;border:1.5px solid #fca5a5;border-radius:8px;padding:12px 14px;margin-bottom:20px}
+    .cancellation-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#7f1d1d;margin-bottom:8px}
+    .team-card{border:1.5px solid #e5e7eb;border-radius:8px;padding:12px 14px;margin-bottom:12px;page-break-inside:avoid}
+    .team-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .team-name{font-size:12px;font-weight:700;color:#1e3a5f}
+    .status-badge{font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px}
+    .checklist-wrap{background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px 10px;margin-bottom:8px}
+    .checklist-title{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-bottom:6px}
+    .check-item{display:flex;align-items:flex-start;gap:6px;font-size:10px;margin-bottom:5px}
+    .check-icon{font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px}
+    .parecer-box{background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px 10px}
+    .parecer-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-bottom:4px}
+    .parecer-text{font-size:10px;color:#111;line-height:1.5;white-space:pre-wrap}
+    .summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+    .summary-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;text-align:center}
+    .summary-num{font-size:22px;font-weight:700;color:#1e3a5f}
+    .summary-label{font-size:9px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+    .doc-footer{margin-top:28px;padding-top:10px;border-top:1.5px solid #e2e8f0;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
+    @page{size:A4 portrait;margin:10mm 12mm}
+    @media print{body{padding:0}.no-print{display:none}}
+  </style>
+</head>
+<body>
+  <div class="doc-header">
+    <div>
+      <div class="doc-title">Ficha de Admissão</div>
+      <div class="doc-subtitle">RH Movimentações — Registro Oficial</div>
+    </div>
+    <div class="doc-meta">
+      <div>Nº do Registro: <strong>${m.id.substring(0, 8).toUpperCase()}</strong></div>
+      <div>Criado em: <strong>${criacao}</strong></div>
+      <div>Gerado em: <strong>${now}</strong></div>
+    </div>
+  </div>
+  <span class="status-geral" style="color:${statusColor};background:${statusBg};border:1.5px solid ${statusBorder}">
+    ${statusText}
+  </span>
+  <div class="section">
+    <div class="section-title">Identificação da Movimentação</div>
+    <table class="info-table">
+      <tr><td class="detail-label">Colaborador</td><td class="detail-value" style="font-size:13px;font-weight:700">${m.employee_name}</td></tr>
+      <tr><td class="detail-label">Tipo de Movimentação</td><td class="detail-value"><strong>Admissão</strong></td></tr>
+      <tr><td class="detail-label">Criado por</td><td class="detail-value">${m.created_by}</td></tr>
+      <tr><td class="detail-label">Data de Criação</td><td class="detail-value">${criacao}</td></tr>
+    </table>
+  </div>
+  <div class="section">
+    <div class="section-title">Dados da Admissão</div>
+    ${dadosHtml || '<p style="font-size:10px;color:#6b7280">Sem dados importados.</p>'}
+  </div>
+  ${cancelamentoHtml ? `<div class="section"><div class="section-title">Status do Cancelamento</div>${cancelamentoHtml}</div>` : ''}
+  ${!isCanceled ? `
+  <div class="summary-grid">
+    <div class="summary-card"><div class="summary-num">${EQUIPES_CHECKLIST_ADMISSAO.length}</div><div class="summary-label">Equipes envolvidas</div></div>
+    <div class="summary-card" style="border-color:#86efac"><div class="summary-num" style="color:#16a34a">${equipesCompletas}</div><div class="summary-label">Pareceres emitidos</div></div>
+    <div class="summary-card" style="border-color:#fde68a"><div class="summary-num" style="color:#d97706">${EQUIPES_CHECKLIST_ADMISSAO.length - equipesCompletas}</div><div class="summary-label">Pareceres pendentes</div></div>
+  </div>
+  <div class="section"><div class="section-title">Pareceres das Equipes</div>${equipeSections}</div>
+  ` : ''}
+  <div class="doc-footer">
+    <span>RH Movimentações — Documento gerado automaticamente em ${now}</span>
+    <span>ID: ${m.id}</span>
+  </div>
+</body>
+</html>`;
+}
+
+async function printMovementPDF(m: Movement) {
+  // Abre a aba ANTES do fetch assíncrono, para o navegador não bloquear o pop-up
+  // (perderia a associação com o clique do usuário se abríssemos só depois do await).
   const win = window.open('', '_blank');
   if (!win) { alert('Permita pop-ups para gerar o PDF.'); return; }
+  win.document.write('<p style="font-family:Arial,sans-serif;padding:24px;color:#555">Gerando PDF...</p>');
+
+  let html: string;
+
+  if (m.type === 'admissao') {
+    const { data } = await supabase
+      .from('acompanhamento_admissao')
+      .select('dados, checklist, observacoes_equipe')
+      .eq('movimento_id', m.id)
+      .maybeSingle();
+    html = buildAdmissaoPDFHtml(m, data as any);
+  } else {
+    html = buildMovementPDFHtml(m);
+  }
+
+  win.document.open();
   win.document.write(html);
   win.document.close();
   win.onload = () => { win.focus(); win.print(); };
@@ -802,15 +1022,17 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
     }
   };
 
-  const handlePrintSelected = () => {
+  const handlePrintSelected = async () => {
     const rows = sortedFiltered.filter(r => selected.has(r._id) && podeGerarPdf(r));
     if (rows.length === 0) { alert('Selecione ao menos uma movimentação (admissões exigem acesso de DP).'); return; }
-    rows.forEach(r => printMovementPDF(r._movement));
+    for (const r of rows) {
+      await printMovementPDF(r._movement);
+    }
   };
 
-  const handlePrintOne = (row: Row) => {
+  const handlePrintOne = async (row: Row) => {
     if (!podeGerarPdf(row)) { alert('Apenas usuários com acesso a DP podem gerar o PDF de uma Admissão.'); return; }
-    printMovementPDF(row._movement);
+    await printMovementPDF(row._movement);
   };
 
   // ─── EXPORT EXCEL POR EQUIPE ───────────────────────────────────────────────
