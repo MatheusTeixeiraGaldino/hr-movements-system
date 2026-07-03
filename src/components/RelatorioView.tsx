@@ -681,7 +681,12 @@ interface Row {
   _movementDate: Date | null;
 }
 
-function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
+interface AdmissaoRowData {
+  checklist: ItemChecklistAdmissao[];
+  observacoes_equipe: Record<string, string>;
+}
+
+function buildRows(movements: Movement[], currentUser: CurrentUser, admissaoDataMap: Record<string, AdmissaoRowData> = {}): Row[] {
   return movements
     .filter(m =>
       currentUser.role === 'admin' ||
@@ -690,43 +695,83 @@ function buildRows(movements: Movement[], currentUser: CurrentUser): Row[] {
       (m.type === 'admissao' && currentUser.team_names.includes('DP'))
     )
     .map(m => {
-      const respondidas = m.selected_teams.filter(id => m.responses[id]?.status === 'completed');
-      const pendentes   = m.selected_teams.filter(id => m.responses[id]?.status !== 'completed');
       const isCanceled = m.cancelamento !== null && m.cancelamento !== undefined;
-      
-      let statusLabel = isCanceled ? 'Cancelado' : (pendentes.length === 0 ? 'Aprovado' : 'Pendente');
+      const isAdmissao = m.type === 'admissao';
+
+      // Admissão não usa selected_teams/responses (isso é exclusivo dos demais tipos) —
+      // o status real vem do checklist por equipe salvo em acompanhamento_admissao.
+      let respondidas: string[] = [];
+      let pendentes: string[] = [];
+      let statusLabel: string;
+      let admissaoChecklist: ItemChecklistAdmissao[] = [];
+
+      if (isAdmissao) {
+        const dadosAdmissao = admissaoDataMap[m.id];
+        admissaoChecklist = dadosAdmissao?.checklist || [];
+        const observacoesEquipe = dadosAdmissao?.observacoes_equipe || {};
+        const equipesRespondidas = EQUIPES_CHECKLIST_ADMISSAO.filter(
+          eq => statusChecklistEquipe(admissaoChecklist, eq, observacoesEquipe[eq]) === 'completo'
+        );
+        const equipesPendentes = EQUIPES_CHECKLIST_ADMISSAO.filter(eq => !equipesRespondidas.includes(eq));
+        respondidas = equipesRespondidas;
+        pendentes = equipesPendentes;
+        statusLabel = isCanceled ? 'Cancelado' : (dadosAdmissao && checklistCompletoAdmissao(admissaoChecklist, observacoesEquipe) ? 'Aprovado' : 'Pendente');
+      } else {
+        respondidas = m.selected_teams.filter(id => m.responses[id]?.status === 'completed');
+        pendentes   = m.selected_teams.filter(id => m.responses[id]?.status !== 'completed');
+        statusLabel = isCanceled ? 'Cancelado' : (pendentes.length === 0 ? 'Aprovado' : 'Pendente');
+      }
+
       const teamStatus: Record<string, 'completed' | 'pending'> = {};
-      m.selected_teams.forEach(id => { teamStatus[id] = m.responses[id]?.status === 'completed' ? 'completed' : 'pending'; });
+      if (isAdmissao) {
+        respondidas.forEach(eq => { teamStatus[eq] = 'completed'; });
+        pendentes.forEach(eq => { teamStatus[eq] = 'pending'; });
+      } else {
+        m.selected_teams.forEach(id => { teamStatus[id] = m.responses[id]?.status === 'completed' ? 'completed' : 'pending'; });
+      }
 
       let approvedAt: Date | null = null;
-      if (!isCanceled && pendentes.length === 0) {
-        const timestamps = m.selected_teams
+      let lastResponseDate = '—';
+
+      if (isAdmissao) {
+        const timestamps = admissaoChecklist
+          .map(i => (i.data_marcacao ? new Date(i.data_marcacao) : null))
+          .filter((d): d is Date => d !== null && !isNaN(d.getTime()));
+        if (timestamps.length > 0) {
+          const maisRecente = new Date(Math.max(...timestamps.map(d => d.getTime())));
+          lastResponseDate = formatDate(maisRecente.toISOString());
+          if (!isCanceled && pendentes.length === 0) approvedAt = maisRecente;
+        }
+      } else {
+        if (!isCanceled && pendentes.length === 0) {
+          const timestamps = m.selected_teams
+            .map(id => {
+              const resp = m.responses[id];
+              const hist = resp?.history || [];
+              if (hist.length > 0) return new Date(hist[hist.length - 1].timestamp);
+              if (resp?.date) return new Date(resp.date);
+              return null;
+            })
+            .filter((d): d is Date => d !== null && !isNaN(d.getTime()));
+          if (timestamps.length > 0) {
+            approvedAt = new Date(Math.max(...timestamps.map(d => d.getTime())));
+          }
+        }
+
+        const allTimestamps = m.selected_teams
           .map(id => {
             const resp = m.responses[id];
+            if (resp?.status !== 'completed') return null;
             const hist = resp?.history || [];
             if (hist.length > 0) return new Date(hist[hist.length - 1].timestamp);
             if (resp?.date) return new Date(resp.date);
             return null;
           })
           .filter((d): d is Date => d !== null && !isNaN(d.getTime()));
-        if (timestamps.length > 0) {
-          approvedAt = new Date(Math.max(...timestamps.map(d => d.getTime())));
-        }
+        lastResponseDate = allTimestamps.length > 0
+          ? formatDate(new Date(Math.max(...allTimestamps.map(d => d.getTime()))).toISOString())
+          : '—';
       }
-
-      const allTimestamps = m.selected_teams
-        .map(id => {
-          const resp = m.responses[id];
-          if (resp?.status !== 'completed') return null;
-          const hist = resp?.history || [];
-          if (hist.length > 0) return new Date(hist[hist.length - 1].timestamp);
-          if (resp?.date) return new Date(resp.date);
-          return null;
-        })
-        .filter((d): d is Date => d !== null && !isNaN(d.getTime()));
-      const lastResponseDate = allTimestamps.length > 0
-        ? formatDate(new Date(Math.max(...allTimestamps.map(d => d.getTime()))).toISOString())
-        : '—';
 
       let canceledAt: Date | null = null;
       let canceledAtStr = '—';
@@ -880,6 +925,28 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   const [selected,     setSelected]     = useState<Set<string>>(new Set());
   const [exporting,    setExporting]    = useState(false);
 
+  // Dados reais do checklist de Admissão (a movimentação em si não guarda selected_teams/
+  // responses como as demais — precisamos buscar em acompanhamento_admissao para saber
+  // de verdade se está Aprovado ou Pendente).
+  const [admissaoDataMap, setAdmissaoDataMap] = useState<Record<string, AdmissaoRowData>>({});
+
+  useEffect(() => {
+    const idsAdmissao = movements.filter(m => m.type === 'admissao').map(m => m.id);
+    if (idsAdmissao.length === 0) { setAdmissaoDataMap({}); return; }
+
+    supabase
+      .from('acompanhamento_admissao')
+      .select('movimento_id, checklist, observacoes_equipe')
+      .in('movimento_id', idsAdmissao)
+      .then(({ data }) => {
+        const map: Record<string, AdmissaoRowData> = {};
+        (data || []).forEach((d: any) => {
+          map[d.movimento_id] = { checklist: d.checklist || [], observacoes_equipe: d.observacoes_equipe || {} };
+        });
+        setAdmissaoDataMap(map);
+      });
+  }, [movements]);
+
   const handleSort = (col: string) => {
     if (sortCol === col) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -897,10 +964,10 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
     });
   };
 
-  const allRows = useMemo(() => buildRows(movements, currentUser), [movements, currentUser]);
+  const allRows = useMemo(() => buildRows(movements, currentUser, admissaoDataMap), [movements, currentUser, admissaoDataMap]);
 
-  // Só quem tem acesso a DP pode gerar PDF de movimentações de Admissão
-  const podeGerarPdfAdmissao = currentUser.team_names.includes('DP');
+  // Só quem tem acesso a DP (ou é admin) pode gerar PDF de movimentações de Admissão
+  const podeGerarPdfAdmissao = currentUser.role === 'admin' || currentUser.team_names.includes('DP');
   const podeGerarPdf = (row: Row) => row._type !== 'admissao' || podeGerarPdfAdmissao;
 
   const toStart = (s: string) => s ? new Date(s + 'T00:00:00') : null;
@@ -1024,14 +1091,14 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
 
   const handlePrintSelected = async () => {
     const rows = sortedFiltered.filter(r => selected.has(r._id) && podeGerarPdf(r));
-    if (rows.length === 0) { alert('Selecione ao menos uma movimentação (admissões exigem acesso de DP).'); return; }
+    if (rows.length === 0) { alert('Selecione ao menos uma movimentação (admissões exigem acesso de DP ou admin).'); return; }
     for (const r of rows) {
       await printMovementPDF(r._movement);
     }
   };
 
   const handlePrintOne = async (row: Row) => {
-    if (!podeGerarPdf(row)) { alert('Apenas usuários com acesso a DP podem gerar o PDF de uma Admissão.'); return; }
+    if (!podeGerarPdf(row)) { alert('Apenas usuários com acesso a DP ou administradores podem gerar o PDF de uma Admissão.'); return; }
     await printMovementPDF(row._movement);
   };
 
@@ -1313,7 +1380,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
                           checked={isChecked}
                           disabled={!podeGerarPdf(row)}
                           onChange={() => toggleSelect(row._id)}
-                          title={!podeGerarPdf(row) ? 'Apenas usuários com acesso a DP podem gerar PDF de Admissão' : undefined}
+                          title={!podeGerarPdf(row) ? 'Apenas usuários com acesso a DP ou administradores podem gerar PDF de Admissão' : undefined}
                           className="w-3.5 h-3.5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                         />
                       </td>
@@ -1358,7 +1425,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
                           </button>
                         ) : (
                           <span
-                            title="Apenas usuários com acesso a DP podem gerar o PDF de uma Admissão"
+                            title="Apenas usuários com acesso a DP ou administradores podem gerar o PDF de uma Admissão"
                             className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 border border-gray-200 bg-gray-50 rounded whitespace-nowrap cursor-not-allowed"
                           >
                             <Lock className="w-3 h-3" />PDF
