@@ -788,7 +788,7 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
   const [loadingCreate, setLoadingCreate] = useState(false);
   const [filterType, setFilterType] = useState<MovementType | 'all'>('all');
-  const [showCompleted, setShowCompleted] = useState(false);
+  const [dashboardTab, setDashboardTab] = useState<'pending' | 'completed' | 'canceled'>('pending');
   const [selectedSetorIds, setSelectedSetorIds] = useState<string[]>([]);
   const [showImportAdmissao, setShowImportAdmissao] = useState(false);
 
@@ -916,6 +916,13 @@ if (movementType === 'demissao') {
     return m.selected_teams.some((t: string) => activeTeamIds.includes(t));
   });
 
+  // Mesmas regras de visibilidade de myMovs, mas para movimentações CANCELADAS
+  const canceled = movements.filter((m: Movement) => {
+    if (!m.cancelamento) return false;
+    if (isAdmin) return m.created_by === currentUser?.name || m.selected_teams.some((t: string) => currentUser?.team_ids.includes(t));
+    return m.selected_teams.some((t: string) => activeTeamIds.includes(t));
+  });
+
   const pending = myMovs.filter((m: Movement) => {
     if (m.created_by === currentUser?.name && !m.selected_teams.some((t: string) => activeTeamIds.includes(t))) return m.status !== 'completed';
     // Pendente se qualquer equipe ativa ainda não respondeu
@@ -930,7 +937,7 @@ if (movementType === 'demissao') {
   });
 
   const getFilteredMovements = () => {
-    let filtered = showCompleted ? completed : pending;
+    let filtered = dashboardTab === 'completed' ? completed : dashboardTab === 'canceled' ? canceled : pending;
     if (filterType !== 'all') filtered = filtered.filter((m: Movement) => m.type === filterType);
     return filtered;
   };
@@ -943,8 +950,8 @@ if (movementType === 'demissao') {
     return day >= 15 && day <= 20;
   };
 
-  const getCountByType = (type: MovementType, includeCompleted: boolean = false) => {
-    const movs = includeCompleted ? myMovs : pending;
+  const getCountByType = (type: MovementType, tab: 'pending' | 'completed' | 'canceled' = 'pending') => {
+    const movs = tab === 'completed' ? completed : tab === 'canceled' ? canceled : pending;
     return movs.filter((m: Movement) => m.type === type).length;
   };
 
@@ -970,7 +977,7 @@ if (movementType === 'demissao') {
 
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">Dashboard - {showCompleted ? 'Respondidas' : 'Pendentes'}</h2>
+          <h2 className="text-xl font-bold">Dashboard - {dashboardTab === 'completed' ? 'Respondidas' : dashboardTab === 'canceled' ? 'Canceladas' : 'Pendentes'}</h2>
           <div className="flex gap-2">
             <button onClick={() => setShowChangePassword(true)} className="flex items-center gap-2 px-3 py-2 border rounded-lg text-sm"><Settings className="w-4 h-4" />Senha</button>
           </div>
@@ -1013,36 +1020,37 @@ if (movementType === 'demissao') {
         )}
 
         <div className="flex gap-2 mb-4">
-          <button onClick={() => setShowCompleted(false)} className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${!showCompleted ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-400' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>⏳ Pendentes ({pending.length})</button>
-          <button onClick={() => setShowCompleted(true)} className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${showCompleted ? 'bg-green-100 text-green-800 border-2 border-green-400' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>✓ Respondidas ({completed.length})</button>
+          <button onClick={() => setDashboardTab('pending')} className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${dashboardTab === 'pending' ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-400' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>⏳ Pendentes ({pending.length})</button>
+          <button onClick={() => setDashboardTab('completed')} className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${dashboardTab === 'completed' ? 'bg-green-100 text-green-800 border-2 border-green-400' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>✓ Respondidas ({completed.length})</button>
+          <button onClick={() => setDashboardTab('canceled')} className={`flex-1 py-2 px-4 rounded-lg font-medium transition ${dashboardTab === 'canceled' ? 'bg-red-100 text-red-800 border-2 border-red-400' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>🚫 Canceladas ({canceled.length})</button>
         </div>
 
         <div className="mb-6">
           <h3 className="font-semibold mb-3">Filtrar por Tipo</h3>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <button onClick={() => setFilterType('all')} className={`p-3 border-2 rounded-lg transition ${filterType === 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
-              <div className="text-center"><p className="text-2xl font-bold">{showCompleted ? completed.length : pending.length}</p><p className="text-xs font-medium mt-1">Todas</p></div>
+              <div className="text-center"><p className="text-2xl font-bold">{dashboardTab === 'completed' ? completed.length : dashboardTab === 'canceled' ? canceled.length : pending.length}</p><p className="text-xs font-medium mt-1">Todas</p></div>
             </button>
             <button onClick={() => setFilterType('demissao')} className={`p-3 border-2 rounded-lg transition ${filterType === 'demissao' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
-              <div className="text-center"><UserX className="w-6 h-6 mx-auto mb-1 text-red-600" /><p className="text-xl font-bold">{getCountByType('demissao', showCompleted)}</p><p className="text-xs font-medium">Demissões</p></div>
+              <div className="text-center"><UserX className="w-6 h-6 mx-auto mb-1 text-red-600" /><p className="text-xl font-bold">{getCountByType('demissao', dashboardTab)}</p><p className="text-xs font-medium">Demissões</p></div>
             </button>
             <button onClick={() => setFilterType('transferencia')} className={`p-3 border-2 rounded-lg transition ${filterType === 'transferencia' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
-              <div className="text-center"><Users className="w-6 h-6 mx-auto mb-1 text-blue-600" /><p className="text-xl font-bold">{getCountByType('transferencia', showCompleted)}</p><p className="text-xs font-medium">Transferências</p></div>
+              <div className="text-center"><Users className="w-6 h-6 mx-auto mb-1 text-blue-600" /><p className="text-xl font-bold">{getCountByType('transferencia', dashboardTab)}</p><p className="text-xs font-medium">Transferências</p></div>
             </button>
             <button onClick={() => setFilterType('alteracao')} className={`p-3 border-2 rounded-lg transition ${filterType === 'alteracao' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
-              <div className="text-center"><TrendingUp className="w-6 h-6 mx-auto mb-1 text-green-600" /><p className="text-xl font-bold">{getCountByType('alteracao', showCompleted)}</p><p className="text-xs font-medium">Alterações</p></div>
+              <div className="text-center"><TrendingUp className="w-6 h-6 mx-auto mb-1 text-green-600" /><p className="text-xl font-bold">{getCountByType('alteracao', dashboardTab)}</p><p className="text-xs font-medium">Alterações</p></div>
             </button>
             <button onClick={() => setFilterType('promocao')} className={`p-3 border-2 rounded-lg transition ${filterType === 'promocao' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
-              <div className="text-center"><TrendingUp className="w-6 h-6 mx-auto mb-1 text-purple-600" /><p className="text-xl font-bold">{getCountByType('promocao', showCompleted)}</p><p className="text-xs font-medium">Promoções</p></div>
+              <div className="text-center"><TrendingUp className="w-6 h-6 mx-auto mb-1 text-purple-600" /><p className="text-xl font-bold">{getCountByType('promocao', dashboardTab)}</p><p className="text-xs font-medium">Promoções</p></div>
             </button>
             <button onClick={() => setFilterType('admissao')} className={`p-3 border-2 rounded-lg transition ${filterType === 'admissao' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
-              <div className="text-center"><UserPlus className="w-6 h-6 mx-auto mb-1 text-emerald-600" /><p className="text-xl font-bold">{getCountByType('admissao', showCompleted)}</p><p className="text-xs font-medium">Admissões</p></div>
+              <div className="text-center"><UserPlus className="w-6 h-6 mx-auto mb-1 text-emerald-600" /><p className="text-xl font-bold">{getCountByType('admissao', dashboardTab)}</p><p className="text-xs font-medium">Admissões</p></div>
             </button>
           </div>
         </div>
 
         <h3 className="font-semibold mb-3">
-          {filterType === 'all' ? `Todas as Movimentações ${showCompleted ? 'Respondidas' : 'Pendentes'}` : `${MOVEMENT_TYPES[filterType as MovementType].label} ${showCompleted ? 'Respondidas' : 'Pendentes'}`} ({filteredMovements.length})
+          {filterType === 'all' ? `Todas as Movimentações ${dashboardTab === 'completed' ? 'Respondidas' : dashboardTab === 'canceled' ? 'Canceladas' : 'Pendentes'}` : `${MOVEMENT_TYPES[filterType as MovementType].label} ${dashboardTab === 'completed' ? 'Respondidas' : dashboardTab === 'canceled' ? 'Canceladas' : 'Pendentes'}`} ({filteredMovements.length})
         </h3>
 
         {loading ? (
@@ -1058,7 +1066,7 @@ if (movementType === 'demissao') {
                 .filter((tid: string) => m.selected_teams.includes(tid) && m.responses[tid]?.status !== 'completed');
               const overdue = isOverdue(m.deadline);
               return (
-                <div key={m.id} className={`border rounded-lg p-4 hover:bg-gray-50 cursor-pointer ${overdue && !showCompleted ? 'border-red-300 bg-red-50' : ''}`} onClick={() => { setSelectedMovement(m); setView('detail'); }}>
+                <div key={m.id} className={`border rounded-lg p-4 hover:bg-gray-50 cursor-pointer ${overdue && dashboardTab === 'pending' ? 'border-red-300 bg-red-50' : ''} ${dashboardTab === 'canceled' ? 'border-red-200 bg-red-50/40' : ''}`} onClick={() => { setSelectedMovement(m); setView('detail'); }}>
                   <div className="flex justify-between mb-2">
                     <div className="flex items-center gap-3">
                       <Icon className="w-6 h-6" />
@@ -1068,22 +1076,41 @@ if (movementType === 'demissao') {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      {m.deadline && <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${overdue && !showCompleted ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}><Clock className="w-3 h-3" />{new Date(m.deadline).toLocaleDateString('pt-BR')}</span>}
-                      {myPendingTeams.length === 0
-                        ? <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-800">✓ Respondido</span>
-                        : <span className="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800">⏳ {myPendingTeams.length > 1 ? `${myPendingTeams.length} pendentes` : 'Pendente'}</span>
-                      }
+                      {dashboardTab === 'canceled' ? (
+                        <span className="text-xs px-2 py-1 rounded bg-red-100 text-red-800">🚫 Cancelada</span>
+                      ) : (
+                        <>
+                          {m.deadline && <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${overdue && dashboardTab === 'pending' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}><Clock className="w-3 h-3" />{new Date(m.deadline).toLocaleDateString('pt-BR')}</span>}
+                          {myPendingTeams.length === 0
+                            ? <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-800">✓ Respondido</span>
+                            : <span className="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800">⏳ {myPendingTeams.length > 1 ? `${myPendingTeams.length} pendentes` : 'Pendente'}</span>
+                          }
+                        </>
+                      )}
                     </div>
                   </div>
-                  <div className="text-sm text-gray-600 mb-2">Progresso geral: {prog.completed}/{prog.total} equipes</div>
-                  <div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-blue-600 h-2 rounded-full" style={{ width: `${prog.percentage}%` }}></div></div>
+                  {dashboardTab === 'canceled' && m.cancelamento ? (
+                    <div className="text-sm text-red-700 bg-white border border-red-200 rounded-lg p-2 mt-1">
+                      <p><strong>Motivo:</strong> {m.cancelamento.motivo}</p>
+                      <p className="text-xs text-red-500 mt-1">Cancelada por {m.cancelamento.cancelado_por} em {new Date(m.cancelamento.cancelado_em).toLocaleString('pt-BR')}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-sm text-gray-600 mb-2">Progresso geral: {prog.completed}/{prog.total} equipes</div>
+                      <div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-blue-600 h-2 rounded-full" style={{ width: `${prog.percentage}%` }}></div></div>
+                    </>
+                  )}
                 </div>
               );
             })}
             {filteredMovements.length === 0 && (
               <div className="text-center py-12 bg-gray-50 rounded-lg">
-                <p className="text-gray-500 text-lg">{showCompleted ? '🎉 Nenhuma movimentação respondida ainda' : '✅ Nenhuma movimentação pendente'}</p>
-                <p className="text-gray-400 text-sm mt-2">{showCompleted ? 'Quando você responder movimentações, elas aparecerão aqui' : 'Você está em dia com todas as suas tarefas!'}</p>
+                <p className="text-gray-500 text-lg">
+                  {dashboardTab === 'completed' ? '🎉 Nenhuma movimentação respondida ainda' : dashboardTab === 'canceled' ? '🚫 Nenhuma movimentação cancelada' : '✅ Nenhuma movimentação pendente'}
+                </p>
+                <p className="text-gray-400 text-sm mt-2">
+                  {dashboardTab === 'completed' ? 'Quando você responder movimentações, elas aparecerão aqui' : dashboardTab === 'canceled' ? 'Movimentações canceladas aparecerão aqui' : 'Você está em dia com todas as suas tarefas!'}
+                </p>
               </div>
             )}
           </div>
