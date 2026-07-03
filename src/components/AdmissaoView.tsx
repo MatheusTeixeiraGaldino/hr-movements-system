@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Circle, AlertCircle, Pencil, Check, X, Clock, MinusCircle } from 'lucide-react';
+import { CheckCircle2, Circle, AlertCircle, Pencil, Check, X, Clock, MinusCircle, History } from 'lucide-react';
 import { useAdmissao } from '../hooks/useAdmissao';
 import {
   AcompanhamentoAdmissao,
@@ -35,22 +35,33 @@ const BADGE_STATUS: Record<StatusChecklistEquipe, { label: string; className: st
 };
 
 /**
- * Exibe os dados da admissão (respeitando visibilidade por equipe) e o checklist
- * de documentos, segmentado por equipe:
- *  - Se o usuário pertence à equipe (ou é admin): vê e edita o checklist completo
- *    daquela equipe, incluindo a observação obrigatória.
- *  - Se não pertence: vê apenas um resumo (Respondido / Em andamento / Não iniciado)
- *    das demais equipes, sem detalhes dos itens.
+ * Exibe os dados da admissão (respeitando visibilidade por equipe, e o filtro
+ * "Filtrar equipe" da barra lateral) e o checklist de documentos, segmentado
+ * por equipe:
+ *  - Se o usuário pertence à equipe atualmente selecionada no filtro: vê e
+ *    edita o checklist completo, incluindo a observação obrigatória.
+ *  - Caso contrário: vê apenas um resumo (Respondido / Em andamento / Não
+ *    iniciado), sem detalhes dos itens.
+ *
+ * Os campos de Remuneração só ficam visíveis se DP estiver entre as equipes
+ * "ativas" no momento (respeitando o filtro), ou para o criador da movimentação.
+ * DP e o criador também podem editar esses campos, sempre informando o motivo.
  */
 export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }: AdmissaoViewProps) {
   const { loadAdmissaoByMovimentoId, atualizarItemChecklist, atualizarObservacaoEquipe, atualizarCampoDados, loading } = useAdmissao();
   const [admissao, setAdmissao] = useState<AcompanhamentoAdmissao | null>(null);
-  const [editandoDataInicio, setEditandoDataInicio] = useState(false);
-  const [valorDataInicio, setValorDataInicio] = useState('');
+  const [editandoCampo, setEditandoCampo] = useState<CampoAdmissao | null>(null);
+  const [valorEdicao, setValorEdicao] = useState('');
+  const [motivoEdicao, setMotivoEdicao] = useState('');
 
   // Nome da equipe correspondente ao filtro "Filtrar equipe" da barra lateral
-  // ('' ou indefinido = "Todas as equipes", mostra todas as equipes do usuário expandidas)
+  // ('' ou indefinido = "Todas as equipes")
   const activeTeamName = activeTeamId ? currentUser.team_names[currentUser.team_ids.indexOf(activeTeamId)] : '';
+
+  // Equipes "ativas" no momento: se um filtro específico está selecionado, considera
+  // só essa equipe; senão, considera todas as equipes do usuário. Usado tanto para
+  // decidir quais campos de dados aparecem quanto quais seções de checklist expandem.
+  const equipesAtivas = activeTeamId ? [activeTeamName] : currentUser.team_names;
 
   const recarregar = async () => {
     const atualizado = await loadAdmissaoByMovimentoId(movimentoId);
@@ -68,12 +79,16 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
   }
 
   const isCriador = admissao.email_usuario_criacao === currentUser.email;
-  const dadosVisiveis = filtrarCamposVisiveis(admissao.dados, currentUser.team_names, isCriador);
+  const dadosVisiveis = filtrarCamposVisiveis(admissao.dados, equipesAtivas, isCriador);
   const categorias: Array<'Dados do Colaborador' | 'Dados da Contratação' | 'Remuneração'> = [
     'Dados do Colaborador',
     'Dados da Contratação',
     'Remuneração',
   ];
+
+  // Permissão de EDIÇÃO de Remuneração: sempre baseada no pertencimento real do
+  // usuário (não no filtro da barra lateral) — DP ou o criador podem editar.
+  const podeEditarRemuneracao = isCriador || currentUser.team_names.includes('DP');
 
   const percentual = calcularPercentualConclusaoAdmissao(admissao.checklist, admissao.observacoes_equipe);
 
@@ -106,20 +121,46 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
     await recarregar();
   };
 
-  const iniciarEdicaoDataInicio = () => {
-    setValorDataInicio(admissao.dados[CampoAdmissao.DATA_INICIO] || '');
-    setEditandoDataInicio(true);
+  const exigeMotivo = (campo: CampoAdmissao) => CATEGORIA_CAMPO[campo] === 'Remuneração';
+
+  const iniciarEdicao = (campo: CampoAdmissao) => {
+    setValorEdicao(admissao.dados[campo] || '');
+    setMotivoEdicao('');
+    setEditandoCampo(campo);
   };
 
-  const salvarDataInicio = async () => {
-    await atualizarCampoDados(admissao.id, CampoAdmissao.DATA_INICIO, valorDataInicio, currentUser.name, currentUser.email);
-    setEditandoDataInicio(false);
+  const cancelarEdicao = () => {
+    setEditandoCampo(null);
+    setValorEdicao('');
+    setMotivoEdicao('');
+  };
+
+  const salvarEdicao = async () => {
+    if (!editandoCampo) return;
+    if (exigeMotivo(editandoCampo) && !motivoEdicao.trim()) return; // bloqueia sem motivo
+
+    await atualizarCampoDados(
+      admissao.id,
+      editandoCampo,
+      valorEdicao,
+      currentUser.name,
+      currentUser.email,
+      exigeMotivo(editandoCampo) ? motivoEdicao.trim() : undefined
+    );
+    cancelarEdicao();
     await recarregar();
+  };
+
+  /** Última edição registrada para um campo específico, para mostrar "quem alterou e por quê" */
+  const ultimaEdicaoDoCampo = (campo: CampoAdmissao) => {
+    const label = LABEL_CAMPO_ADMISSAO[campo];
+    const edicoes = admissao.historico_auditoria.filter(h => h.acao === 'edicao_campo' && h.campo_ou_item === label);
+    return edicoes.length > 0 ? edicoes[edicoes.length - 1] : null;
   };
 
   return (
     <div className="space-y-6">
-      {/* Dados do colaborador (filtrados por equipe) */}
+      {/* Dados do colaborador (filtrados por equipe/filtro ativo) */}
       <div className="border rounded-lg divide-y">
         {categorias.map(cat => {
           const campos = (Object.keys(dadosVisiveis) as CampoAdmissao[]).filter(c => CATEGORIA_CAMPO[c] === cat);
@@ -129,35 +170,66 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
               <p className="text-xs font-semibold text-gray-500 uppercase mb-2">{cat}</p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
                 {campos.map(c => {
-                  const editavel = c === CampoAdmissao.DATA_INICIO;
+                  const editavel = c === CampoAdmissao.DATA_INICIO || (exigeMotivo(c) && podeEditarRemuneracao);
+                  const editando = editandoCampo === c;
+                  const ultimaEdicao = exigeMotivo(c) ? ultimaEdicaoDoCampo(c) : null;
+
                   return (
-                    <div key={c} className="flex justify-between gap-2 items-center">
-                      <span className="text-gray-500">{LABEL_CAMPO_ADMISSAO[c]}</span>
-                      {editavel && editandoDataInicio ? (
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="text"
-                            value={valorDataInicio}
-                            onChange={e => setValorDataInicio(e.target.value)}
-                            placeholder="dd/mm/aaaa"
-                            className="border rounded px-1.5 py-0.5 text-sm w-28 text-right"
-                          />
-                          <button onClick={salvarDataInicio} className="text-green-600 hover:text-green-700">
-                            <Check className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => setEditandoDataInicio(false)} className="text-gray-400 hover:text-gray-600">
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="font-medium text-right flex items-center gap-1.5">
-                          {dadosVisiveis[c]}
-                          {editavel && (
-                            <button onClick={iniciarEdicaoDataInicio} className="text-gray-300 hover:text-blue-500">
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
+                    <div key={c} className={editando ? 'col-span-2' : ''}>
+                      <div className="flex justify-between gap-2 items-center">
+                        <span className="text-gray-500 flex items-center gap-1">
+                          {LABEL_CAMPO_ADMISSAO[c]}
+                          {ultimaEdicao && (
+                            <span title={`Alterado por ${ultimaEdicao.usuario} em ${new Date(ultimaEdicao.data_hora).toLocaleString('pt-BR')}. ${ultimaEdicao.detalhes || ''}`}>
+                              <History className="w-3 h-3 text-gray-300" />
+                            </span>
                           )}
                         </span>
+
+                        {!editando && (
+                          <span className="font-medium text-right flex items-center gap-1.5">
+                            {dadosVisiveis[c]}
+                            {editavel && (
+                              <button onClick={() => iniciarEdicao(c)} className="text-gray-300 hover:text-blue-500">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </span>
+                        )}
+                      </div>
+
+                      {editando && (
+                        <div className="mt-1.5 p-2 bg-blue-50 border border-blue-200 rounded-lg space-y-1.5">
+                          <input
+                            type="text"
+                            value={valorEdicao}
+                            onChange={e => setValorEdicao(e.target.value)}
+                            placeholder={c === CampoAdmissao.DATA_INICIO ? 'dd/mm/aaaa' : 'Novo valor'}
+                            className="w-full border rounded px-2 py-1 text-sm"
+                            autoFocus
+                          />
+                          {exigeMotivo(c) && (
+                            <input
+                              type="text"
+                              value={motivoEdicao}
+                              onChange={e => setMotivoEdicao(e.target.value)}
+                              placeholder="Motivo da alteração (obrigatório)"
+                              className={`w-full border rounded px-2 py-1 text-xs ${!motivoEdicao.trim() ? 'border-red-300' : ''}`}
+                            />
+                          )}
+                          <div className="flex justify-end gap-2">
+                            <button onClick={cancelarEdicao} className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1">
+                              <X className="w-3.5 h-3.5" /> Cancelar
+                            </button>
+                            <button
+                              onClick={salvarEdicao}
+                              disabled={exigeMotivo(c) && !motivoEdicao.trim()}
+                              className="text-xs text-green-600 hover:text-green-700 disabled:text-gray-300 flex items-center gap-1 font-medium"
+                            >
+                              <Check className="w-3.5 h-3.5" /> Salvar
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   );
@@ -179,12 +251,9 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
         </div>
       </div>
 
-      {/* Checklist por equipe: completo para quem pertence à equipe, resumo para os demais */}
+      {/* Checklist por equipe: completo para quem pertence à equipe ativa, resumo para os demais */}
       {EQUIPES_CHECKLIST_ADMISSAO.map(equipe => {
-        // Só expande o checklist da equipe se: o usuário pertence a ela E
-        // (o filtro "Filtrar equipe" está em "Todas as equipes" OU está apontando exatamente para essa equipe).
-        const pertenceAEquipe =
-          currentUser.team_names.includes(equipe) && (!activeTeamId || activeTeamName === equipe);
+        const pertenceAEquipe = equipesAtivas.includes(equipe);
         const observacaoEquipe = admissao.observacoes_equipe[equipe] || '';
 
         if (!pertenceAEquipe) {
