@@ -1465,10 +1465,56 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
             <h2 className="text-2xl font-bold">{selectedMovement.employee_name}</h2>
             <p className="text-gray-600">Admissão</p>
           </div>
-          <button onClick={() => { setSelectedMovement(null); setView('dashboard'); }} className="px-4 py-2 border rounded-lg hover:bg-gray-50">
-            Voltar
-          </button>
+          <div className="flex gap-2">
+            {canCancel && (
+              <button onClick={() => setShowCancelModal(true)} className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700">
+                Cancelar Admissão
+              </button>
+            )}
+            <button onClick={() => { setSelectedMovement(null); setView('dashboard'); }} className="px-4 py-2 border rounded-lg hover:bg-gray-50">
+              Voltar
+            </button>
+          </div>
         </div>
+
+        {showCancelModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl p-6 max-w-md w-full">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold text-orange-600">Cancelar Admissão</h3>
+                <button onClick={() => { setShowCancelModal(false); setCancelMotivo(''); }} className="text-gray-600 hover:text-gray-900">✕</button>
+              </div>
+              <p className="text-sm text-gray-600 mb-4">Você está prestes a cancelar esta admissão. Esta ação não pode ser desfeita.</p>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Motivo do Cancelamento *</label>
+                <textarea
+                  value={cancelMotivo}
+                  onChange={(e) => setCancelMotivo(e.target.value)}
+                  placeholder="Explique por que esta admissão está sendo cancelada..."
+                  className="w-full border rounded-lg px-3 py-2 h-24"
+                  disabled={cancelLoading}
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setShowCancelModal(false); setCancelMotivo(''); }}
+                  className="flex-1 px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400"
+                  disabled={cancelLoading}
+                >
+                  Não, manter
+                </button>
+                <button
+                  onClick={handleCancel}
+                  disabled={!cancelMotivo.trim() || cancelLoading}
+                  className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-300"
+                >
+                  {cancelLoading ? 'Cancelando...' : 'Sim, cancelar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <AdmissaoView movimentoId={selectedMovement.id} currentUser={currentUser} activeTeamId={activeTeamId} />
       </div>
     );
