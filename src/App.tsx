@@ -5,6 +5,7 @@ import RelatorioView from './components/RelatorioView';
 import DossieView from './components/DossieView';
 import DossieConfigView from './components/DossieConfigView';
 import AdmissaoImportView from './components/AdmissaoImportView';
+import { EQUIPES_CHECKLIST_ADMISSAO, statusChecklistEquipe } from './types/admissao';
 import AdmissaoView from './components/AdmissaoView';
 import { useDossie } from './hooks/useDossie';
 import { TipoDesligamento } from './types/dossie';
@@ -385,48 +386,39 @@ export default function App() {
           })}
         </nav>
 
-        {/* Equipe ativa */}
-        {currentUser.team_ids.length > 0 && (
-          <div style={{ padding: sidebarCollapsed ? '10px 8px' : '10px 10px', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
-            {!sidebarCollapsed && (
-              <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, padding: '0 2px' }}>
-                {currentUser.team_ids.length > 1 ? 'Filtrar equipe' : 'Equipe'}
-              </p>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              {/* Opção "Todas" — só aparece para usuários com múltiplas equipes */}
-              {currentUser.team_ids.length > 1 && (
-                <button onClick={() => setActiveTeamId('')} title={sidebarCollapsed ? 'Todas as equipes' : undefined} style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: sidebarCollapsed ? '7px 0' : '7px 10px',
-                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-                  borderRadius: 8, border: `1px solid ${activeTeamId === '' ? 'var(--accent-border)' : 'transparent'}`,
-                  background: activeTeamId === '' ? 'var(--accent-light)' : 'transparent',
-                  color: activeTeamId === '' ? 'var(--accent)' : 'var(--muted)',
-                  cursor: 'pointer', fontSize: 12, fontWeight: activeTeamId === '' ? 700 : 400,
-                  fontFamily: 'var(--font-body)', textAlign: 'left',
-                }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: activeTeamId === '' ? 'var(--accent)' : 'var(--muted-light)', flexShrink: 0 }} />
-                  {!sidebarCollapsed && 'Todas as equipes'}
-                </button>
-              )}
-              {currentUser.team_ids.map((teamId: string, index: number) => {
-                const active = teamId === activeTeamId;
-                return (
-                  <button key={teamId} onClick={() => setActiveTeamId(teamId)} title={sidebarCollapsed ? currentUser.team_names[index] : undefined} style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: sidebarCollapsed ? '7px 0' : '7px 10px',
-                    justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-                    borderRadius: 8, border: `1px solid ${active ? 'var(--accent-border)' : 'transparent'}`,
-                    background: active ? 'var(--accent-light)' : 'transparent',
-                    color: active ? 'var(--accent)' : 'var(--muted)',
-                    cursor: 'pointer', fontSize: 12, fontWeight: active ? 700 : 400,
-                    fontFamily: 'var(--font-body)', textAlign: 'left',
-                  }}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: active ? 'var(--accent)' : 'var(--muted-light)', flexShrink: 0 }} />
-                    {!sidebarCollapsed && currentUser.team_names[index]}
-                  </button>
-                );
-              })}
-            </div>
+        {/* Equipe ativa — dropdown para ocupar menos espaço */}
+        {currentUser.team_ids.length > 0 && !sidebarCollapsed && (
+          <div style={{ padding: '10px 10px', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, padding: '0 2px' }}>
+              {currentUser.team_ids.length > 1 ? 'Filtrar equipe' : 'Equipe'}
+            </p>
+            <select
+              value={activeTeamId}
+              onChange={(e) => setActiveTeamId(e.target.value)}
+              disabled={currentUser.team_ids.length === 1}
+              style={{
+                width: '100%', padding: '7px 10px', borderRadius: 8,
+                border: '1px solid var(--border)', background: 'var(--bg)',
+                color: 'var(--text)', fontSize: 12.5, fontWeight: 600,
+                fontFamily: 'var(--font-body)', cursor: currentUser.team_ids.length === 1 ? 'default' : 'pointer',
+                appearance: 'auto',
+              }}
+            >
+              {currentUser.team_ids.length > 1 && <option value="">Todas as equipes</option>}
+              {currentUser.team_ids.map((teamId: string, index: number) => (
+                <option key={teamId} value={teamId}>{currentUser.team_names[index]}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Versão recolhida: só um ponto indicando a equipe ativa, sem dropdown (não cabe) */}
+        {currentUser.team_ids.length > 0 && sidebarCollapsed && (
+          <div
+            title={activeTeamId ? currentUser.team_names[currentUser.team_ids.indexOf(activeTeamId)] : 'Todas as equipes'}
+            style={{ padding: '10px 8px', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'center' }}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)' }} />
           </div>
         )}
 
@@ -832,6 +824,28 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
   const [selectedSetorIds, setSelectedSetorIds] = useState<string[]>([]);
   const [showImportAdmissao, setShowImportAdmissao] = useState(false);
 
+  // Dados reais do checklist de Admissão (a movimentação em si não usa selected_teams/
+  // responses como as demais — precisamos buscar em acompanhamento_admissao para saber
+  // quem realmente já respondeu / está pendente, por equipe).
+  const [admissaoDataMap, setAdmissaoDataMap] = useState<Record<string, { checklist: any[]; observacoes_equipe: Record<string, string> }>>({});
+
+  useEffect(() => {
+    const idsAdmissao = movements.filter((m: Movement) => m.type === 'admissao').map((m: Movement) => m.id);
+    if (idsAdmissao.length === 0) { setAdmissaoDataMap({}); return; }
+
+    supabase
+      .from('acompanhamento_admissao')
+      .select('movimento_id, checklist, observacoes_equipe')
+      .in('movimento_id', idsAdmissao)
+      .then(({ data }: any) => {
+        const map: Record<string, { checklist: any[]; observacoes_equipe: Record<string, string> }> = {};
+        (data || []).forEach((d: any) => {
+          map[d.movimento_id] = { checklist: d.checklist || [], observacoes_equipe: d.observacoes_equipe || {} };
+        });
+        setAdmissaoDataMap(map);
+      });
+  }, [movements]);
+
   const isAdmin = currentUser?.role === 'admin';
   const isResponsavel = currentUser?.role === 'responsavel';
   const canCreateDemissao = (isAdmin || isResponsavel) && currentUser?.can_manage_demissoes;
@@ -949,8 +963,41 @@ if (movementType === 'demissao') {
     ? currentUser?.team_ids ?? []
     : activeTeamId ? [activeTeamId] : [];
 
+  // Nomes das equipes "ativas" no momento (equivalente a activeTeamIds, mas em nome,
+  // já que o checklist de Admissão é indexado por nome de equipe, não por ID)
+  const activeTeamNames: string[] = activeTeamId === ''
+    ? currentUser?.team_names ?? []
+    : activeTeamId
+      ? [currentUser?.team_names?.[currentUser?.team_ids?.indexOf(activeTeamId)]].filter(Boolean)
+      : [];
+
+  /** Equipes do checklist de Admissão relevantes para o usuário no filtro atual */
+  const getEquipesAdmissaoRelevantes = (): string[] => {
+    if (isAdmin) return EQUIPES_CHECKLIST_ADMISSAO;
+    return activeTeamNames.filter(tn => EQUIPES_CHECKLIST_ADMISSAO.includes(tn));
+  };
+
+  /** Uma admissão é visível para o usuário se ele pertence a alguma equipe do checklist */
+  const isAdmissaoVisivel = (m: Movement): boolean => {
+    if (m.type !== 'admissao') return false;
+    if (isAdmin || m.created_by === currentUser?.name) return true;
+    return (currentUser?.team_names ?? []).some((tn: string) => EQUIPES_CHECKLIST_ADMISSAO.includes(tn));
+  };
+
+  /** Status do checklist (por equipe) de uma admissão, considerando as equipes relevantes ao filtro atual */
+  const statusAdmissaoParaUsuario = (m: Movement): 'pending' | 'completed' => {
+    const dados = admissaoDataMap[m.id];
+    const checklist = dados?.checklist || [];
+    const observacoesEquipe = dados?.observacoes_equipe || {};
+    const equipesRelevantes = getEquipesAdmissaoRelevantes();
+    if (equipesRelevantes.length === 0) return 'pending';
+    const todasCompletas = equipesRelevantes.every(eq => statusChecklistEquipe(checklist, eq, observacoesEquipe[eq]) === 'completo');
+    return todasCompletas ? 'completed' : 'pending';
+  };
+
   const myMovs = movements.filter((m: Movement) => {
     if (m.cancelamento) return false;
+    if (m.type === 'admissao') return isAdmissaoVisivel(m);
     if (isAdmin) return m.created_by === currentUser?.name || m.selected_teams.some((t: string) => currentUser?.team_ids.includes(t));
     // Para não-admin: inclui movimentação se qualquer equipe ativa do usuário está no selected_teams
     return m.selected_teams.some((t: string) => activeTeamIds.includes(t));
@@ -959,17 +1006,20 @@ if (movementType === 'demissao') {
   // Mesmas regras de visibilidade de myMovs, mas para movimentações CANCELADAS
   const canceled = movements.filter((m: Movement) => {
     if (!m.cancelamento) return false;
+    if (m.type === 'admissao') return isAdmissaoVisivel(m);
     if (isAdmin) return m.created_by === currentUser?.name || m.selected_teams.some((t: string) => currentUser?.team_ids.includes(t));
     return m.selected_teams.some((t: string) => activeTeamIds.includes(t));
   });
 
   const pending = myMovs.filter((m: Movement) => {
+    if (m.type === 'admissao') return statusAdmissaoParaUsuario(m) === 'pending';
     if (m.created_by === currentUser?.name && !m.selected_teams.some((t: string) => activeTeamIds.includes(t))) return m.status !== 'completed';
     // Pendente se qualquer equipe ativa ainda não respondeu
     return activeTeamIds.some(tid => m.selected_teams.includes(tid) && m.responses[tid]?.status !== 'completed');
   });
 
   const completed = myMovs.filter((m: Movement) => {
+    if (m.type === 'admissao') return statusAdmissaoParaUsuario(m) === 'completed';
     if (m.created_by === currentUser?.name && !m.selected_teams.some((t: string) => activeTeamIds.includes(t))) return m.status === 'completed';
     // Concluída se todas as equipes ativas responderam
     const relevantTeams = activeTeamIds.filter(tid => m.selected_teams.includes(tid));
@@ -1099,11 +1149,21 @@ if (movementType === 'demissao') {
           <div className="space-y-3">
             {filteredMovements.map((m: Movement) => {
               const Icon = MOVEMENT_TYPES[m.type as MovementType].icon;
-              const prog = getProgress(m);
+              const isAdmissao = m.type === 'admissao';
+              const equipesRelevantesAdmissao = isAdmissao ? getEquipesAdmissaoRelevantes() : [];
+              const admissaoInfo = isAdmissao ? admissaoDataMap[m.id] : null;
+              const equipesRespondidasAdmissao = isAdmissao
+                ? equipesRelevantesAdmissao.filter(eq => statusChecklistEquipe(admissaoInfo?.checklist || [], eq, admissaoInfo?.observacoes_equipe?.[eq]) === 'completo')
+                : [];
+              const prog = isAdmissao
+                ? { completed: equipesRespondidasAdmissao.length, total: equipesRelevantesAdmissao.length, percentage: equipesRelevantesAdmissao.length > 0 ? (equipesRespondidasAdmissao.length / equipesRelevantesAdmissao.length) * 100 : 0 }
+                : getProgress(m);
               // Para o badge de status no card: pega o primeiro setor ativo que está na movimentação
               // Conta quantas equipes do usuário ainda estão pendentes
-              const myPendingTeams = (activeTeamId ? [activeTeamId] : (currentUser?.team_ids ?? []))
-                .filter((tid: string) => m.selected_teams.includes(tid) && m.responses[tid]?.status !== 'completed');
+              const myPendingTeams = isAdmissao
+                ? equipesRelevantesAdmissao.filter(eq => !equipesRespondidasAdmissao.includes(eq))
+                : (activeTeamId ? [activeTeamId] : (currentUser?.team_ids ?? []))
+                    .filter((tid: string) => m.selected_teams.includes(tid) && m.responses[tid]?.status !== 'completed');
               const overdue = isOverdue(m.deadline);
               return (
                 <div key={m.id} className={`border rounded-lg p-4 hover:bg-gray-50 cursor-pointer ${overdue && dashboardTab === 'pending' ? 'border-red-300 bg-red-50' : ''} ${dashboardTab === 'canceled' ? 'border-red-200 bg-red-50/40' : ''}`} onClick={() => { setSelectedMovement(m); setView('detail'); }}>
