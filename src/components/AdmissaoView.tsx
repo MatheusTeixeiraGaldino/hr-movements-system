@@ -13,6 +13,7 @@ import {
   calcularPercentualConclusaoAdmissao,
   statusChecklistEquipe,
   StatusChecklistEquipe,
+  ItemChecklistAdmissao,
 } from '../types/admissao';
 
 interface AdmissaoViewProps {
@@ -48,11 +49,16 @@ const BADGE_STATUS: Record<StatusChecklistEquipe, { label: string; className: st
  * DP e o criador também podem editar esses campos, sempre informando o motivo.
  */
 export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }: AdmissaoViewProps) {
-  const { loadAdmissaoByMovimentoId, atualizarItemChecklist, atualizarObservacaoEquipe, atualizarCampoDados, loading } = useAdmissao();
+  const { loadAdmissaoByMovimentoId, atualizarChecklistEquipe, atualizarCampoDados, loading } = useAdmissao();
   const [admissao, setAdmissao] = useState<AcompanhamentoAdmissao | null>(null);
   const [editandoCampo, setEditandoCampo] = useState<CampoAdmissao | null>(null);
   const [valorEdicao, setValorEdicao] = useState('');
   const [motivoEdicao, setMotivoEdicao] = useState('');
+
+  // Rascunho local por equipe: só é enviado ao servidor quando o usuário clica em "Salvar".
+  // Chave = nome da equipe. Cada rascunho tem os itens (por regra_id) e a observação da equipe.
+  const [rascunhos, setRascunhos] = useState<Record<string, { itens: Record<string, ItemChecklistAdmissao>; observacao: string }>>({});
+  const [equipeSalvando, setEquipeSalvando] = useState<string | null>(null);
 
   // Nome da equipe correspondente ao filtro "Filtrar equipe" da barra lateral
   // ('' ou indefinido = "Todas as equipes")
@@ -63,9 +69,24 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
   // decidir quais campos de dados aparecem quanto quais seções de checklist expandem.
   const equipesAtivas = activeTeamId ? [activeTeamName] : currentUser.team_names;
 
+  /** Monta o rascunho inicial de uma equipe a partir dos dados já salvos no servidor */
+  const buildRascunhoEquipe = (dados: AcompanhamentoAdmissao, equipe: string) => {
+    const regras = CHECKLIST_REGRAS_ADMISSAO.filter(r => r.equipe === equipe);
+    const itens: Record<string, ItemChecklistAdmissao> = {};
+    regras.forEach(regra => {
+      itens[regra.id] = dados.checklist.find(i => i.regra_id === regra.id) || { regra_id: regra.id, marcado: false };
+    });
+    return { itens, observacao: dados.observacoes_equipe[equipe] || '' };
+  };
+
   const recarregar = async () => {
     const atualizado = await loadAdmissaoByMovimentoId(movimentoId);
     setAdmissao(atualizado);
+    if (atualizado) {
+      const novosRascunhos: Record<string, { itens: Record<string, ItemChecklistAdmissao>; observacao: string }> = {};
+      EQUIPES_CHECKLIST_ADMISSAO.forEach(eq => { novosRascunhos[eq] = buildRascunhoEquipe(atualizado, eq); });
+      setRascunhos(novosRascunhos);
+    }
     return atualizado;
   };
 
@@ -92,54 +113,76 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
 
   const percentual = calcularPercentualConclusaoAdmissao(admissao.checklist, admissao.observacoes_equipe);
 
-  const handleToggle = async (regraId: string, novoValor: boolean) => {
+  // ── Edição local (rascunho) do checklist de uma equipe — nada é salvo até clicar em "Salvar" ──
+  const atualizarItemRascunho = (equipe: string, regraId: string, alteracoes: Partial<ItemChecklistAdmissao>) => {
+    setRascunhos(prev => ({
+      ...prev,
+      [equipe]: {
+        ...prev[equipe],
+        itens: { ...prev[equipe].itens, [regraId]: { ...prev[equipe].itens[regraId], ...alteracoes } },
+      },
+    }));
+  };
+
+  const handleToggle = (equipe: string, regraId: string, novoValor: boolean) => {
     // Ao marcar o campo principal, garante que nenhuma opção secundária "fantasma" fique
     // registrada por baixo (senão o item continuaria contando como atendido depois de
     // desmarcado o principal, mesmo sem o usuário perceber).
-    await atualizarItemChecklist(
-      admissao.id,
-      regraId,
-      { marcado: novoValor, secundario_selecionado: novoValor ? '' : undefined },
-      currentUser.name,
-      currentUser.email
-    );
-    await recarregar();
+    atualizarItemRascunho(equipe, regraId, { marcado: novoValor, secundario_selecionado: novoValor ? '' : undefined });
   };
 
-  /** Limpa completamente um item do checklist: desmarca principal, opção secundária e texto */
-  const handleDesmarcar = async (regraId: string) => {
-    await atualizarItemChecklist(
-      admissao.id,
-      regraId,
-      { marcado: false, secundario_selecionado: '', valor_texto: '' },
-      currentUser.name,
-      currentUser.email
-    );
-    await recarregar();
+  /** Limpa completamente um item do checklist no rascunho: desmarca principal, opção secundária e texto */
+  const handleDesmarcar = (equipe: string, regraId: string) => {
+    atualizarItemRascunho(equipe, regraId, { marcado: false, secundario_selecionado: '', valor_texto: '' });
   };
 
-  const handleSecundario = async (regraId: string, opcao: string) => {
-    await atualizarItemChecklist(
-      admissao.id,
-      regraId,
-      { marcado: false, secundario_selecionado: opcao },
-      currentUser.name,
-      currentUser.email
-    );
-    await recarregar();
+  const handleSecundario = (equipe: string, regraId: string, opcao: string) => {
+    atualizarItemRascunho(equipe, regraId, { marcado: false, secundario_selecionado: opcao });
   };
 
-  const handleTexto = async (regraId: string, valor: string) => {
-    await atualizarItemChecklist(admissao.id, regraId, { valor_texto: valor }, currentUser.name, currentUser.email);
+  const handleTexto = (equipe: string, regraId: string, valor: string) => {
+    atualizarItemRascunho(equipe, regraId, { valor_texto: valor });
   };
 
-  const handleObservacaoItem = async (regraId: string, observacao: string) => {
-    await atualizarItemChecklist(admissao.id, regraId, { observacao }, currentUser.name, currentUser.email);
+  const handleObservacaoItem = (equipe: string, regraId: string, observacao: string) => {
+    atualizarItemRascunho(equipe, regraId, { observacao });
   };
 
-  const handleObservacaoEquipe = async (equipe: string, texto: string) => {
-    await atualizarObservacaoEquipe(admissao.id, equipe, texto, currentUser.name, currentUser.email);
-    await recarregar();
+  const handleObservacaoEquipe = (equipe: string, texto: string) => {
+    setRascunhos(prev => ({ ...prev, [equipe]: { ...prev[equipe], observacao: texto } }));
+  };
+
+  /** Descarta as alterações locais de uma equipe, voltando ao último estado salvo */
+  const handleCancelarEquipe = (equipe: string) => {
+    setRascunhos(prev => ({ ...prev, [equipe]: buildRascunhoEquipe(admissao, equipe) }));
+  };
+
+  /** Envia ao servidor, em uma única chamada, todo o checklist + observação da equipe */
+  const handleSalvarEquipe = async (equipe: string) => {
+    const rascunho = rascunhos[equipe];
+    if (!rascunho) return;
+    setEquipeSalvando(equipe);
+    try {
+      await atualizarChecklistEquipe(
+        admissao.id,
+        equipe,
+        Object.values(rascunho.itens),
+        rascunho.observacao,
+        currentUser.name,
+        currentUser.email
+      );
+      await recarregar();
+    } finally {
+      setEquipeSalvando(null);
+    }
+  };
+
+  /** Uma equipe tem alterações não salvas se o rascunho difere do que está salvo no servidor */
+  const equipeTemAlteracoes = (equipe: string) => {
+    const rascunho = rascunhos[equipe];
+    if (!rascunho) return false;
+    const salvo = buildRascunhoEquipe(admissao, equipe);
+    return JSON.stringify(rascunho) !== JSON.stringify(salvo);
   };
 
   const exigeMotivo = (campo: CampoAdmissao) => CATEGORIA_CAMPO[campo] === 'Remuneração';
@@ -275,10 +318,10 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
       {/* Checklist por equipe: completo para quem pertence à equipe ativa, resumo para os demais */}
       {EQUIPES_CHECKLIST_ADMISSAO.map(equipe => {
         const pertenceAEquipe = equipesAtivas.includes(equipe);
-        const observacaoEquipe = admissao.observacoes_equipe[equipe] || '';
+        const observacaoSalva = admissao.observacoes_equipe[equipe] || '';
 
         if (!pertenceAEquipe) {
-          const status = statusChecklistEquipe(admissao.checklist, equipe, observacaoEquipe);
+          const status = statusChecklistEquipe(admissao.checklist, equipe, observacaoSalva);
           const badge = BADGE_STATUS[status];
           return (
             <div key={equipe} className="border rounded-lg px-4 py-3 flex items-center justify-between">
@@ -291,13 +334,22 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
           );
         }
 
+        const rascunho = rascunhos[equipe];
+        if (!rascunho) return null; // ainda carregando
+
         const regras = CHECKLIST_REGRAS_ADMISSAO.filter(r => r.equipe === equipe);
+        const temAlteracoes = equipeTemAlteracoes(equipe);
+        const salvandoEssaEquipe = equipeSalvando === equipe;
+
         return (
-          <div key={equipe} className="border rounded-lg overflow-hidden">
+          <div key={equipe} className={`border rounded-lg overflow-hidden ${temAlteracoes ? 'ring-2 ring-blue-200' : ''}`}>
             <div className="bg-gray-50 px-4 py-2 text-sm font-semibold flex items-center justify-between">
-              {equipe}
+              <span className="flex items-center gap-2">
+                {equipe}
+                {temAlteracoes && <span className="text-xs font-normal text-blue-600">(alterações não salvas)</span>}
+              </span>
               {(() => {
-                const status = statusChecklistEquipe(admissao.checklist, equipe, observacaoEquipe);
+                const status = statusChecklistEquipe(admissao.checklist, equipe, observacaoSalva);
                 const badge = BADGE_STATUS[status];
                 return (
                   <span className={`text-xs px-2.5 py-1 rounded-full border flex items-center gap-1.5 ${badge.className}`}>
@@ -309,10 +361,7 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
             </div>
             <div className="divide-y">
               {regras.map(regra => {
-                const item = admissao.checklist.find(i => i.regra_id === regra.id) || {
-                  regra_id: regra.id,
-                  marcado: false,
-                };
+                const item = rascunho.itens[regra.id] || { regra_id: regra.id, marcado: false };
                 const atendido = itemChecklistAtendido(item, regra);
 
                 return (
@@ -322,15 +371,15 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
                         <span className="text-sm font-medium flex-1">{regra.campo_principal}</span>
                         <input
                           type="text"
-                          defaultValue={item.valor_texto || ''}
-                          onBlur={e => handleTexto(regra.id, e.target.value)}
+                          value={item.valor_texto || ''}
+                          onChange={e => handleTexto(equipe, regra.id, e.target.value)}
                           placeholder="Digite a matrícula"
                           className="border rounded px-2 py-1 text-sm w-40"
                         />
                         {atendido ? (
                           <>
                             <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
-                            <button onClick={() => handleDesmarcar(regra.id)} title="Desmarcar" className="text-gray-300 hover:text-red-500 shrink-0">
+                            <button onClick={() => handleDesmarcar(equipe, regra.id)} title="Desmarcar" className="text-gray-300 hover:text-red-500 shrink-0">
                               <XCircle className="w-4 h-4" />
                             </button>
                           </>
@@ -343,7 +392,7 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
                         <input
                           type="checkbox"
                           checked={item.marcado}
-                          onChange={e => handleToggle(regra.id, e.target.checked)}
+                          onChange={e => handleToggle(equipe, regra.id, e.target.checked)}
                           className="w-4 h-4"
                         />
                         <span className="text-sm font-medium flex-1">{regra.campo_principal}</span>
@@ -351,7 +400,7 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
                           <>
                             <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
                             <button
-                              onClick={e => { e.preventDefault(); handleDesmarcar(regra.id); }}
+                              onClick={e => { e.preventDefault(); handleDesmarcar(equipe, regra.id); }}
                               title="Desmarcar"
                               className="text-gray-300 hover:text-red-500 shrink-0"
                             >
@@ -370,9 +419,9 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
                           <label key={opcao} className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
                             <input
                               type="radio"
-                              name={`sec-${regra.id}`}
+                              name={`sec-${equipe}-${regra.id}`}
                               checked={item.secundario_selecionado === opcao}
-                              onChange={() => handleSecundario(regra.id, opcao)}
+                              onChange={() => handleSecundario(equipe, regra.id, opcao)}
                             />
                             {opcao}
                           </label>
@@ -385,8 +434,8 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
                         <AlertCircle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
                         <input
                           type="text"
-                          defaultValue={item.observacao || ''}
-                          onBlur={e => handleObservacaoItem(regra.id, e.target.value)}
+                          value={item.observacao || ''}
+                          onChange={e => handleObservacaoItem(equipe, regra.id, e.target.value)}
                           placeholder="Observação obrigatória (documento não entregue)"
                           className="border rounded px-2 py-1 text-xs w-full"
                         />
@@ -402,15 +451,33 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
                   Observação da equipe <span className="text-red-500">*</span>
                 </label>
                 <textarea
-                  defaultValue={observacaoEquipe}
-                  onBlur={e => handleObservacaoEquipe(equipe, e.target.value)}
+                  value={rascunho.observacao}
+                  onChange={e => handleObservacaoEquipe(equipe, e.target.value)}
                   placeholder={`Observação obrigatória de ${equipe} sobre esta admissão`}
                   rows={2}
-                  className={`mt-1 w-full border rounded px-2 py-1.5 text-sm ${!observacaoEquipe.trim() ? 'border-red-300 bg-red-50' : ''}`}
+                  className={`mt-1 w-full border rounded px-2 py-1.5 text-sm ${!rascunho.observacao.trim() ? 'border-red-300 bg-red-50' : ''}`}
                 />
-                {!observacaoEquipe.trim() && (
+                {!rascunho.observacao.trim() && (
                   <p className="text-xs text-red-500 mt-1">Preencha a observação para concluir o checklist desta equipe.</p>
                 )}
+              </div>
+
+              {/* Ações: só salva quando o usuário clicar */}
+              <div className="p-3 flex justify-end gap-2 bg-white">
+                <button
+                  onClick={() => handleCancelarEquipe(equipe)}
+                  disabled={!temAlteracoes || salvandoEssaEquipe}
+                  className="text-sm px-3 py-1.5 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-transparent flex items-center gap-1.5"
+                >
+                  <X className="w-4 h-4" /> Cancelar
+                </button>
+                <button
+                  onClick={() => handleSalvarEquipe(equipe)}
+                  disabled={!temAlteracoes || salvandoEssaEquipe}
+                  className="text-sm px-4 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300 flex items-center gap-1.5 font-medium"
+                >
+                  <Check className="w-4 h-4" /> {salvandoEssaEquipe ? 'Salvando...' : `Salvar ${equipe}`}
+                </button>
               </div>
             </div>
           </div>
