@@ -167,6 +167,75 @@ export function useAdmissao() {
   );
 
   // =============================
+  // SALVAR CHECKLIST DE UMA EQUIPE INTEIRO (em lote, com botão "Salvar")
+  // Substitui os itens da equipe de uma vez só (não salva a cada clique).
+  // =============================
+  const atualizarChecklistEquipe = useCallback(
+    async (
+      id: string,
+      equipe: string,
+      itensEquipe: ItemChecklistAdmissao[],
+      observacaoEquipe: string,
+      user: string,
+      email: string
+    ) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const admissao = await loadAdmissaoById(id);
+        if (!admissao) throw new Error('Registro de admissão não encontrado');
+
+        const regraIdsEquipe = CHECKLIST_REGRAS_ADMISSAO.filter(r => r.equipe === equipe).map(r => r.id);
+        const agora = new Date().toISOString();
+
+        const checklist = [
+          ...admissao.checklist.filter(i => !regraIdsEquipe.includes(i.regra_id)),
+          ...itensEquipe.map(i => ({
+            ...i,
+            data_marcacao: agora,
+            usuario_marcacao: user,
+            email_usuario_marcacao: email,
+          })),
+        ];
+
+        const observacoesEquipe = { ...admissao.observacoes_equipe, [equipe]: observacaoEquipe };
+        const status = calcularStatus(checklist, observacoesEquipe);
+
+        const historico = [
+          ...(admissao.historico_auditoria || []),
+          {
+            usuario: user,
+            email_usuario: email,
+            acao: 'marcacao_checklist' as AuditoriaItemAdmissao['acao'],
+            campo_ou_item: `Checklist ${equipe}`,
+            data_hora: agora,
+            detalhes: 'Salvo em lote',
+          },
+        ];
+
+        const { error } = await supabase
+          .from('acompanhamento_admissao')
+          .update({ checklist, observacoes_equipe: observacoesEquipe, status, historico_auditoria: historico })
+          .eq('id', id);
+
+        if (error) throw error;
+
+        setAdmissoes(prev =>
+          prev.map(a => (a.id === id ? { ...a, checklist, observacoes_equipe: observacoesEquipe, status, historico_auditoria: historico } : a))
+        );
+        return true;
+      } catch (err: any) {
+        setError(err.message);
+        console.error(err);
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loadAdmissaoById]
+  );
+
+  // =============================
   // ATUALIZAR ITEM DE CHECKLIST (checkbox principal / secundário / texto / observação do item)
   // =============================
   const atualizarItemChecklist = useCallback(
@@ -342,6 +411,7 @@ export function useAdmissao() {
     loadAdmissaoById,
     loadAdmissaoByMovimentoId,
     criarAdmissoesEmLote,
+    atualizarChecklistEquipe,
     atualizarItemChecklist,
     atualizarObservacaoEquipe,
     atualizarCampoDados,
