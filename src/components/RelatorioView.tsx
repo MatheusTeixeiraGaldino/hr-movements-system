@@ -73,6 +73,7 @@ const TEAMS_LIST = [
 const TEAMS_MAP: Record<string, string> = Object.fromEntries(TEAMS_LIST.map(t => [t.id, t.name]));
 
 const MOVEMENT_TYPES = [
+  { id: 'admissao',      label: 'Admissão' },
   { id: 'demissao',     label: 'Demissão' },
   { id: 'transferencia',label: 'Transferência' },
   { id: 'alteracao',    label: 'Alteração Salarial' },
