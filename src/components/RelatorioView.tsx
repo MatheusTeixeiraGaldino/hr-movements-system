@@ -69,18 +69,7 @@ const MOVEMENT_TYPES = [
 
 const MOVEMENT_TYPE_MAP: Record<string, string> = Object.fromEntries(MOVEMENT_TYPES.map(t => [t.id, t.label]));
 
-// Lista fixa de empresas/coligadas (espelha App.tsx)
-const EMPRESAS = [
-  'VERA CRUZ AGROPECUARIA LTDA',
-  'PLANAGRI S.A.',
-  'PALMEIRAS EMPREENDIMENTOS IMOBILIARIOS LTDA',
-  'RADIO SOCIEDADE VERA CRUZ LTDA',
-  'OL LATEX LTDA',
-  'CONDOMINIO AGROPECUARIA FERRADURA',
-  'ASSOCIACAO DESPORTIVA CLAS SEMENTE UNIAO',
-  'SOLO VERDE S/A',
-  'OL LATEX TOCANTINS LTDA',
-];
+
 
 const DETAIL_LABELS: Record<string, string> = {
   dismissalDate: 'Data do Desligamento',
