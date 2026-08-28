@@ -4,6 +4,9 @@ import { supabase } from './lib/supabase';
 import RelatorioView from './components/RelatorioView';
 import DossieView from './components/DossieView';
 import DossieConfigView from './components/DossieConfigView';
+import FluxosConfigView from './components/FluxosConfigView';
+import { useChecklistConfig } from './hooks/useChecklistConfig';
+import { ChecklistItemConfig, ItemRespostaChecklist, itemAtendido } from './types/checklistConfig';
 import AdmissaoImportView from './components/AdmissaoImportView';
 import { EQUIPES_CHECKLIST_ADMISSAO, statusChecklistEquipe } from './types/admissao';
 import AdmissaoView from './components/AdmissaoView';
@@ -75,63 +78,11 @@ const MOVEMENT_TYPES = {
   admissao: { label: 'Admissão', icon: UserPlus }
 };
 
-const CHECKLISTS: Record<MovementType, Record<string, string[]>> = {
-  demissao: {
-    rh: ['Requisição de desligamento', 'Entrevista de desligamento'],
-    ponto: ['Entrega espelho de ponto'],
-    transporte: ['Valores de multas', 'Baixa de carro responsável'],
-    ti: ['Baixa de usuário'],
-    seguranca: ['Entrega de EPIs', 'Sem acidente de trabalho', 'Não é membro da CIPA'],
-    ambulatorio: ['Valores farmácia', 'Exame demissional'],  // ✏️ REMOVEU os 3 itens
-    beneficios: ['Baixa plano de saúde', 'Baixa plano odonto', 'Valores plano de saúde'],  // ✨ NOVO
-    financeiro: ['Existe multas', 'Existe adiantamento', 'Valores a descontar'],
-    dp: ['Comissões recebidas', 'Aviso prévio assinado', 'Valores marmita'],
-    treinamento: ['Valores a devolver bolsa de estudos', 'Valores a devolver adiantamento treinamentos'],
-    comunicacao:['Retirar dos grupos de Whatsapp e comunicação']
-  },
-  
-  transferencia: {
-    rh: ['Transferência temporária', 'Colaborador apto para a função'],
-    ponto: ['Análise alteração no ponto do colaborador'],
-    transporte: ['Colaborador apto a dirigir veículo da empresa'],
-    ti: ['Alteração de acessos colaborador'],
-    seguranca: ['Ordem de serviço assinada', 'Colaborador habilitado em NR'],
-    treinamento: ['Treinamentos obrigatórios'],
-    ambulatorio: ['ASO'],
-    beneficios: ['Alteração plano de saúde'],  // ✨ NOVO
-    dp: ['Transferência programada', 'Necessário criação de função ou seção']
-  },
-  
- alteracao: {
-    rh: ['Alteração temporária', 'Colaborador apto para a função'],
-    ponto: ['Análise alteração no ponto do colaborador'],
-    transporte: ['Colaborador apto a dirigir veículo da empresa'],
-    ti: ['Alteração de acessos colaborador'],
-    seguranca: ['Ordem de serviço assinada', 'Colaborador habilitado em NR'],
-    treinamento: ['Treinamentos obrigatórios'],
-    ambulatorio: ['ASO'],
-    beneficios: ['Alteração plano de saúde'],  // ✨ ADICIONAR ESTA LINHA
-    dp: ['Alteração programada', 'Necessário criação de função ou seção']
-  },
-  
-  promocao: {
-    rh: ['Colaborador apto para a função', 'Testes necessários para função', 'Promoção para liderança de equipe, fez treinamento de líderes'],
-    ponto: ['Análise alteração no ponto do colaborador'],
-    transporte: ['Colaborador apto a dirigir veículo da empresa'],
-    ti: ['Alteração de acessos colaborador'],
-    seguranca: ['Ordem de serviço assinada', 'Colaborador habilitado em NR'],
-    treinamento: ['Treinamentos obrigatórios'],
-    ambulatorio: ['ASO'],
-    beneficios: ['Alteração plano de saúde'],  // ✨ NOVO
-    dp: ['Promoção programada', 'Necessário criação de função ou seção', 'Alteração seguro de vida'],
-    comunicacao:['Programado post de promoção']
-  },
-
-  // A movimentação de Admissão não usa o checklist genérico por equipe/setor:
-  // ela tem seu próprio checklist (por regra de negócio) renderizado pelo
-  // componente AdmissaoView / src/types/admissao.ts.
-  admissao: {}
-};
+// O checklist por equipe/tipo de movimentação NÃO é mais hardcoded aqui.
+// Ele agora vive na tabela `checklist_itens` do Supabase e é gerenciado
+// pela tela "Fluxos" (componente FluxosConfigView), acessível só para
+// administradores. A leitura é feita via hook `useChecklistConfig`
+// dentro de DetailView (veja `userTeamChecklist` mais abaixo).
 
 async function uploadFile(file: File, movementId: string, teamId: string): Promise<Attachment | null> {
   try {
@@ -364,6 +315,7 @@ export default function App() {
               { id: 'setores', label: 'Setores & Emails', icon: '✉' },
               { id: 'usuarios', label: 'Usuários', icon: '👤' },
               { id: 'dossie_config', label: 'Config. Dossiê', icon: '⚙' },
+              { id: 'fluxos_config', label: 'Fluxos', icon: '⇄' },
             ] : []),
           ].map(item => {
             const active = view === item.id;
@@ -471,6 +423,9 @@ export default function App() {
         )}
         {view === 'dossie_config' && currentUser.role === 'admin' && (
           <DossieConfigView />
+        )}
+        {view === 'fluxos_config' && currentUser.role === 'admin' && (
+          <FluxosConfigView userEmail={currentUser.email} />
         )}
       </main>
     </div>
@@ -1383,7 +1338,7 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   const [respondingTeamId, setRespondingTeamId] = useState<string>(defaultResponseTeam);
   const [isEditingResponse, setIsEditingResponse] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>(selectedMovement.responses[respondingTeamId]?.attachments || []);
-  const [checklist, setChecklist] = useState<Record<string, boolean>>(selectedMovement.responses[respondingTeamId]?.checklist || {});
+  const [checklist, setChecklist] = useState<Record<string, ItemRespostaChecklist>>(selectedMovement.responses[respondingTeamId]?.checklist || {});
   const [uploadingFile, setUploadingFile] = useState(false);
 
   // Quando muda a equipe sendo respondida, atualiza checklist e attachments
@@ -1404,7 +1359,8 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   const canCancel = isAdmin || (selectedMovement.created_by === currentUser?.name);
   const isCanceled = selectedMovement.cancelamento !== null && selectedMovement.cancelamento !== undefined;
 
-  const userTeamChecklist: string[] = CHECKLISTS[selectedMovement.type as MovementType]?.[respondingTeamId || ''] || [];
+  const { getItensAtivos } = useChecklistConfig();
+  const userTeamChecklist = getItensAtivos(selectedMovement.type, respondingTeamId || '');
 
   const handleStartEdit = () => {
     if (myResp) {
@@ -1415,8 +1371,53 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
     }
   };
 
-  const handleChecklistToggle = (item: string) => {
-    setChecklist(prev => ({ ...prev, [item]: !prev[item] }));
+  const [salvandoItemId, setSalvandoItemId] = useState<string | null>(null);
+
+  // Salva UM item do checklist imediatamente no banco, sem precisar
+  // esperar o "Enviar Parecer". A equipe pode ir marcando aos poucos
+  // e nada se perde se ela sair da tela no meio do caminho.
+  const handleChecklistItemChange = async (
+    item: ChecklistItemConfig,
+    novosValores: Partial<ItemRespostaChecklist>
+  ) => {
+    const respostaAtualizada: ItemRespostaChecklist = {
+      ...(checklist[item.id] || { marcado: false }),
+      ...novosValores,
+      data_marcacao: new Date().toISOString(),
+      usuario_marcacao: currentUser?.name,
+      email_usuario_marcacao: currentUser?.email,
+    };
+
+    // Usa o estado LOCAL (checklist) como base, não a prop selectedMovement,
+    // pra não perder marcações feitas em sequência antes do reload terminar.
+    const checklistAtualizado = { ...checklist, [item.id]: respostaAtualizada };
+    setChecklist(checklistAtualizado);
+
+    setSalvandoItemId(item.id);
+    try {
+      const respostaEquipeAtual = selectedMovement.responses[respondingTeamId] || {
+        status: 'pending',
+        checklist: {},
+        attachments: [],
+      };
+      const updatedResponses = {
+        ...selectedMovement.responses,
+        [respondingTeamId]: { ...respostaEquipeAtual, checklist: checklistAtualizado },
+      };
+
+      const { error } = await supabase
+        .from('movements')
+        .update({ responses: updatedResponses })
+        .eq('id', selectedMovement.id);
+
+      if (error) throw error;
+      await loadMovements();
+    } catch (err) {
+      console.error('Erro ao salvar item do checklist:', err);
+      alert('Não foi possível salvar este item. Tente novamente.');
+    } finally {
+      setSalvandoItemId(null);
+    }
   };
 
   const handleAddAttachment = async (file: File) => {
@@ -1474,7 +1475,9 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
     }
   };
 
-  const allChecklistCompleted = userTeamChecklist.length > 0 && userTeamChecklist.every(checkItem => checklist[checkItem]);
+  const allChecklistCompleted =
+    userTeamChecklist.length === 0 ||
+    userTeamChecklist.filter(i => i.obrigatorio).every(i => itemAtendido(i, checklist[i.id]));
 
   const handleSubmit = async () => {
     if (!comment.trim()) { alert('Por favor, adicione um comentário'); return; }
@@ -1901,14 +1904,46 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           {userTeamChecklist.length > 0 && (
             <div className="mb-6">
               <h3 className="font-semibold mb-3 flex items-center gap-2"><CheckSquare className="w-5 h-5" />Checklist de Verificação</h3>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
-                {userTeamChecklist.map((checkItem: string) => (
-                  <label key={checkItem} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
-                    <input type="checkbox" checked={checklist[checkItem] || false} onChange={() => handleChecklistToggle(checkItem)} className="mt-1 w-5 h-5 rounded border-gray-300" />
-                    <span className="text-sm flex-1">{checkItem}</span>
-                  </label>
-                ))}
-                <div className="mt-4 pt-3 border-t border-blue-200"><p className="text-xs text-gray-600">{userTeamChecklist.filter((itm: string) => checklist[itm]).length} de {userTeamChecklist.length} itens concluídos</p></div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-1">
+                {userTeamChecklist.map((checkItem) => {
+                  const resposta = checklist[checkItem.id];
+                  return (
+                    <div key={checkItem.id} className="py-1.5">
+                      <label className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
+                        <input
+                          type="checkbox"
+                          checked={!!resposta?.marcado}
+                          disabled={salvandoItemId === checkItem.id}
+                          onChange={() => handleChecklistItemChange(checkItem, { marcado: !resposta?.marcado, alternativa_selecionada: undefined })}
+                          className="mt-1 w-5 h-5 rounded border-gray-300"
+                        />
+                        <span className="text-sm flex-1">
+                          {checkItem.label}
+                          {!checkItem.obrigatorio && <span className="text-xs text-gray-400 ml-2">(opcional)</span>}
+                        </span>
+                        {salvandoItemId === checkItem.id && <Loader2 className="w-4 h-4 animate-spin text-blue-400" />}
+                      </label>
+                      {checkItem.alternativas && checkItem.alternativas.length > 0 && (
+                        <div className="ml-9 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                          {checkItem.alternativas.map((alt) => (
+                            <label key={alt} className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`alt-${checkItem.id}`}
+                                checked={resposta?.alternativa_selecionada === alt}
+                                disabled={salvandoItemId === checkItem.id}
+                                onChange={() => handleChecklistItemChange(checkItem, { marcado: false, alternativa_selecionada: alt })}
+                                className="w-3.5 h-3.5"
+                              />
+                              {alt}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div className="mt-4 pt-3 border-t border-blue-200"><p className="text-xs text-gray-600">{userTeamChecklist.filter((itm) => itemAtendido(itm, checklist[itm.id])).length} de {userTeamChecklist.length} itens concluídos</p></div>
               </div>
             </div>
           )}
@@ -1963,14 +1998,46 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           {userTeamChecklist.length > 0 && (
             <div className="mb-6">
               <h3 className="font-semibold mb-3 flex items-center gap-2"><CheckSquare className="w-5 h-5" />Checklist de Verificação</h3>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
-                {userTeamChecklist.map((checkItem: string) => (
-                  <label key={checkItem} className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
-                    <input type="checkbox" checked={checklist[checkItem] || false} onChange={() => handleChecklistToggle(checkItem)} className="mt-1 w-5 h-5 rounded border-gray-300" />
-                    <span className="text-sm flex-1">{checkItem}</span>
-                  </label>
-                ))}
-                <div className="mt-4 pt-3 border-t border-blue-200"><p className="text-xs text-gray-600">{userTeamChecklist.filter((itm: string) => checklist[itm]).length} de {userTeamChecklist.length} itens concluídos</p></div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-1">
+                {userTeamChecklist.map((checkItem) => {
+                  const resposta = checklist[checkItem.id];
+                  return (
+                    <div key={checkItem.id} className="py-1.5">
+                      <label className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
+                        <input
+                          type="checkbox"
+                          checked={!!resposta?.marcado}
+                          disabled={salvandoItemId === checkItem.id}
+                          onChange={() => handleChecklistItemChange(checkItem, { marcado: !resposta?.marcado, alternativa_selecionada: undefined })}
+                          className="mt-1 w-5 h-5 rounded border-gray-300"
+                        />
+                        <span className="text-sm flex-1">
+                          {checkItem.label}
+                          {!checkItem.obrigatorio && <span className="text-xs text-gray-400 ml-2">(opcional)</span>}
+                        </span>
+                        {salvandoItemId === checkItem.id && <Loader2 className="w-4 h-4 animate-spin text-blue-400" />}
+                      </label>
+                      {checkItem.alternativas && checkItem.alternativas.length > 0 && (
+                        <div className="ml-9 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                          {checkItem.alternativas.map((alt) => (
+                            <label key={alt} className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`alt-edit-${checkItem.id}`}
+                                checked={resposta?.alternativa_selecionada === alt}
+                                disabled={salvandoItemId === checkItem.id}
+                                onChange={() => handleChecklistItemChange(checkItem, { marcado: false, alternativa_selecionada: alt })}
+                                className="w-3.5 h-3.5"
+                              />
+                              {alt}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div className="mt-4 pt-3 border-t border-blue-200"><p className="text-xs text-gray-600">{userTeamChecklist.filter((itm) => itemAtendido(itm, checklist[itm.id])).length} de {userTeamChecklist.length} itens concluídos</p></div>
               </div>
             </div>
           )}
