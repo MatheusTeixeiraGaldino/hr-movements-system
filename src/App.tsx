@@ -1355,17 +1355,23 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
   const isMyTeam = myTeamsInMovement.length > 0;
   const isAdmin = currentUser?.role === 'admin';
   const isResponsavel = currentUser?.role === 'responsavel';
+  // O DP pode visualizar (somente leitura) as respostas de TODAS as equipes,
+  // em qualquer tipo de movimentação — as demais equipes continuam vendo só as suas.
+  const isDPUser = userTeamIds.includes('dp');
   const canEdit = isAdmin || (isResponsavel && selectedMovement.created_by === currentUser?.name);
   const canCancel = isAdmin || (selectedMovement.created_by === currentUser?.name);
   const isCanceled = selectedMovement.cancelamento !== null && selectedMovement.cancelamento !== undefined;
 
-  const { getItensAtivos } = useChecklistConfig();
+  const { getItensAtivos, itens: todosItensChecklistConfig } = useChecklistConfig();
   const userTeamChecklist = getItensAtivos(selectedMovement.type, respondingTeamId || '');
+  // Lookup por id -> configuração do item, incluindo itens já desativados,
+  // usado só para exibir corretamente o histórico de respostas antigas.
+  const getItemConfigPorId = (itemId: string): ChecklistItemConfig | undefined =>
+    todosItensChecklistConfig.find(i => i.id === itemId);
 
   const handleStartEdit = () => {
     if (myResp) {
       setComment(myResp.comment || '');
-      setChecklist(myResp.checklist || {});
       setAttachments(myResp.attachments || []);
       setIsEditingResponse(true);
     }
@@ -1814,8 +1820,8 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
           const team = TEAMS.find(t => t.id === id);
           const resp = selectedMovement.responses[id];
           const isMine = userTeamIds.includes(id);
-          if (!isAdmin && !isResponsavel && !isMine) return null;
-          if (isResponsavel && !isMine && selectedMovement.created_by !== currentUser?.name) return null;
+          if (!isAdmin && !isResponsavel && !isDPUser && !isMine) return null;
+          if (isResponsavel && !isDPUser && !isMine && selectedMovement.created_by !== currentUser?.name) return null;
           return (
             <div key={id} className={`border rounded-lg p-4 ${isMine ? 'border-blue-500 bg-blue-50' : ''}`}>
               <div className="flex justify-between mb-2">
@@ -1846,12 +1852,21 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                 <div className="mt-3 bg-white p-3 rounded border">
                   <p className="text-xs font-semibold text-gray-600 mb-2">Checklist:</p>
                   <div className="space-y-1">
-                    {Object.entries(resp.checklist).map(([item, checked]: [string, any]) => (
-                      <div key={item} className="flex items-center gap-2 text-sm">
-                        {checked ? <CheckSquare className="w-4 h-4 text-green-600" /> : <Square className="w-4 h-4 text-gray-400" />}
-                        <span className={checked ? 'text-gray-900' : 'text-gray-500'}>{item}</span>
-                      </div>
-                    ))}
+                    {Object.entries(resp.checklist).map(([itemId, valor]: [string, any]) => {
+                      const itemConfig = getItemConfigPorId(itemId);
+                      const marcado = typeof valor === 'boolean' ? valor : !!valor?.marcado;
+                      const alternativa = typeof valor === 'object' ? valor?.alternativa_selecionada : undefined;
+                      const atendido = marcado || !!alternativa;
+                      return (
+                        <div key={itemId} className="flex items-center gap-2 text-sm">
+                          {atendido ? <CheckSquare className="w-4 h-4 text-green-600" /> : <Square className="w-4 h-4 text-gray-400" />}
+                          <span className={atendido ? 'text-gray-900' : 'text-gray-500'}>
+                            {itemConfig?.label || itemId}
+                            {alternativa && <span className="text-xs text-gray-500"> — {alternativa}</span>}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1872,12 +1887,12 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
         })}
       </div>
 
-      {isMyTeam && !hasResponded && (
-        <div className="border-t pt-6">
-          {/* Seletor de equipe para responder — aparece quando o usuário tem múltiplas equipes na movimentação */}
+      {isMyTeam && (
+        <div className="border-t pt-6 space-y-5">
+          {/* Seletor de equipe — aparece quando o usuário tem múltiplas equipes na movimentação */}
           {myTeamsInMovement.length > 1 && (
-            <div className="mb-5">
-              <h3 className="font-semibold mb-2">Respondendo como equipe:</h3>
+            <div>
+              <h3 className="font-semibold mb-2">Respondendo/visualizando como equipe:</h3>
               <div className="flex flex-wrap gap-2">
                 {myTeamsInMovement.map((tid: string) => {
                   const tName = TEAMS.find(t => t.id === tid)?.name || tid;
@@ -1885,24 +1900,31 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
                   const done = tResp?.status === 'completed';
                   const sel = respondingTeamId === tid;
                   return (
-                    <button key={tid} onClick={() => !done && handleSelectRespondingTeam(tid)}
-                      disabled={done}
+                    <button key={tid} onClick={() => handleSelectRespondingTeam(tid)}
                       className={`px-3 py-1.5 rounded-lg text-sm font-medium border-2 transition ${
-                        done ? 'border-green-400 bg-green-50 text-green-700 cursor-default opacity-70'
-                        : sel ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        sel ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : done ? 'border-green-400 bg-green-50 text-green-700'
                         : 'border-gray-300 hover:border-blue-400 text-gray-700'
                       }`}>
-                      {tName} {done ? '✓' : ''}
+                      {tName} {done ? '✓' : '⏳'}
                     </button>
                   );
                 })}
               </div>
-              {respondingTeamId && <p className="text-xs text-gray-500 mt-2">Respondendo como: <strong>{TEAMS.find(t => t.id === respondingTeamId)?.name}</strong></p>}
+              {respondingTeamId && <p className="text-xs text-gray-500 mt-2">Respondendo/visualizando como: <strong>{TEAMS.find(t => t.id === respondingTeamId)?.name}</strong></p>}
             </div>
           )}
 
+          {hasResponded && (
+            <div className="bg-green-50 p-3 rounded-lg">
+              <span className="text-green-800 font-medium text-sm">✓ Esta equipe já enviou o parecer — o checklist abaixo continua editável e salva a cada alteração.</span>
+            </div>
+          )}
+
+          {/* Checklist: sempre visível e editável, mesmo depois de já ter respondido.
+              Cada item é salvo individualmente assim que é marcado (handleChecklistItemChange). */}
           {userTeamChecklist.length > 0 && (
-            <div className="mb-6">
+            <div>
               <h3 className="font-semibold mb-3 flex items-center gap-2"><CheckSquare className="w-5 h-5" />Checklist de Verificação</h3>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-1">
                 {userTeamChecklist.map((checkItem) => {
@@ -1947,113 +1969,36 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
               </div>
             </div>
           )}
-          <div className="mb-6">
+
+          <div>
             <AttachmentManager attachments={attachments} onAdd={handleAddAttachment} onRemove={handleRemoveAttachment} disabled={uploadingFile} />
             {uploadingFile && <div className="flex items-center gap-2 text-sm text-blue-600 mt-2"><Loader2 className="w-4 h-4 animate-spin" />Fazendo upload do arquivo...</div>}
           </div>
-          <h3 className="font-semibold mb-3">Adicionar Parecer</h3>
-          <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Digite seu parecer sobre esta movimentação..." className="w-full border rounded-lg p-3 h-32" disabled={loadingSub} />
-          <button onClick={handleSubmit} disabled={!comment.trim() || loadingSub || uploadingFile || (userTeamChecklist.length > 0 && !allChecklistCompleted)} className="mt-3 bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2">
-            {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Enviando...</> : 'Enviar Parecer'}
-          </button>
-          {userTeamChecklist.length > 0 && !allChecklistCompleted && <p className="text-sm text-red-600 mt-2">Complete todos os itens do checklist antes de enviar</p>}
-        </div>
-      )}
 
-      {isMyTeam && hasResponded && !isEditingResponse && (
-        <div className="border-t pt-6 space-y-3">
-          {/* Seletor de equipe no modo "respondidas" */}
-          {myTeamsInMovement.length > 1 && (
-            <div className="mb-3">
-              <p className="text-sm font-semibold text-gray-700 mb-2">Visualizando parecer de:</p>
-              <div className="flex flex-wrap gap-2">
-                {myTeamsInMovement.map((tid: string) => {
-                  const tName = TEAMS.find(t => t.id === tid)?.name || tid;
-                  const tResp = selectedMovement.responses[tid];
-                  const done = tResp?.status === 'completed';
-                  const sel = respondingTeamId === tid;
-                  return (
-                    <button key={tid} onClick={() => handleSelectRespondingTeam(tid)}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border-2 transition ${
-                        sel ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : done ? 'border-green-400 bg-green-50 text-green-700'
-                        : 'border-gray-300 text-gray-500'
-                      }`}>
-                      {tName} {done ? '✓' : '⏳'}
-                    </button>
-                  );
-                })}
+          {/* Parecer (comentário): continua com envio explícito, separado do checklist */}
+          {(!hasResponded || isEditingResponse) ? (
+            <div>
+              <h3 className="font-semibold mb-3">{hasResponded ? 'Editar Parecer' : 'Adicionar Parecer'}</h3>
+              <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Digite seu parecer sobre esta movimentação..." className="w-full border rounded-lg p-3 h-32" disabled={loadingSub} />
+              <div className="flex gap-2 mt-3">
+                <button onClick={handleSubmit} disabled={!comment.trim() || loadingSub || uploadingFile || (userTeamChecklist.length > 0 && !allChecklistCompleted)} className="bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2">
+                  {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />{hasResponded ? 'Salvando...' : 'Enviando...'}</> : (hasResponded ? 'Salvar Alterações' : 'Enviar Parecer')}
+                </button>
+                {hasResponded && (
+                  <button onClick={() => { setIsEditingResponse(false); setComment(myResp?.comment || ''); setAttachments(myResp?.attachments || []); }} className="px-6 py-2.5 bg-gray-300 rounded-lg hover:bg-gray-400" disabled={loadingSub}>Cancelar</button>
+                )}
               </div>
+              {userTeamChecklist.length > 0 && !allChecklistCompleted && <p className="text-sm text-red-600 mt-2">Complete todos os itens obrigatórios do checklist antes de {hasResponded ? 'salvar' : 'enviar'}</p>}
+            </div>
+          ) : (
+            <div className="bg-green-50 p-4 rounded-lg flex items-start justify-between gap-4">
+              <div>
+                <span className="text-green-800 font-medium text-sm">✓ Parecer enviado</span>
+                {myResp?.comment && <p className="text-sm bg-white p-3 rounded border mt-2">{myResp.comment}</p>}
+              </div>
+              <button onClick={handleStartEdit} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm whitespace-nowrap">Editar Parecer</button>
             </div>
           )}
-          <div className="bg-green-50 p-4 rounded flex items-center justify-between">
-            <span className="text-green-800 font-medium">✓ Você já respondeu esta movimentação</span>
-            <button onClick={handleStartEdit} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">Editar Parecer</button>
-          </div>
-        </div>
-      )}
-
-      {isMyTeam && hasResponded && isEditingResponse && (
-        <div className="border-t pt-6">
-          {userTeamChecklist.length > 0 && (
-            <div className="mb-6">
-              <h3 className="font-semibold mb-3 flex items-center gap-2"><CheckSquare className="w-5 h-5" />Checklist de Verificação</h3>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-1">
-                {userTeamChecklist.map((checkItem) => {
-                  const resposta = checklist[checkItem.id];
-                  return (
-                    <div key={checkItem.id} className="py-1.5">
-                      <label className="flex items-start gap-3 cursor-pointer hover:bg-blue-100 p-2 rounded transition">
-                        <input
-                          type="checkbox"
-                          checked={!!resposta?.marcado}
-                          disabled={salvandoItemId === checkItem.id}
-                          onChange={() => handleChecklistItemChange(checkItem, { marcado: !resposta?.marcado, alternativa_selecionada: undefined })}
-                          className="mt-1 w-5 h-5 rounded border-gray-300"
-                        />
-                        <span className="text-sm flex-1">
-                          {checkItem.label}
-                          {!checkItem.obrigatorio && <span className="text-xs text-gray-400 ml-2">(opcional)</span>}
-                        </span>
-                        {salvandoItemId === checkItem.id && <Loader2 className="w-4 h-4 animate-spin text-blue-400" />}
-                      </label>
-                      {checkItem.alternativas && checkItem.alternativas.length > 0 && (
-                        <div className="ml-9 mt-1 flex flex-wrap gap-x-4 gap-y-1">
-                          {checkItem.alternativas.map((alt) => (
-                            <label key={alt} className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
-                              <input
-                                type="radio"
-                                name={`alt-edit-${checkItem.id}`}
-                                checked={resposta?.alternativa_selecionada === alt}
-                                disabled={salvandoItemId === checkItem.id}
-                                onChange={() => handleChecklistItemChange(checkItem, { marcado: false, alternativa_selecionada: alt })}
-                                className="w-3.5 h-3.5"
-                              />
-                              {alt}
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                <div className="mt-4 pt-3 border-t border-blue-200"><p className="text-xs text-gray-600">{userTeamChecklist.filter((itm) => itemAtendido(itm, checklist[itm.id])).length} de {userTeamChecklist.length} itens concluídos</p></div>
-              </div>
-            </div>
-          )}
-          <div className="mb-6">
-            <AttachmentManager attachments={attachments} onAdd={handleAddAttachment} onRemove={handleRemoveAttachment} disabled={uploadingFile} />
-            {uploadingFile && <div className="flex items-center gap-2 text-sm text-blue-600 mt-2"><Loader2 className="w-4 h-4 animate-spin" />Fazendo upload do arquivo...</div>}
-          </div>
-          <h3 className="font-semibold mb-3">Editar Parecer</h3>
-          <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Digite seu parecer sobre esta movimentação..." className="w-full border rounded-lg p-3 h-32" disabled={loadingSub} />
-          <div className="flex gap-2 mt-3">
-            <button onClick={handleSubmit} disabled={!comment.trim() || loadingSub || uploadingFile || (userTeamChecklist.length > 0 && !allChecklistCompleted)} className="bg-blue-600 text-white px-6 py-2.5 rounded-lg disabled:bg-gray-300 flex items-center gap-2">
-              {loadingSub ? <><Loader2 className="w-5 h-5 animate-spin" />Salvando...</> : 'Salvar Alterações'}
-            </button>
-            <button onClick={() => { setIsEditingResponse(false); setComment(''); setChecklist(myResp?.checklist || {}); setAttachments(myResp?.attachments || []); }} className="px-6 py-2.5 bg-gray-300 rounded-lg hover:bg-gray-400" disabled={loadingSub}>Cancelar</button>
-          </div>
-          {userTeamChecklist.length > 0 && !allChecklistCompleted && <p className="text-sm text-red-600 mt-2">Complete todos os itens do checklist antes de salvar</p>}
         </div>
       )}
     </div>
