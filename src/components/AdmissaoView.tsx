@@ -304,6 +304,16 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
         })}
       </div>
 
+      {/* Data de inclusão no sistema */}
+      <div className="text-xs text-gray-500">
+        Incluído no sistema em{' '}
+        <strong className="text-gray-700">
+          {new Date(admissao.data_criacao).toLocaleDateString('pt-BR')} às{' '}
+          {new Date(admissao.data_criacao).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+        </strong>
+        {' '}por {admissao.usuario_criacao}
+      </div>
+
       {/* Progresso geral */}
       <div>
         <div className="flex justify-between text-sm mb-1">
