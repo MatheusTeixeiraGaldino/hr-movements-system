@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight, Search } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight, Search, LayoutGrid, BarChart3, ClipboardList, UserCog, ArrowLeftRight, CheckCircle2, XCircle, Inbox } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import RelatorioView from './components/RelatorioView';
 import DossieView from './components/DossieView';
@@ -349,33 +349,34 @@ export default function App() {
             <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, padding: '0 8px 8px' }}>Menu</p>
           )}
           {[
-            { id: 'dashboard', label: 'Dashboard', icon: '▦' },
-            { id: 'relatorio', label: 'Relatório', icon: '📊' },
+            { id: 'dashboard', label: 'Dashboard', Icon: LayoutGrid },
+            { id: 'relatorio', label: 'Relatório', Icon: BarChart3 },
             ...(((['admin', 'responsavel'] as string[]).includes(currentUser.role)) ? [
-              { id: 'dossie', label: 'Acompanhamento Dossiê', icon: '📋' },
+              { id: 'dossie', label: 'Acompanhamento Dossiê', Icon: ClipboardList },
             ] : []),
             ...(currentUser.role === 'admin' ? [
-              { id: 'setores', label: 'Setores & Emails', icon: '✉' },
-              { id: 'usuarios', label: 'Usuários', icon: '👤' },
-              { id: 'dossie_config', label: 'Config. Dossiê', icon: '⚙' },
-              { id: 'fluxos_config', label: 'Fluxos', icon: '⇄' },
+              { id: 'setores', label: 'Setores & Emails', Icon: Mail },
+              { id: 'usuarios', label: 'Usuários', Icon: UserCog },
+              { id: 'dossie_config', label: 'Config. Dossiê', Icon: Settings },
+              { id: 'fluxos_config', label: 'Fluxos', Icon: ArrowLeftRight },
             ] : []),
           ].map(item => {
             const active = view === item.id;
+            const ItemIcon = item.Icon;
             return (
               <button key={item.id} onClick={() => setView(item.id)} title={sidebarCollapsed ? item.label : undefined} style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 9,
                 justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-                padding: sidebarCollapsed ? '9px 0' : '9px 10px', borderRadius: 9, border: 'none', cursor: 'pointer',
+                padding: sidebarCollapsed ? '9px 0' : '9px 10px', borderRadius: 10, border: 'none', cursor: 'pointer',
                 marginBottom: 2, textAlign: 'left', fontSize: 13,
-                fontWeight: active ? 700 : 400,
+                fontWeight: active ? 700 : 500,
                 background: active ? 'var(--accent-light)' : 'transparent',
                 color: active ? 'var(--accent)' : 'var(--muted)',
                 transition: 'all 0.15s', fontFamily: 'var(--font-body)',
               }}>
-                <span style={{ fontSize: 14, width: 18, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
-                {!sidebarCollapsed && item.label}
-                {!sidebarCollapsed && active && <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />}
+                <ItemIcon size={16} strokeWidth={2.25} style={{ flexShrink: 0 }} />
+                {!sidebarCollapsed && <span style={{ flex: 1 }}>{item.label}</span>}
+                {!sidebarCollapsed && active && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />}
               </button>
             );
           })}
@@ -822,6 +823,13 @@ function DashboardView({ currentUser, movements, loading, loadMovements, setSele
   const [dashboardTab, setDashboardTab] = useState<'pending' | 'completed' | 'canceled'>('pending');
   const [selectedSetorIds, setSelectedSetorIds] = useState<string[]>([]);
   const [showImportAdmissao, setShowImportAdmissao] = useState(false);
+  const [showNewMovementMenu, setShowNewMovementMenu] = useState(false);
+  const newMovementMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (newMovementMenuRef.current && !newMovementMenuRef.current.contains(e.target as Node)) setShowNewMovementMenu(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // Dados reais do checklist de Admissão (a movimentação em si não usa selected_teams/
   // responses como as demais — precisamos buscar em acompanhamento_admissao para saber
@@ -1043,11 +1051,6 @@ if (movementType === 'demissao') {
     return day >= 15 && day <= 20;
   };
 
-  const getCountByType = (type: MovementType, tab: 'pending' | 'completed' | 'canceled' = 'pending') => {
-    const movs = tab === 'completed' ? completed : tab === 'canceled' ? canceled : pending;
-    return movs.filter((m: Movement) => m.type === type).length;
-  };
-
   const isPost20th = () => {
     const today = new Date();
     return today.getDate() > 20;
@@ -1056,77 +1059,123 @@ if (movementType === 'demissao') {
   return (
     <div>
       {isDashboardReminderActive() && (
-        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded">
+        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4 rounded-xl">
           <AlertCircle className="w-5 h-5 text-blue-600 inline mr-2" />
           <span className="font-medium text-blue-800">Lembrete: Para garantir o processamento no mesmo mês, faça o cadastro das movimentações até o dia 20. Cadastros após essa data podem seguir para o mês seguinte.</span>
         </div>
       )}
       {pending.length > 0 && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded">
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4 rounded-xl">
           <Clock className="w-5 h-5 text-yellow-600 inline mr-2" />
           <span className="font-medium text-yellow-800">Você tem {pending.length} movimentação(ões) pendente(s) de parecer</span>
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="flex justify-between items-center mb-3">
-          <h2 className="text-lg font-bold">Dashboard - {dashboardTab === 'completed' ? 'Respondidas' : dashboardTab === 'canceled' ? 'Canceladas' : 'Pendentes'}</h2>
-          <div className="flex gap-2">
-            <button onClick={() => setShowChangePassword(true)} className="flex items-center gap-1.5 px-2.5 py-1.5 border rounded-lg text-xs"><Settings className="w-3.5 h-3.5" />Senha</button>
-          </div>
+      {/* Cabeçalho */}
+      <div className="flex justify-between items-start mb-5">
+        <div>
+          <h2 style={{ fontFamily: 'var(--font-display)' }} className="text-2xl font-bold text-gray-900">Dashboard</h2>
+          <p className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>Visão geral das movimentações trabalhistas</p>
         </div>
-
-        {(canCreateAdmissao || canCreateDemissao || canCreateTransferencia) && (
-          <div className="mb-4 pb-4 border-b">
-            <h3 className="text-sm font-semibold mb-2">Nova Movimentação</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {canCreateAdmissao && (
-                <button onClick={() => setShowImportAdmissao(true)} className="p-2.5 border-2 border-emerald-200 rounded-lg hover:bg-emerald-50">
-                  <UserPlus className="w-5 h-5 text-emerald-600 mx-auto mb-1" />
-                  <p className="text-xs font-medium">Admissão (importar .txt)</p>
-                </button>
-              )}
-              {canCreateDemissao && (
-                <button onClick={() => { setShowNewMovement(true); setMovementType('demissao'); }} className="p-2.5 border-2 border-red-200 rounded-lg hover:bg-red-50">
-                  <UserX className="w-5 h-5 text-red-600 mx-auto mb-1" />
-                  <p className="text-xs font-medium">Demissão</p>
-                </button>
-              )}
-              {canCreateTransferencia && (
-                <>
-                  <button onClick={() => { setShowNewMovement(true); setMovementType('transferencia'); }} className="p-2.5 border-2 border-blue-200 rounded-lg hover:bg-blue-50">
-                    <Users className="w-5 h-5 text-blue-600 mx-auto mb-1" />
-                    <p className="text-xs font-medium">Transferência</p>
-                  </button>
-                  <button onClick={() => { setShowNewMovement(true); setMovementType('alteracao'); }} className="p-2.5 border-2 border-green-200 rounded-lg hover:bg-green-50">
-                    <TrendingUp className="w-5 h-5 text-green-600 mx-auto mb-1" />
-                    <p className="text-xs font-medium">Alteração</p>
-                  </button>
-                  <button onClick={() => { setShowNewMovement(true); setMovementType('promocao'); }} className="p-2.5 border-2 border-purple-200 rounded-lg hover:bg-purple-50">
-                    <TrendingUp className="w-5 h-5 text-purple-600 mx-auto mb-1" />
-                    <p className="text-xs font-medium">Promoção</p>
-                  </button>
-                </>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowChangePassword(true)} className="flex items-center gap-1.5 px-3 py-2 border rounded-lg text-xs font-medium" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}><Settings className="w-3.5 h-3.5" />Senha</button>
+          {(canCreateAdmissao || canCreateDemissao || canCreateTransferencia) && (
+            <div ref={newMovementMenuRef} className="relative">
+              <button
+                onClick={() => setShowNewMovementMenu(v => !v)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-sm"
+                style={{ background: 'var(--accent)' }}
+              >
+                <Plus className="w-4 h-4" />Nova Movimentação
+              </button>
+              {showNewMovementMenu && (
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl border border-gray-100 shadow-lg overflow-hidden z-30 animate-fadeInScale">
+                  {canCreateAdmissao && (
+                    <button onClick={() => { setShowImportAdmissao(true); setShowNewMovementMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left border-b border-gray-50">
+                      <span className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0"><UserPlus className="w-4 h-4 text-emerald-600" /></span>
+                      <div><p className="text-sm font-medium text-gray-800">Admissão</p><p className="text-xs text-gray-400">Importar arquivo .txt</p></div>
+                    </button>
+                  )}
+                  {canCreateDemissao && (
+                    <button onClick={() => { setShowNewMovement(true); setMovementType('demissao'); setShowNewMovementMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left border-b border-gray-50">
+                      <span className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0"><UserX className="w-4 h-4 text-red-600" /></span>
+                      <p className="text-sm font-medium text-gray-800">Demissão</p>
+                    </button>
+                  )}
+                  {canCreateTransferencia && (
+                    <>
+                      <button onClick={() => { setShowNewMovement(true); setMovementType('transferencia'); setShowNewMovementMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left border-b border-gray-50">
+                        <span className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0"><Users className="w-4 h-4 text-blue-600" /></span>
+                        <p className="text-sm font-medium text-gray-800">Transferência</p>
+                      </button>
+                      <button onClick={() => { setShowNewMovement(true); setMovementType('alteracao'); setShowNewMovementMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left border-b border-gray-50">
+                        <span className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0"><TrendingUp className="w-4 h-4 text-green-600" /></span>
+                        <p className="text-sm font-medium text-gray-800">Alteração</p>
+                      </button>
+                      <button onClick={() => { setShowNewMovement(true); setMovementType('promocao'); setShowNewMovementMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left">
+                        <span className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0"><TrendingUp className="w-4 h-4 text-purple-600" /></span>
+                        <p className="text-sm font-medium text-gray-800">Promoção</p>
+                      </button>
+                    </>
+                  )}
+                </div>
               )}
             </div>
-          </div>
-        )}
-
-        <div className="flex gap-2 mb-3">
-          <button onClick={() => setDashboardTab('pending')} className={`flex-1 py-1.5 px-3 rounded-lg text-sm font-medium transition ${dashboardTab === 'pending' ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-400' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>⏳ Pendentes ({pending.length})</button>
-          <button onClick={() => setDashboardTab('completed')} className={`flex-1 py-1.5 px-3 rounded-lg text-sm font-medium transition ${dashboardTab === 'completed' ? 'bg-green-100 text-green-800 border-2 border-green-400' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>✓ Respondidas ({completed.length})</button>
-          <button onClick={() => setDashboardTab('canceled')} className={`flex-1 py-1.5 px-3 rounded-lg text-sm font-medium transition ${dashboardTab === 'canceled' ? 'bg-red-100 text-red-800 border-2 border-red-400' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>🚫 Canceladas ({canceled.length})</button>
+          )}
         </div>
+      </div>
 
-        <div className="mb-3">
+      {/* Cards de estatística — clicáveis, funcionam como as antigas abas */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+        <button
+          onClick={() => setDashboardTab('pending')}
+          className="text-left bg-white rounded-2xl p-5 flex items-center gap-4 transition"
+          style={{ boxShadow: 'var(--shadow-sm)', border: dashboardTab === 'pending' ? '1.5px solid var(--accent)' : '1.5px solid transparent' }}
+        >
+          <span className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'var(--accent-light)' }}><Clock className="w-6 h-6" style={{ color: 'var(--accent)' }} /></span>
+          <div>
+            <p className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Pendentes</p>
+            <p className="text-2xl font-bold text-gray-900 leading-tight">{pending.length}</p>
+            <p className="text-xs" style={{ color: 'var(--muted-light)' }}>Aguardando resposta</p>
+          </div>
+        </button>
+        <button
+          onClick={() => setDashboardTab('completed')}
+          className="text-left bg-white rounded-2xl p-5 flex items-center gap-4 transition"
+          style={{ boxShadow: 'var(--shadow-sm)', border: dashboardTab === 'completed' ? '1.5px solid #16a34a' : '1.5px solid transparent' }}
+        >
+          <span className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center flex-shrink-0"><CheckCircle2 className="w-6 h-6 text-green-600" /></span>
+          <div>
+            <p className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Respondidas</p>
+            <p className="text-2xl font-bold text-gray-900 leading-tight">{completed.length}</p>
+            <p className="text-xs text-green-600">Finalizadas</p>
+          </div>
+        </button>
+        <button
+          onClick={() => setDashboardTab('canceled')}
+          className="text-left bg-white rounded-2xl p-5 flex items-center gap-4 transition"
+          style={{ boxShadow: 'var(--shadow-sm)', border: dashboardTab === 'canceled' ? '1.5px solid #dc2626' : '1.5px solid transparent' }}
+        >
+          <span className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0"><XCircle className="w-6 h-6 text-red-600" /></span>
+          <div>
+            <p className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Canceladas</p>
+            <p className="text-2xl font-bold text-gray-900 leading-tight">{canceled.length}</p>
+            <p className="text-xs text-red-500">Canceladas</p>
+          </div>
+        </button>
+      </div>
+
+      <div className="bg-white rounded-2xl p-5" style={{ boxShadow: 'var(--shadow-sm)' }}>
+        <div className="mb-4">
           <div className="relative">
-            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted-light)' }} />
             <input
               type="text"
               value={searchName}
               onChange={e => setSearchName(e.target.value)}
               placeholder="Buscar por nome do colaborador..."
-              className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+              className="w-full rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none"
+              style={{ border: '1px solid var(--border)', background: 'var(--bg)' }}
             />
             {searchName && (
               <button onClick={() => setSearchName('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500">
@@ -1136,27 +1185,34 @@ if (movementType === 'demissao') {
           </div>
         </div>
 
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold mb-2">Filtrar por Tipo</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-            <button onClick={() => setFilterType('all')} className={`p-2 border-2 rounded-lg transition ${filterType === 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
-              <div className="text-center"><p className="text-lg font-bold">{dashboardTab === 'completed' ? completed.length : dashboardTab === 'canceled' ? canceled.length : pending.length}</p><p className="text-xs font-medium mt-0.5">Todas</p></div>
-            </button>
-            <button onClick={() => setFilterType('demissao')} className={`p-2 border-2 rounded-lg transition ${filterType === 'demissao' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
-              <div className="text-center"><UserX className="w-4 h-4 mx-auto mb-1 text-red-600" /><p className="text-base font-bold">{getCountByType('demissao', dashboardTab)}</p><p className="text-xs font-medium">Demissões</p></div>
-            </button>
-            <button onClick={() => setFilterType('transferencia')} className={`p-2 border-2 rounded-lg transition ${filterType === 'transferencia' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
-              <div className="text-center"><Users className="w-4 h-4 mx-auto mb-1 text-blue-600" /><p className="text-base font-bold">{getCountByType('transferencia', dashboardTab)}</p><p className="text-xs font-medium">Transferências</p></div>
-            </button>
-            <button onClick={() => setFilterType('alteracao')} className={`p-2 border-2 rounded-lg transition ${filterType === 'alteracao' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
-              <div className="text-center"><TrendingUp className="w-4 h-4 mx-auto mb-1 text-green-600" /><p className="text-base font-bold">{getCountByType('alteracao', dashboardTab)}</p><p className="text-xs font-medium">Alterações</p></div>
-            </button>
-            <button onClick={() => setFilterType('promocao')} className={`p-2 border-2 rounded-lg transition ${filterType === 'promocao' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
-              <div className="text-center"><TrendingUp className="w-4 h-4 mx-auto mb-1 text-purple-600" /><p className="text-base font-bold">{getCountByType('promocao', dashboardTab)}</p><p className="text-xs font-medium">Promoções</p></div>
-            </button>
-            <button onClick={() => setFilterType('admissao')} className={`p-2 border-2 rounded-lg transition ${filterType === 'admissao' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
-              <div className="text-center"><UserPlus className="w-4 h-4 mx-auto mb-1 text-emerald-600" /><p className="text-base font-bold">{getCountByType('admissao', dashboardTab)}</p><p className="text-xs font-medium">Admissões</p></div>
-            </button>
+        <div className="mb-5">
+          <h3 className="text-sm font-semibold mb-3 text-gray-700">Filtrar por tipo</h3>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: 'all' as const, label: 'Todas', Icon: LayoutGrid, color: 'var(--accent)' },
+              { id: 'admissao' as const, label: 'Admissão', Icon: UserPlus, color: '#059669' },
+              { id: 'demissao' as const, label: 'Demissão', Icon: UserX, color: '#dc2626' },
+              { id: 'transferencia' as const, label: 'Transferência', Icon: ArrowLeftRight, color: '#2563eb' },
+              { id: 'alteracao' as const, label: 'Alteração', Icon: TrendingUp, color: '#16a34a' },
+              { id: 'promocao' as const, label: 'Promoção', Icon: TrendingUp, color: '#9333ea' },
+            ].map(opt => {
+              const active = filterType === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => setFilterType(opt.id as any)}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition"
+                  style={{
+                    border: active ? `1.5px solid ${opt.color}` : '1.5px solid var(--border)',
+                    background: active ? `${opt.color}14` : 'var(--surface)',
+                    color: active ? opt.color : 'var(--muted)',
+                  }}
+                >
+                  <opt.Icon className="w-4 h-4" />
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -1166,6 +1222,14 @@ if (movementType === 'demissao') {
 
         {loading ? (
           <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
+        ) : filteredMovements.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <span className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: 'var(--accent-light)' }}>
+              <Inbox className="w-8 h-8" style={{ color: 'var(--accent)' }} />
+            </span>
+            <p className="font-semibold text-gray-700">Nenhuma movimentação encontrada</p>
+            <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>Não há movimentações para os filtros selecionados.</p>
+          </div>
         ) : (
           <div className="space-y-3">
             {filteredMovements.map((m: Movement) => {
