@@ -35,19 +35,6 @@ const BADGE_STATUS: Record<StatusChecklistEquipe, { label: string; className: st
   nao_iniciado: { label: 'Não iniciado', className: 'bg-gray-50 text-gray-500 border-gray-200', Icon: MinusCircle },
 };
 
-/**
- * Exibe os dados da admissão (respeitando visibilidade por equipe, e o filtro
- * "Filtrar equipe" da barra lateral) e o checklist de documentos, segmentado
- * por equipe:
- *  - Se o usuário pertence à equipe atualmente selecionada no filtro: vê e
- *    edita o checklist completo, incluindo a observação obrigatória.
- *  - Caso contrário: vê apenas um resumo (Respondido / Em andamento / Não
- *    iniciado), sem detalhes dos itens.
- *
- * Os campos de Remuneração só ficam visíveis se DP estiver entre as equipes
- * "ativas" no momento (respeitando o filtro), ou para o criador da movimentação.
- * DP e o criador também podem editar esses campos, sempre informando o motivo.
- */
 export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }: AdmissaoViewProps) {
   const { loadAdmissaoByMovimentoId, atualizarChecklistEquipe, atualizarCampoDados, loading } = useAdmissao();
   const [admissao, setAdmissao] = useState<AcompanhamentoAdmissao | null>(null);
@@ -55,21 +42,15 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
   const [valorEdicao, setValorEdicao] = useState('');
   const [motivoEdicao, setMotivoEdicao] = useState('');
 
-  // Rascunho local por equipe: só é enviado ao servidor quando o usuário clica em "Salvar".
-  // Chave = nome da equipe. Cada rascunho tem os itens (por regra_id) e a observação da equipe.
   const [rascunhos, setRascunhos] = useState<Record<string, { itens: Record<string, ItemChecklistAdmissao>; observacao: string }>>({});
   const [equipeSalvando, setEquipeSalvando] = useState<string | null>(null);
 
-  // Nome da equipe correspondente ao filtro "Filtrar equipe" da barra lateral
-  // ('' ou indefinido = "Todas as equipes")
   const activeTeamName = activeTeamId ? currentUser.team_names[currentUser.team_ids.indexOf(activeTeamId)] : '';
 
-  // Equipes "ativas" no momento: se um filtro específico está selecionado, considera
-  // só essa equipe; senão, considera todas as equipes do usuário. Usado tanto para
-  // decidir quais campos de dados aparecem quanto quais seções de checklist expandem.
   const equipesAtivas = activeTeamId ? [activeTeamName] : currentUser.team_names;
+  // DP enxerga o checklist completo (somente leitura) de TODAS as equipes, em qualquer admissão.
+  const isDPUser = currentUser.team_ids.includes('dp');
 
-  /** Monta o rascunho inicial de uma equipe a partir dos dados já salvos no servidor */
   const buildRascunhoEquipe = (dados: AcompanhamentoAdmissao, equipe: string) => {
     const regras = CHECKLIST_REGRAS_ADMISSAO.filter(r => r.equipe === equipe);
     const itens: Record<string, ItemChecklistAdmissao> = {};
@@ -107,13 +88,10 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
     'Remuneração',
   ];
 
-  // Permissão de EDIÇÃO de Remuneração: sempre baseada no pertencimento real do
-  // usuário (não no filtro da barra lateral) — DP ou o criador podem editar.
   const podeEditarRemuneracao = isCriador || currentUser.team_names.includes('DP');
 
   const percentual = calcularPercentualConclusaoAdmissao(admissao.checklist, admissao.observacoes_equipe);
 
-  // ── Edição local (rascunho) do checklist de uma equipe — nada é salvo até clicar em "Salvar" ──
   const atualizarItemRascunho = (equipe: string, regraId: string, alteracoes: Partial<ItemChecklistAdmissao>) => {
     setRascunhos(prev => ({
       ...prev,
@@ -125,13 +103,9 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
   };
 
   const handleToggle = (equipe: string, regraId: string, novoValor: boolean) => {
-    // Ao marcar o campo principal, garante que nenhuma opção secundária "fantasma" fique
-    // registrada por baixo (senão o item continuaria contando como atendido depois de
-    // desmarcado o principal, mesmo sem o usuário perceber).
     atualizarItemRascunho(equipe, regraId, { marcado: novoValor, secundario_selecionado: novoValor ? '' : undefined });
   };
 
-  /** Limpa completamente um item do checklist no rascunho: desmarca principal, opção secundária e texto */
   const handleDesmarcar = (equipe: string, regraId: string) => {
     atualizarItemRascunho(equipe, regraId, { marcado: false, secundario_selecionado: '', valor_texto: '' });
   };
@@ -152,12 +126,10 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
     setRascunhos(prev => ({ ...prev, [equipe]: { ...prev[equipe], observacao: texto } }));
   };
 
-  /** Descarta as alterações locais de uma equipe, voltando ao último estado salvo */
   const handleCancelarEquipe = (equipe: string) => {
     setRascunhos(prev => ({ ...prev, [equipe]: buildRascunhoEquipe(admissao, equipe) }));
   };
 
-  /** Envia ao servidor, em uma única chamada, todo o checklist + observação da equipe */
   const handleSalvarEquipe = async (equipe: string) => {
     const rascunho = rascunhos[equipe];
     if (!rascunho) return;
@@ -177,7 +149,6 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
     }
   };
 
-  /** Uma equipe tem alterações não salvas se o rascunho difere do que está salvo no servidor */
   const equipeTemAlteracoes = (equipe: string) => {
     const rascunho = rascunhos[equipe];
     if (!rascunho) return false;
@@ -201,7 +172,7 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
 
   const salvarEdicao = async () => {
     if (!editandoCampo) return;
-    if (exigeMotivo(editandoCampo) && !motivoEdicao.trim()) return; // bloqueia sem motivo
+    if (exigeMotivo(editandoCampo) && !motivoEdicao.trim()) return;
 
     await atualizarCampoDados(
       admissao.id,
@@ -215,7 +186,6 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
     await recarregar();
   };
 
-  /** Última edição registrada para um campo específico, para mostrar "quem alterou e por quê" */
   const ultimaEdicaoDoCampo = (campo: CampoAdmissao) => {
     const label = LABEL_CAMPO_ADMISSAO[campo];
     const edicoes = admissao.historico_auditoria.filter(h => h.acao === 'edicao_campo' && h.campo_ou_item === label);
@@ -224,7 +194,6 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
 
   return (
     <div className="space-y-6">
-      {/* Dados do colaborador (filtrados por equipe/filtro ativo) */}
       <div className="border rounded-lg divide-y">
         {categorias.map(cat => {
           const campos = (Object.keys(dadosVisiveis) as CampoAdmissao[]).filter(c => CATEGORIA_CAMPO[c] === cat);
@@ -304,7 +273,6 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
         })}
       </div>
 
-      {/* Data de inclusão no sistema */}
       <div className="text-xs text-gray-500">
         Incluído no sistema em{' '}
         <strong className="text-gray-700">
@@ -314,7 +282,6 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
         {' '}por {admissao.usuario_criacao}
       </div>
 
-      {/* Progresso geral */}
       <div>
         <div className="flex justify-between text-sm mb-1">
           <span className="font-medium">Checklist de Documentos</span>
@@ -325,12 +292,11 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
         </div>
       </div>
 
-      {/* Checklist por equipe: completo para quem pertence à equipe ativa, resumo para os demais */}
       {EQUIPES_CHECKLIST_ADMISSAO.map(equipe => {
         const pertenceAEquipe = equipesAtivas.includes(equipe);
         const observacaoSalva = admissao.observacoes_equipe[equipe] || '';
 
-        if (!pertenceAEquipe) {
+        if (!pertenceAEquipe && !isDPUser) {
           const status = statusChecklistEquipe(admissao.checklist, equipe, observacaoSalva);
           const badge = BADGE_STATUS[status];
           return (
@@ -344,8 +310,65 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
           );
         }
 
+        if (!pertenceAEquipe && isDPUser) {
+          const status = statusChecklistEquipe(admissao.checklist, equipe, observacaoSalva);
+          const badge = BADGE_STATUS[status];
+          const regrasDaEquipe = CHECKLIST_REGRAS_ADMISSAO.filter(r => r.equipe === equipe);
+
+          return (
+            <div key={equipe} className="border rounded-lg overflow-hidden opacity-90">
+              <div className="bg-gray-50 px-4 py-2 text-sm font-semibold flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  {equipe}
+                  <span className="text-xs font-normal text-gray-400">(somente leitura)</span>
+                </span>
+                <span className={`text-xs px-2.5 py-1 rounded-full border flex items-center gap-1.5 ${badge.className}`}>
+                  <badge.Icon className="w-3.5 h-3.5" />
+                  {badge.label}
+                </span>
+              </div>
+              <div className="divide-y">
+                {regrasDaEquipe.map(regra => {
+                  const item: ItemChecklistAdmissao = admissao.checklist.find(i => i.regra_id === regra.id) || { regra_id: regra.id, marcado: false };
+                  const atendido = itemChecklistAtendido(item, regra);
+                  return (
+                    <div key={regra.id} className="p-3 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        {atendido ? <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" /> : <Circle className="w-4 h-4 text-gray-300 shrink-0" />}
+                        <span className="text-sm font-medium flex-1">{regra.campo_principal}</span>
+                        {regra.tipo_campo === 'texto' && item.valor_texto && (
+                          <span className="text-sm text-gray-600">{item.valor_texto}</span>
+                        )}
+                      </div>
+                      {regra.campos_secundarios && regra.campos_secundarios.length > 0 && (
+                        <div className="ml-6 flex flex-wrap gap-3">
+                          {regra.campos_secundarios.map(sec => (
+                            <span key={sec} className={`text-xs flex items-center gap-1 ${item.secundario_selecionado === sec ? 'text-gray-800 font-medium' : 'text-gray-400'}`}>
+                              {item.secundario_selecionado === sec ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5" />}
+                              {sec}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {item.observacao && (
+                        <p className="ml-6 text-xs text-gray-500 italic">Obs: {item.observacao}</p>
+                      )}
+                    </div>
+                  );
+                })}
+                {observacaoSalva && (
+                  <div className="p-3 bg-gray-50">
+                    <p className="text-xs font-semibold text-gray-600 mb-1">Observação da equipe:</p>
+                    <p className="text-sm text-gray-700">{observacaoSalva}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        }
+
         const rascunho = rascunhos[equipe];
-        if (!rascunho) return null; // ainda carregando
+        if (!rascunho) return null;
 
         const regras = CHECKLIST_REGRAS_ADMISSAO.filter(r => r.equipe === equipe);
         const temAlteracoes = equipeTemAlteracoes(equipe);
@@ -455,7 +478,6 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
                 );
               })}
 
-              {/* Observação obrigatória da equipe */}
               <div className="p-3 bg-gray-50">
                 <label className="text-xs font-semibold text-gray-600 flex items-center gap-1">
                   Observação da equipe <span className="text-red-500">*</span>
@@ -472,7 +494,6 @@ export default function AdmissaoView({ movimentoId, currentUser, activeTeamId }:
                 )}
               </div>
 
-              {/* Ações: só salva quando o usuário clicar */}
               <div className="p-3 flex justify-end gap-2 bg-white">
                 <button
                   onClick={() => handleCancelarEquipe(equipe)}
