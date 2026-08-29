@@ -1,6 +1,6 @@
 // src/components/RelatorioView.tsx
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { Loader2, FileSpreadsheet, FileText, Printer, ChevronDown, X } from 'lucide-react';
+import { Loader2, FileSpreadsheet, FileText, Printer, ChevronDown, X, Search, Columns } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface Movement {
@@ -443,6 +443,18 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [selected,  setSelected]  = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
+  const [searchName, setSearchName] = useState('');
+
+  const ALL_COLUMNS = ['Nome', 'Coligada', 'Tipo', 'Criado por', 'Criação', 'Mudança/Deslig.', 'Status', 'Último Parecer', 'Faltam', 'Responderam', 'Cancelado em', 'Cancelado por', 'PDF'];
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(ALL_COLUMNS));
+  const [showColPicker, setShowColPicker] = useState(false);
+  const colPickerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (colPickerRef.current && !colPickerRef.current.contains(e.target as Node)) setShowColPicker(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+  const toggleCol = (col: string) => setVisibleCols(prev => { const next = new Set(prev); next.has(col) ? next.delete(col) : next.add(col); return next; });
 
   const handleSort = (col: string) => { if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(col); setSortDir('asc'); } };
   const toggleSet  = (setter: React.Dispatch<React.SetStateAction<Set<string>>>, value: string) => setter(prev => { const next = new Set(prev); next.has(value) ? next.delete(value) : next.add(value); return next; });
@@ -463,25 +475,27 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   };
 
   const matchesColigada = (r: Row) => filterColigadas.size === 0 || filterColigadas.has(r.Coligada);
+  const matchesSearchName = (r: Row) => !searchName.trim() || r.Nome.toLowerCase().includes(searchName.trim().toLowerCase());
 
   const baseFilter = (r: Row) => {
     if (!matchesDateFilters(r)) return false;
     if (!matchesColigada(r)) return false;
+    if (!matchesSearchName(r)) return false;
     if (showCanceled && !r._isCanceled) return false;
     if (!showCanceled && r._isCanceled) return false;
     return true;
   };
 
-  const rowsForStatusCount  = useMemo(() => allRows.filter(r => { if (filterTypes.size > 0 && !filterTypes.has(r._type)) return false; if (filterTeams.size > 0 && ![...filterTeams].some(t => r._teams.includes(t))) return false; return baseFilter(r); }), [allRows, filterTypes, filterTeams, filterColigadas, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled]);
-  const rowsForTypeCount    = useMemo(() => allRows.filter(r => { if (!matchesTeamStatus(r, filterTeams, filterStatuses)) return false; return baseFilter(r); }), [allRows, filterTeams, filterStatuses, filterColigadas, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled]);
-  const rowsForTeamCount    = useMemo(() => allRows.filter(r => { if (filterTypes.size > 0 && !filterTypes.has(r._type)) return false; if (filterStatuses.size > 0 && !filterStatuses.has(r._status)) return false; return baseFilter(r); }), [allRows, filterTypes, filterStatuses, filterColigadas, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled]);
-  const rowsForColigadaCount = useMemo(() => allRows.filter(r => { if (filterTypes.size > 0 && !filterTypes.has(r._type)) return false; if (!matchesTeamStatus(r, filterTeams, filterStatuses)) return false; if (!matchesDateFilters(r)) return false; if (showCanceled && !r._isCanceled) return false; if (!showCanceled && r._isCanceled) return false; return true; }), [allRows, filterTypes, filterTeams, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled]);
+  const rowsForStatusCount  = useMemo(() => allRows.filter(r => { if (filterTypes.size > 0 && !filterTypes.has(r._type)) return false; if (filterTeams.size > 0 && ![...filterTeams].some(t => r._teams.includes(t))) return false; return baseFilter(r); }), [allRows, filterTypes, filterTeams, filterColigadas, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled, searchName]);
+  const rowsForTypeCount    = useMemo(() => allRows.filter(r => { if (!matchesTeamStatus(r, filterTeams, filterStatuses)) return false; return baseFilter(r); }), [allRows, filterTeams, filterStatuses, filterColigadas, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled, searchName]);
+  const rowsForTeamCount    = useMemo(() => allRows.filter(r => { if (filterTypes.size > 0 && !filterTypes.has(r._type)) return false; if (filterStatuses.size > 0 && !filterStatuses.has(r._status)) return false; return baseFilter(r); }), [allRows, filterTypes, filterStatuses, filterColigadas, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled, searchName]);
+  const rowsForColigadaCount = useMemo(() => allRows.filter(r => { if (filterTypes.size > 0 && !filterTypes.has(r._type)) return false; if (!matchesTeamStatus(r, filterTeams, filterStatuses)) return false; if (!matchesDateFilters(r)) return false; if (!matchesSearchName(r)) return false; if (showCanceled && !r._isCanceled) return false; if (!showCanceled && r._isCanceled) return false; return true; }), [allRows, filterTypes, filterTeams, filterStatuses, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled, searchName]);
 
   const filtered = useMemo(() => allRows.filter(r => {
     if (filterTypes.size > 0 && !filterTypes.has(r._type)) return false;
     if (!matchesTeamStatus(r, filterTeams, filterStatuses)) return false;
     return baseFilter(r);
-  }), [allRows, filterTypes, filterTeams, filterStatuses, filterColigadas, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled]);
+  }), [allRows, filterTypes, filterTeams, filterStatuses, filterColigadas, dateCreatedStart, dateCreatedEnd, dateApprStart, dateApprEnd, dateMovStart, dateMovEnd, showCanceled, searchName]);
 
   const COL_KEY: Record<string, keyof Row> = {
     'Nome': 'Nome', 'Coligada': 'Coligada', 'Tipo': 'Tipo', 'Criado por': 'Criado por',
@@ -506,7 +520,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   const clearFilters = () => {
     setFilterStatuses(new Set()); setFilterTypes(new Set()); setFilterTeams(new Set()); setFilterColigadas(new Set());
     setDateCreatedStart(''); setDateCreatedEnd(''); setDateApprStart(''); setDateApprEnd(''); setDateMovStart(''); setDateMovEnd('');
-    setShowCanceled(false); setSelected(new Set());
+    setShowCanceled(false); setSelected(new Set()); setSearchName('');
   };
 
   const toggleSelect    = (id: string) => setSelected(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
@@ -533,7 +547,7 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   };
 
   const hasActiveFilters = filterStatuses.size > 0 || filterTypes.size > 0 || filterTeams.size > 0 || filterColigadas.size > 0
-    || !!dateCreatedStart || !!dateCreatedEnd || !!dateApprStart || !!dateApprEnd || !!dateMovStart || !!dateMovEnd || showCanceled;
+    || !!dateCreatedStart || !!dateCreatedEnd || !!dateApprStart || !!dateApprEnd || !!dateMovStart || !!dateMovEnd || showCanceled || !!searchName.trim();
   const allSelected  = sortedFiltered.length > 0 && selected.size === sortedFiltered.length;
   const someSelected = selected.size > 0;
 
@@ -547,12 +561,33 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
   return (
     <div className="bg-white rounded-lg shadow" style={{ minWidth: 0 }}>
       {/* Cabeçalho */}
-      <div className="flex flex-wrap justify-between items-center gap-3 p-4 border-b border-gray-100">
+      <div className="flex flex-wrap justify-between items-center gap-2 p-3 border-b border-gray-100">
         <div>
-          <h2 className="text-lg font-bold">Relatório de Movimentações</h2>
+          <h2 className="text-base font-bold">Relatório de Movimentações</h2>
           <p className="text-xs text-gray-500 mt-0.5">{currentUser.role === 'admin' ? 'Todas as movimentações do sistema' : 'Movimentações que você criou'}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <div ref={colPickerRef} className="relative">
+            <button onClick={() => setShowColPicker(v => !v)} className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-xs font-medium text-gray-600">
+              <Columns className="w-3.5 h-3.5" />Colunas
+            </button>
+            {showColPicker && (
+              <div className="absolute z-50 right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg p-2">
+                <div className="flex justify-between items-center px-1 pb-1.5 mb-1 border-b border-gray-100">
+                  <span className="text-xs font-semibold text-gray-500 uppercase">Colunas visíveis</span>
+                  <button onClick={() => setVisibleCols(new Set(ALL_COLUMNS))} className="text-xs text-blue-600 hover:underline">Mostrar todas</button>
+                </div>
+                <div className="max-h-56 overflow-y-auto space-y-0.5">
+                  {ALL_COLUMNS.map(col => (
+                    <label key={col} className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-gray-50 cursor-pointer text-sm">
+                      <input type="checkbox" checked={visibleCols.has(col)} onChange={() => toggleCol(col)} className="w-3.5 h-3.5" />
+                      {col}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           {someSelected && (
             <button onClick={handlePrintSelected} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 text-xs font-medium">
               <Printer className="w-3.5 h-3.5" />Imprimir ({selected.size})
@@ -564,20 +599,39 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
         </div>
       </div>
 
-      <div className="p-4">
+      <div className="p-3">
         {hasActiveFilters && (
           <div className="flex justify-end mb-2">
             <button onClick={clearFilters} className="flex items-center gap-1 px-2.5 py-1 text-xs text-red-600 border border-red-200 bg-red-50 rounded-lg hover:bg-red-100 transition">✕ Limpar filtros</button>
           </div>
         )}
         {filterTeams.size > 0 && (
-          <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+          <div className="mb-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
             Equipe(s) selecionada(s) — <strong>Aprovado</strong>: equipe já deu o parecer; <strong>Pendente</strong>: ainda não deu.
           </div>
         )}
 
-        {/* Filtros — linha 1: Status | Tipo | Equipe */}
-        <div className="grid grid-cols-3 gap-3 mb-3">
+        {/* Busca por nome */}
+        <div className="mb-2">
+          <div className="relative">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchName}
+              onChange={e => setSearchName(e.target.value)}
+              placeholder="Buscar por nome do colaborador..."
+              className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+            />
+            {searchName && (
+              <button onClick={() => setSearchName('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Filtros — linha 1: Status | Tipo | Equipe | Coligada */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
           <MultiSelect label="Status" selected={filterStatuses} onToggle={v => toggleSet(setFilterStatuses, v)} onClear={() => setFilterStatuses(new Set())}
             options={(['Pendente', 'Aprovado', 'Cancelado'] as const).map(opt => {
               let count = 0;
@@ -598,10 +652,6 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
             options={TEAMS_LIST.map(t => ({ value: t.id, label: t.name, count: rowsForTeamCount.filter(r => r._teams.includes(t.id)).length })).filter(o => o.count > 0)}
             totalCount={rowsForTeamCount.length}
           />
-        </div>
-
-        {/* Filtro Coligada — linha 2 */}
-        <div className="mb-3">
           <MultiSelect label="Coligada / Empresa" selected={filterColigadas} onToggle={v => toggleSet(setFilterColigadas, v)} onClear={() => setFilterColigadas(new Set())}
             options={coligadaOptions}
             totalCount={rowsForColigadaCount.length}
@@ -609,41 +659,41 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
         </div>
 
         {/* Toggle Canceladas */}
-        <div className="mb-4 flex items-center gap-2">
+        <div className="mb-3 flex items-center gap-2">
           <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={showCanceled} onChange={e => setShowCanceled(e.target.checked)} className="w-4 h-4" />
-            <span className="text-sm font-medium text-gray-700">Mostrar apenas canceladas</span>
+            <input type="checkbox" checked={showCanceled} onChange={e => setShowCanceled(e.target.checked)} className="w-3.5 h-3.5" />
+            <span className="text-xs font-medium text-gray-700">Mostrar apenas canceladas</span>
           </label>
         </div>
 
-        {/* Filtros de data */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="p-3 bg-gray-50 rounded-lg border">
-            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Data de Criação</label>
-            <div className="flex items-center gap-2">
-              <div className="flex-1"><label className="block text-xs text-gray-400 mb-1">De</label><input type="date" value={dateCreatedStart} onChange={e => setDateCreatedStart(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" /></div>
-              <span className="text-gray-300 text-xs mt-4">→</span>
-              <div className="flex-1"><label className="block text-xs text-gray-400 mb-1">Até</label><input type="date" value={dateCreatedEnd} onChange={e => setDateCreatedEnd(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" /></div>
-              {(dateCreatedStart || dateCreatedEnd) && <button onClick={() => { setDateCreatedStart(''); setDateCreatedEnd(''); }} className="mt-4 text-gray-400 hover:text-red-500" title="Limpar"><X className="w-3.5 h-3.5" /></button>}
+        {/* Filtros de data — mais equilibrado: 3 colunas em vez de 2 */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">
+          <div className="p-2.5 bg-gray-50 rounded-lg border">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">Data de Criação</label>
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1"><label className="block text-xs text-gray-400 mb-0.5">De</label><input type="date" value={dateCreatedStart} onChange={e => setDateCreatedStart(e.target.value)} className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" /></div>
+              <span className="text-gray-300 text-xs mt-3.5">→</span>
+              <div className="flex-1"><label className="block text-xs text-gray-400 mb-0.5">Até</label><input type="date" value={dateCreatedEnd} onChange={e => setDateCreatedEnd(e.target.value)} className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" /></div>
+              {(dateCreatedStart || dateCreatedEnd) && <button onClick={() => { setDateCreatedStart(''); setDateCreatedEnd(''); }} className="mt-3.5 text-gray-400 hover:text-red-500" title="Limpar"><X className="w-3.5 h-3.5" /></button>}
             </div>
           </div>
-          <div className="p-3 bg-gray-50 rounded-lg border">
-            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Data de Aprovação <span className="text-gray-400 font-normal normal-case">(último parecer)</span></label>
-            <div className="flex items-center gap-2">
-              <div className="flex-1"><label className="block text-xs text-gray-400 mb-1">De</label><input type="date" value={dateApprStart} onChange={e => setDateApprStart(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" /></div>
-              <span className="text-gray-300 text-xs mt-4">→</span>
-              <div className="flex-1"><label className="block text-xs text-gray-400 mb-1">Até</label><input type="date" value={dateApprEnd} onChange={e => setDateApprEnd(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" /></div>
-              {(dateApprStart || dateApprEnd) && <button onClick={() => { setDateApprStart(''); setDateApprEnd(''); }} className="mt-4 text-gray-400 hover:text-red-500" title="Limpar"><X className="w-3.5 h-3.5" /></button>}
+          <div className="p-2.5 bg-gray-50 rounded-lg border">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">Data de Aprovação <span className="text-gray-400 font-normal normal-case">(último parecer)</span></label>
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1"><label className="block text-xs text-gray-400 mb-0.5">De</label><input type="date" value={dateApprStart} onChange={e => setDateApprStart(e.target.value)} className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" /></div>
+              <span className="text-gray-300 text-xs mt-3.5">→</span>
+              <div className="flex-1"><label className="block text-xs text-gray-400 mb-0.5">Até</label><input type="date" value={dateApprEnd} onChange={e => setDateApprEnd(e.target.value)} className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" /></div>
+              {(dateApprStart || dateApprEnd) && <button onClick={() => { setDateApprStart(''); setDateApprEnd(''); }} className="mt-3.5 text-gray-400 hover:text-red-500" title="Limpar"><X className="w-3.5 h-3.5" /></button>}
             </div>
             {(dateApprStart || dateApprEnd) && <p className="text-xs text-blue-600 mt-1">Apenas movimentações totalmente aprovadas.</p>}
           </div>
-          <div className="p-3 bg-gray-50 rounded-lg border col-span-2">
-            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Data da Mudança / Desligamento</label>
-            <div className="flex items-center gap-2">
-              <div className="flex-1"><label className="block text-xs text-gray-400 mb-1">De</label><input type="date" value={dateMovStart} onChange={e => setDateMovStart(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" /></div>
-              <span className="text-gray-300 text-xs mt-4">→</span>
-              <div className="flex-1"><label className="block text-xs text-gray-400 mb-1">Até</label><input type="date" value={dateMovEnd} onChange={e => setDateMovEnd(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" /></div>
-              {(dateMovStart || dateMovEnd) && <button onClick={() => { setDateMovStart(''); setDateMovEnd(''); }} className="mt-4 text-gray-400 hover:text-red-500" title="Limpar"><X className="w-3.5 h-3.5" /></button>}
+          <div className="p-2.5 bg-gray-50 rounded-lg border">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">Data da Mudança / Desligamento</label>
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1"><label className="block text-xs text-gray-400 mb-0.5">De</label><input type="date" value={dateMovStart} onChange={e => setDateMovStart(e.target.value)} className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" /></div>
+              <span className="text-gray-300 text-xs mt-3.5">→</span>
+              <div className="flex-1"><label className="block text-xs text-gray-400 mb-0.5">Até</label><input type="date" value={dateMovEnd} onChange={e => setDateMovEnd(e.target.value)} className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:border-blue-400" /></div>
+              {(dateMovStart || dateMovEnd) && <button onClick={() => { setDateMovStart(''); setDateMovEnd(''); }} className="mt-3.5 text-gray-400 hover:text-red-500" title="Limpar"><X className="w-3.5 h-3.5" /></button>}
             </div>
           </div>
         </div>
@@ -658,18 +708,18 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="bg-gray-50 text-left">
-                  <th className="px-2 py-2.5 border-b border-gray-200 w-8">
+                  <th className="px-2 py-2 border-b border-gray-200 w-8">
                     <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="w-3.5 h-3.5 cursor-pointer" title="Selecionar todos" />
                   </th>
-                  {['Nome', 'Coligada', 'Tipo', 'Criado por', 'Criação', 'Mudança/Deslig.', 'Status', 'Último Parecer', 'Faltam', 'Responderam', 'Cancelado em', 'Cancelado por'].map(col => {
+                  {['Nome', 'Coligada', 'Tipo', 'Criado por', 'Criação', 'Mudança/Deslig.', 'Status', 'Último Parecer', 'Faltam', 'Responderam', 'Cancelado em', 'Cancelado por'].filter(col => visibleCols.has(col)).map(col => {
                     const active = sortCol === col;
                     return (
-                      <th key={col} onClick={() => handleSort(col)} className="px-2 py-2.5 font-semibold text-gray-600 border-b border-gray-200 whitespace-nowrap cursor-pointer select-none hover:bg-gray-100 transition">
+                      <th key={col} onClick={() => handleSort(col)} className="px-2 py-2 font-semibold text-gray-600 border-b border-gray-200 whitespace-nowrap cursor-pointer select-none hover:bg-gray-100 transition">
                         <span className="flex items-center gap-1">{col}<span className={`text-xs ${active ? 'text-blue-500' : 'text-gray-300'}`}>{active ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span></span>
                       </th>
                     );
                   })}
-                  <th className="px-2 py-2.5 font-semibold text-gray-600 border-b border-gray-200">PDF</th>
+                  {visibleCols.has('PDF') && <th className="px-2 py-2 font-semibold text-gray-600 border-b border-gray-200">PDF</th>}
                 </tr>
               </thead>
               <tbody>
@@ -677,28 +727,32 @@ export default function RelatorioView({ currentUser, movements, loading }: Relat
                   const isChecked = selected.has(row._id);
                   return (
                     <tr key={row._id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} ${isChecked ? 'ring-1 ring-inset ring-blue-300' : ''} ${row._isCanceled ? 'opacity-75' : ''}`}>
-                      <td className="px-2 py-2 border-b border-gray-100"><input type="checkbox" checked={isChecked} onChange={() => toggleSelect(row._id)} className="w-3.5 h-3.5 cursor-pointer" /></td>
-                      <td className="px-2 py-2 border-b border-gray-100 font-medium text-gray-900 max-w-[130px] truncate" title={row.Nome}>{row.Nome}</td>
-                      <td className="px-2 py-2 border-b border-gray-100 text-gray-600 max-w-[160px] truncate" title={row.Coligada}>{row.Coligada}</td>
-                      <td className="px-2 py-2 border-b border-gray-100 text-gray-600 whitespace-nowrap">{row.Tipo}</td>
-                      <td className="px-2 py-2 border-b border-gray-100 text-gray-600 whitespace-nowrap">{row['Criado por']}</td>
-                      <td className="px-2 py-2 border-b border-gray-100 text-gray-500 whitespace-nowrap">{row['Data de criação']}</td>
-                      <td className="px-2 py-2 border-b border-gray-100 text-gray-900 font-medium whitespace-nowrap">{row['Data da Mudança/Desligamento']}</td>
-                      <td className="px-2 py-2 border-b border-gray-100 whitespace-nowrap">
-                        {row._isCanceled
-                          ? <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-red-100 text-red-800">✕ Cancelado</span>
-                          : <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${row.Status === 'Aprovado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{row.Status === 'Aprovado' ? '✓' : '⏳'} {row.Status}</span>}
-                      </td>
-                      <td className="px-2 py-2 border-b border-gray-100 whitespace-nowrap text-gray-500">{row['Último Parecer'] === '—' ? <span className="text-gray-300">—</span> : row['Último Parecer']}</td>
-                      <td className="px-2 py-2 border-b border-gray-100 max-w-[120px]">{row['Faltam parecer'] === '—' ? <span className="text-gray-300">—</span> : <span className="text-red-600 text-xs truncate block" title={row['Faltam parecer']}>{row['Faltam parecer']}</span>}</td>
-                      <td className="px-2 py-2 border-b border-gray-100 max-w-[120px]">{row['Com pareceres emitidos'] === '—' ? <span className="text-gray-300">—</span> : <span className="text-green-700 text-xs truncate block" title={row['Com pareceres emitidos']}>{row['Com pareceres emitidos']}</span>}</td>
-                      <td className="px-2 py-2 border-b border-gray-100 text-gray-500 whitespace-nowrap">{row['Cancelado em'] === '—' ? <span className="text-gray-300">—</span> : row['Cancelado em']}</td>
-                      <td className="px-2 py-2 border-b border-gray-100 text-gray-600 whitespace-nowrap">{row['Cancelado por'] === '—' ? <span className="text-gray-300">—</span> : row['Cancelado por']}</td>
-                      <td className="px-2 py-2 border-b border-gray-100">
-                        <button onClick={() => handlePrintOne(row)} className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 border border-red-200 bg-red-50 rounded hover:bg-red-100 transition whitespace-nowrap">
-                          <FileText className="w-3 h-3" />PDF
-                        </button>
-                      </td>
+                      <td className="px-2 py-1.5 border-b border-gray-100"><input type="checkbox" checked={isChecked} onChange={() => toggleSelect(row._id)} className="w-3.5 h-3.5 cursor-pointer" /></td>
+                      {visibleCols.has('Nome') && <td className="px-2 py-1.5 border-b border-gray-100 font-medium text-gray-900 max-w-[130px] truncate" title={row.Nome}>{row.Nome}</td>}
+                      {visibleCols.has('Coligada') && <td className="px-2 py-1.5 border-b border-gray-100 text-gray-600 max-w-[160px] truncate" title={row.Coligada}>{row.Coligada}</td>}
+                      {visibleCols.has('Tipo') && <td className="px-2 py-1.5 border-b border-gray-100 text-gray-600 whitespace-nowrap">{row.Tipo}</td>}
+                      {visibleCols.has('Criado por') && <td className="px-2 py-1.5 border-b border-gray-100 text-gray-600 whitespace-nowrap">{row['Criado por']}</td>}
+                      {visibleCols.has('Criação') && <td className="px-2 py-1.5 border-b border-gray-100 text-gray-500 whitespace-nowrap">{row['Data de criação']}</td>}
+                      {visibleCols.has('Mudança/Deslig.') && <td className="px-2 py-1.5 border-b border-gray-100 text-gray-900 font-medium whitespace-nowrap">{row['Data da Mudança/Desligamento']}</td>}
+                      {visibleCols.has('Status') && (
+                        <td className="px-2 py-1.5 border-b border-gray-100 whitespace-nowrap">
+                          {row._isCanceled
+                            ? <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-red-100 text-red-800">✕ Cancelado</span>
+                            : <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${row.Status === 'Aprovado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{row.Status === 'Aprovado' ? '✓' : '⏳'} {row.Status}</span>}
+                        </td>
+                      )}
+                      {visibleCols.has('Último Parecer') && <td className="px-2 py-1.5 border-b border-gray-100 whitespace-nowrap text-gray-500">{row['Último Parecer'] === '—' ? <span className="text-gray-300">—</span> : row['Último Parecer']}</td>}
+                      {visibleCols.has('Faltam') && <td className="px-2 py-1.5 border-b border-gray-100 max-w-[120px]">{row['Faltam parecer'] === '—' ? <span className="text-gray-300">—</span> : <span className="text-red-600 text-xs truncate block" title={row['Faltam parecer']}>{row['Faltam parecer']}</span>}</td>}
+                      {visibleCols.has('Responderam') && <td className="px-2 py-1.5 border-b border-gray-100 max-w-[120px]">{row['Com pareceres emitidos'] === '—' ? <span className="text-gray-300">—</span> : <span className="text-green-700 text-xs truncate block" title={row['Com pareceres emitidos']}>{row['Com pareceres emitidos']}</span>}</td>}
+                      {visibleCols.has('Cancelado em') && <td className="px-2 py-1.5 border-b border-gray-100 text-gray-500 whitespace-nowrap">{row['Cancelado em'] === '—' ? <span className="text-gray-300">—</span> : row['Cancelado em']}</td>}
+                      {visibleCols.has('Cancelado por') && <td className="px-2 py-1.5 border-b border-gray-100 text-gray-600 whitespace-nowrap">{row['Cancelado por'] === '—' ? <span className="text-gray-300">—</span> : row['Cancelado por']}</td>}
+                      {visibleCols.has('PDF') && (
+                        <td className="px-2 py-1.5 border-b border-gray-100">
+                          <button onClick={() => handlePrintOne(row)} className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 border border-red-200 bg-red-50 rounded hover:bg-red-100 transition whitespace-nowrap">
+                            <FileText className="w-3 h-3" />PDF
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
