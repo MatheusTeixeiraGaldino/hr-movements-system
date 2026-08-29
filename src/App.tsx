@@ -214,6 +214,41 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [activeTeamId, setActiveTeamId] = useState<string>('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [restoringSession, setRestoringSession] = useState(true);
+
+  const SESSION_KEY = 'rh_movimentacoes_session';
+
+  const persistSession = (user: any) => {
+    if (!user) { localStorage.removeItem(SESSION_KEY); return; }
+    const { password, ...userSemSenha } = user;
+    localStorage.setItem(SESSION_KEY, JSON.stringify(userSemSenha));
+  };
+
+  // Ao dar F5 / reabrir a aba: tenta restaurar a sessão salva no navegador,
+  // revalidando o usuário no banco (garante que papel/equipes atualizados
+  // por um admin continuem corretos, sem precisar logar de novo).
+  useEffect(() => {
+    const restore = async () => {
+      const saved = localStorage.getItem(SESSION_KEY);
+      if (!saved) { setRestoringSession(false); return; }
+      try {
+        const savedUser = JSON.parse(saved);
+        const { data, error } = await supabase.from('users').select('*').eq('email', savedUser.email).single();
+        if (error || !data) { localStorage.removeItem(SESSION_KEY); setRestoringSession(false); return; }
+        const { password, ...userSemSenha } = data;
+        setCurrentUser(userSemSenha);
+        persistSession(userSemSenha);
+        setActiveTeamId(userSemSenha.team_ids?.length === 1 ? userSemSenha.team_ids[0] : '');
+        setView('dashboard');
+      } catch {
+        localStorage.removeItem(SESSION_KEY);
+      } finally {
+        setRestoringSession(false);
+      }
+    };
+    restore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // activeTeamId = '' significa "Todas as equipes do usuário"
   // activeTeamId = 'rh' significa "Somente a equipe RH"
@@ -246,8 +281,16 @@ export default function App() {
     }
   };
 
+  if (restoringSession) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
   if (!currentUser) {
-    return <LoginComponent setCurrentUser={setCurrentUser} setView={setView} setActiveTeamId={setActiveTeamId} />;
+    return <LoginComponent setCurrentUser={(u: any) => { setCurrentUser(u); persistSession(u); }} setView={setView} setActiveTeamId={setActiveTeamId} />;
   }
 
   return (
@@ -384,7 +427,7 @@ export default function App() {
               </p>
             </div>
           )}
-          <button onClick={() => { setCurrentUser(null); setView('login'); }} title={sidebarCollapsed ? `Sair (${currentUser.name})` : undefined} style={{
+          <button onClick={() => { localStorage.removeItem('rh_movimentacoes_session'); setCurrentUser(null); setView('login'); }} title={sidebarCollapsed ? `Sair (${currentUser.name})` : undefined} style={{
             width: '100%', display: 'flex', alignItems: 'center', gap: 8,
             justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
             padding: sidebarCollapsed ? '8px 0' : '8px 10px', borderRadius: 9, border: 'none', cursor: 'pointer',
