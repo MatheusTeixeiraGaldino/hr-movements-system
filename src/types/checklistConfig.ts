@@ -19,6 +19,7 @@ export interface ChecklistItemConfig {
   alternativas: string[] | null;  // opções alternativas ao checkbox principal (igual ao modelo de Admissão).
                                     // Se preenchido, o item é considerado atendido se o principal FOR marcado
                                     // OU se uma das alternativas for selecionada (mutuamente exclusivas).
+  exige_observacao_se_pendente: boolean; // se obrigatorio=true e o item não estiver atendido, exige um texto de observação (ex: "Título de Eleitor" na Admissão)
   ordem: number;
   created_at: string;
   created_by?: string | null;
@@ -30,7 +31,7 @@ export type NovoChecklistItem = Pick<
   ChecklistItemConfig,
   'movement_type' | 'team_id' | 'label'
 > &
-  Partial<Pick<ChecklistItemConfig, 'obrigatorio' | 'tipo_campo' | 'alternativas'>>;
+  Partial<Pick<ChecklistItemConfig, 'obrigatorio' | 'tipo_campo' | 'alternativas' | 'exige_observacao_se_pendente'>>;
 
 // ============================================================
 // Resposta de um item, salva dentro de
@@ -40,6 +41,7 @@ export interface ItemRespostaChecklist {
   marcado: boolean;
   alternativa_selecionada?: string | null;
   valor_texto?: string;
+  observacao?: string; // usado quando exige_observacao_se_pendente=true e o item não foi marcado
   data_marcacao?: string;
   usuario_marcacao?: string;
   email_usuario_marcacao?: string;
@@ -52,6 +54,7 @@ export function itemAtendido(
 ): boolean {
   if (!item.obrigatorio) return true; // item opcional nunca bloqueia
   if (item.tipo_campo === 'texto') return !!resposta?.valor_texto?.trim();
+  if (item.exige_observacao_se_pendente) return !!resposta?.marcado || !!resposta?.observacao?.trim();
   if (item.alternativas && item.alternativas.length > 0) {
     return !!resposta?.marcado || !!resposta?.alternativa_selecionada;
   }
