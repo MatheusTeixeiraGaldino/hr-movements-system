@@ -214,6 +214,17 @@ export interface RegraChecklistAdmissao {
   observacao_regra?: string; // texto livre explicando o comportamento (para tooltip/ajuda)
 }
 
+// ⚠️ Estes dois arrays deixaram de ser fixos. Eles começam com este conteúdo
+// (mesmo de sempre, como fallback) mas são SUBSTITUÍDOS EM MEMÓRIA, logo no
+// login, pelos dados vindos da tabela `checklist_itens` (movement_type='admissao'),
+// que agora é gerenciável pela tela "Fluxos". Ver `hidratarChecklistAdmissao()`
+// mais abaixo e a chamada em App.tsx.
+//
+// Isso é feito por MUTAÇÃO do array (não reatribuição) de propósito: assim,
+// todo código que já importa `CHECKLIST_REGRAS_ADMISSAO`/`EQUIPES_CHECKLIST_ADMISSAO`
+// em outros arquivos (useAdmissao.ts, AdmissaoView.tsx, App.tsx) continua
+// funcionando sem nenhuma mudança — eles enxergam o conteúdo atualizado
+// automaticamente, pois é o MESMO objeto de array na memória.
 export const CHECKLIST_REGRAS_ADMISSAO: RegraChecklistAdmissao[] = [
   // Recursos Humanos
   { id: 'rh_identidade', equipe: 'Recursos Humanos', campo_principal: 'IDENTIDADE', tipo_campo: 'checkbox', validacao: 'obrigatorio' },
@@ -314,6 +325,25 @@ export const CHECKLIST_REGRAS_ADMISSAO: RegraChecklistAdmissao[] = [
 export const EQUIPES_CHECKLIST_ADMISSAO: string[] = Array.from(
   new Set(CHECKLIST_REGRAS_ADMISSAO.map(r => r.equipe))
 );
+
+/**
+ * Substitui em memória o conteúdo de CHECKLIST_REGRAS_ADMISSAO e
+ * EQUIPES_CHECKLIST_ADMISSAO pelos dados vindos da tabela `checklist_itens`
+ * (chamado pelo App.tsx logo no login/refresh, e de novo sempre que o admin
+ * altera algo em Fluxos para o tipo "admissao").
+ *
+ * Usa mutação de array (.length = 0; .push(...)) de propósito — todos os
+ * outros arquivos que importaram esses arrays continuam com a referência
+ * certa, sem precisar re-importar nada.
+ */
+export function hidratarChecklistAdmissao(regras: RegraChecklistAdmissao[]) {
+  CHECKLIST_REGRAS_ADMISSAO.length = 0;
+  CHECKLIST_REGRAS_ADMISSAO.push(...regras);
+
+  const equipes = Array.from(new Set(regras.map(r => r.equipe)));
+  EQUIPES_CHECKLIST_ADMISSAO.length = 0;
+  EQUIPES_CHECKLIST_ADMISSAO.push(...equipes);
+}
 
 // ============================================
 // ITEM DE CHECKLIST PREENCHIDO (persistido no registro)
