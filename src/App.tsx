@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight, Search, LayoutGrid, BarChart3, ClipboardList, UserCog, ArrowLeftRight, CheckCircle2, XCircle, Inbox } from 'lucide-react';
+import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight, Search, LayoutGrid, BarChart3, ClipboardList, UserCog, ArrowLeftRight, CheckCircle2, XCircle, Inbox, ChevronDown } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import RelatorioView from './components/RelatorioView';
 import DossieView from './components/DossieView';
@@ -8,7 +8,7 @@ import FluxosConfigView from './components/FluxosConfigView';
 import { useChecklistConfig } from './hooks/useChecklistConfig';
 import { ChecklistItemConfig, ItemRespostaChecklist, itemAtendido } from './types/checklistConfig';
 import AdmissaoImportView from './components/AdmissaoImportView';
-import { EQUIPES_CHECKLIST_ADMISSAO, statusChecklistEquipe } from './types/admissao';
+import { EQUIPES_CHECKLIST_ADMISSAO, statusChecklistEquipe, hidratarChecklistAdmissao, RegraChecklistAdmissao, TipoValidacao } from './types/admissao';
 import AdmissaoView from './components/AdmissaoView';
 import { useDossie } from './hooks/useDossie';
 import { TipoDesligamento } from './types/dossie';
@@ -214,6 +214,11 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [activeTeamId, setActiveTeamId] = useState<string>('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const ADMIN_SUBITEM_IDS = ['setores', 'usuarios', 'dossie_config', 'fluxos_config'];
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
+  useEffect(() => {
+    if (ADMIN_SUBITEM_IDS.includes(view)) setAdminMenuOpen(true);
+  }, [view]);
   const [restoringSession, setRestoringSession] = useState(true);
 
   const SESSION_KEY = 'rh_movimentacoes_session';
@@ -254,6 +259,51 @@ export default function App() {
   // activeTeamId = 'rh' significa "Somente a equipe RH"
   const hasMultipleTeams = (currentUser?.team_ids?.length ?? 0) > 1;
 
+  // Busca a configuração de checklist da Admissão (tabela checklist_itens,
+  // movement_type='admissao') e "hidrata" os arrays em memória usados pelas
+  // funções puras de src/types/admissao.ts. Chamado no login/refresh e sempre
+  // que o admin altera algo em Fluxos para a Admissão (evento customizado).
+  const carregarConfigAdmissao = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('checklist_itens')
+        .select('*')
+        .eq('movement_type', 'admissao')
+        .eq('ativo', true)
+        .order('ordem', { ascending: true });
+      if (error) throw error;
+      if (!data || data.length === 0) return; // mantém o fallback hardcoded se a tabela ainda não tiver sido populada
+
+      const regras: RegraChecklistAdmissao[] = data.map((row: any) => {
+        let validacao: TipoValidacao;
+        if (!row.obrigatorio) validacao = 'opcional';
+        else if (row.alternativas && row.alternativas.length > 0) validacao = 'principal_ou_secundario';
+        else if (row.exige_observacao_se_pendente) validacao = 'obrigatorio_com_observacao';
+        else validacao = 'obrigatorio';
+
+        return {
+          id: row.id,
+          equipe: TEAMS.find(t => t.id === row.team_id)?.name || row.team_id,
+          campo_principal: row.label,
+          campos_secundarios: row.alternativas || undefined,
+          tipo_campo: row.tipo_campo,
+          validacao,
+        };
+      });
+
+      hidratarChecklistAdmissao(regras);
+    } catch (err) {
+      console.error('Erro ao carregar configuração de checklist da Admissão:', err);
+    }
+  };
+
+  // Reage a mudanças feitas na tela "Fluxos" para a Admissão, sem precisar relogar.
+  useEffect(() => {
+    const handler = () => { carregarConfigAdmissao().then(loadMovements); };
+    window.addEventListener('checklist-admissao-atualizado', handler);
+    return () => window.removeEventListener('checklist-admissao-atualizado', handler);
+  }, []);
+
   useEffect(() => {
     if (currentUser) {
       if (currentUser.team_ids.length === 1) {
@@ -264,7 +314,7 @@ export default function App() {
         setActiveTeamId('');
       }
       // Usuário com múltiplas equipes: mantém '' (todas) como padrão ao logar
-      loadMovements();
+      carregarConfigAdmissao().then(loadMovements);
     }
   }, [currentUser]);
 
@@ -354,12 +404,6 @@ export default function App() {
             ...(((['admin', 'responsavel'] as string[]).includes(currentUser.role)) ? [
               { id: 'dossie', label: 'Acompanhamento Dossiê', Icon: ClipboardList },
             ] : []),
-            ...(currentUser.role === 'admin' ? [
-              { id: 'setores', label: 'Setores & Emails', Icon: Mail },
-              { id: 'usuarios', label: 'Usuários', Icon: UserCog },
-              { id: 'dossie_config', label: 'Config. Dossiê', Icon: Settings },
-              { id: 'fluxos_config', label: 'Fluxos', Icon: ArrowLeftRight },
-            ] : []),
           ].map(item => {
             const active = view === item.id;
             const ItemIcon = item.Icon;
@@ -380,6 +424,83 @@ export default function App() {
               </button>
             );
           })}
+
+          {/* Grupo "Administrador" — agrupa as telas de configuração num item recolhível */}
+          {currentUser.role === 'admin' && (() => {
+            const adminSubItems = [
+              { id: 'setores', label: 'Setores & Emails', Icon: Mail },
+              { id: 'usuarios', label: 'Usuários', Icon: UserCog },
+              { id: 'dossie_config', label: 'Config. Dossiê', Icon: Settings },
+              { id: 'fluxos_config', label: 'Fluxos', Icon: ArrowLeftRight },
+            ];
+            const algumAtivo = adminSubItems.some(i => i.id === view);
+            return (
+              <div>
+                <button onClick={() => setAdminMenuOpen(v => !v)} style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 9,
+                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                  padding: sidebarCollapsed ? '9px 0' : '9px 10px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                  marginBottom: 2, textAlign: 'left', fontSize: 13,
+                  fontWeight: algumAtivo ? 700 : 500,
+                  background: algumAtivo ? 'var(--accent-light)' : 'transparent',
+                  color: algumAtivo ? 'var(--accent)' : 'var(--muted)',
+                  transition: 'all 0.15s', fontFamily: 'var(--font-body)',
+                }} title={sidebarCollapsed ? 'Administrador' : undefined}>
+                  <UserCog size={16} strokeWidth={2.25} style={{ flexShrink: 0 }} />
+                  {!sidebarCollapsed && <span style={{ flex: 1 }}>Administrador</span>}
+                  {!sidebarCollapsed && (
+                    <ChevronDown size={14} style={{ flexShrink: 0, transform: adminMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                  )}
+                </button>
+
+                {!sidebarCollapsed && adminMenuOpen && (
+                  <div style={{ paddingLeft: 14, marginBottom: 2, borderLeft: '2px solid var(--border)', marginLeft: 14 }}>
+                    {adminSubItems.map(item => {
+                      const active = view === item.id;
+                      const ItemIcon = item.Icon;
+                      return (
+                        <button key={item.id} onClick={() => setView(item.id)} style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '8px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                          marginTop: 2, textAlign: 'left', fontSize: 12.5,
+                          fontWeight: active ? 700 : 500,
+                          background: active ? 'var(--accent-light)' : 'transparent',
+                          color: active ? 'var(--accent)' : 'var(--muted)',
+                          transition: 'all 0.15s', fontFamily: 'var(--font-body)',
+                        }}>
+                          <ItemIcon size={14} strokeWidth={2.25} style={{ flexShrink: 0 }} />
+                          <span style={{ flex: 1 }}>{item.label}</span>
+                          {active && <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Versão recolhida: mostra os subitens direto, sem o rótulo do grupo */}
+                {sidebarCollapsed && (
+                  <div>
+                    {adminSubItems.map(item => {
+                      const active = view === item.id;
+                      const ItemIcon = item.Icon;
+                      return (
+                        <button key={item.id} onClick={() => setView(item.id)} title={item.label} style={{
+                          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          padding: '9px 0', borderRadius: 10, border: 'none', cursor: 'pointer',
+                          marginBottom: 2,
+                          background: active ? 'var(--accent-light)' : 'transparent',
+                          color: active ? 'var(--accent)' : 'var(--muted)',
+                          transition: 'all 0.15s',
+                        }}>
+                          <ItemIcon size={16} strokeWidth={2.25} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </nav>
 
         {/* Equipe ativa — dropdown para ocupar menos espaço */}
