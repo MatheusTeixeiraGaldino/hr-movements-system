@@ -18,6 +18,7 @@ const TEAMS = [
 ];
 
 const MOVEMENT_TYPES = [
+  { id: 'admissao', label: 'Admissão', dot: 'bg-emerald-500' },
   { id: 'demissao', label: 'Demissão', dot: 'bg-red-500' },
   { id: 'transferencia', label: 'Transferência', dot: 'bg-blue-500' },
   { id: 'alteracao', label: 'Alteração Salarial', dot: 'bg-green-500' },
@@ -29,6 +30,7 @@ interface FormularioItem {
   obrigatorio: boolean;
   tipo_campo: TipoCampoChecklist;
   alternativas: string[];
+  exige_observacao_se_pendente: boolean;
 }
 
 const formularioVazio: FormularioItem = {
@@ -36,6 +38,7 @@ const formularioVazio: FormularioItem = {
   obrigatorio: true,
   tipo_campo: 'checkbox',
   alternativas: [],
+  exige_observacao_se_pendente: false,
 };
 
 interface Props {
@@ -82,6 +85,7 @@ export default function FluxosConfigView({ userEmail }: Props) {
       obrigatorio: item.obrigatorio,
       tipo_campo: item.tipo_campo,
       alternativas: item.alternativas ? [...item.alternativas] : [],
+      exige_observacao_se_pendente: item.exige_observacao_se_pendente,
     });
     setModalAberto({ equipe: item.team_id, itemEditando: item });
   };
@@ -121,6 +125,7 @@ export default function FluxosConfigView({ userEmail }: Props) {
             obrigatorio: formulario.obrigatorio,
             tipo_campo: formulario.tipo_campo,
             alternativas: alternativasLimpas,
+            exige_observacao_se_pendente: formulario.exige_observacao_se_pendente,
           },
           userEmail
         );
@@ -133,6 +138,7 @@ export default function FluxosConfigView({ userEmail }: Props) {
             obrigatorio: formulario.obrigatorio,
             tipo_campo: formulario.tipo_campo,
             alternativas: alternativasLimpas,
+            exige_observacao_se_pendente: formulario.exige_observacao_se_pendente,
           },
           userEmail
         );
@@ -348,6 +354,11 @@ export default function FluxosConfigView({ userEmail }: Props) {
                               campo de texto
                             </span>
                           )}
+                          {item.exige_observacao_se_pendente && (
+                            <span className="ml-2 text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded">
+                              requer observação se pendente
+                            </span>
+                          )}
                           {item.alternativas && item.alternativas.length > 0 && (
                             <ul className="mt-1 space-y-0.5">
                               {item.alternativas.map(alt => (
@@ -483,6 +494,24 @@ export default function FluxosConfigView({ userEmail }: Props) {
                 Item obrigatório (bloqueia o envio do parecer da equipe até ser atendido)
               </span>
             </label>
+
+            {formulario.obrigatorio && formulario.tipo_campo === 'checkbox' && (
+              <label className="flex items-center gap-3 cursor-pointer">
+                <span className="relative">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={formulario.exige_observacao_se_pendente}
+                    onChange={e => setFormulario(prev => ({ ...prev, exige_observacao_se_pendente: e.target.checked }))}
+                  />
+                  <span className="block w-9 h-5 bg-gray-300 peer-checked:bg-indigo-600 rounded-full transition" />
+                  <span className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition peer-checked:translate-x-4" />
+                </span>
+                <span className="text-sm text-gray-700">
+                  Se não marcado, exige uma observação escrita em vez de bloquear (ex: "Título de Eleitor" na Admissão)
+                </span>
+              </label>
+            )}
 
             {formulario.tipo_campo === 'checkbox' && (
               <div>
