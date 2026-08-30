@@ -74,6 +74,7 @@ export function useChecklistConfig() {
       obrigatorio: novo.obrigatorio ?? true,
       tipo_campo: novo.tipo_campo ?? 'checkbox',
       alternativas: novo.alternativas && novo.alternativas.length > 0 ? novo.alternativas : null,
+      exige_observacao_se_pendente: novo.exige_observacao_se_pendente ?? false,
       ordem: maiorOrdem + 1,
       created_by: userEmail || null,
       updated_by: userEmail || null,
@@ -82,12 +83,13 @@ export function useChecklistConfig() {
     const { error: err } = await supabase.from('checklist_itens').insert([item]);
     if (err) throw err;
     await carregarTodos();
+    notificarSeAdmissao(novo.movement_type);
   };
 
   // Edição completa: texto, obrigatoriedade, tipo de campo e alternativas de uma vez.
   const editarItem = async (
     id: string,
-    dados: Partial<Pick<ChecklistItemConfig, 'label' | 'obrigatorio' | 'tipo_campo' | 'alternativas'>>,
+    dados: Partial<Pick<ChecklistItemConfig, 'label' | 'obrigatorio' | 'tipo_campo' | 'alternativas' | 'exige_observacao_se_pendente'>>,
     userEmail?: string
   ) => {
     const payload: any = { ...dados, updated_by: userEmail || null };
@@ -97,6 +99,17 @@ export function useChecklistConfig() {
     const { error: err } = await supabase.from('checklist_itens').update(payload).eq('id', id);
     if (err) throw err;
     await carregarTodos();
+    const item = itens.find(i => i.id === id);
+    if (item) notificarSeAdmissao(item.movement_type);
+  };
+
+  // Notifica o App.tsx (que "hidrata" o checklist de Admissão em memória a partir
+  // desta tabela) para recarregar, caso o item alterado seja da Admissão —
+  // assim uma mudança feita em Fluxos aparece na hora, sem precisar relogar.
+  const notificarSeAdmissao = (movementType: string) => {
+    if (movementType === 'admissao') {
+      window.dispatchEvent(new CustomEvent('checklist-admissao-atualizado'));
+    }
   };
 
   // Nunca exclui de verdade — apenas alterna ativo/inativo.
@@ -107,6 +120,8 @@ export function useChecklistConfig() {
       .eq('id', id);
     if (err) throw err;
     await carregarTodos();
+    const item = itens.find(i => i.id === id);
+    if (item) notificarSeAdmissao(item.movement_type);
   };
 
   const reordenar = async (id: string, novaOrdem: number) => {
@@ -137,6 +152,7 @@ export function useChecklistConfig() {
       obrigatorio: i.obrigatorio,
       tipo_campo: i.tipo_campo,
       alternativas: i.alternativas,
+      exige_observacao_se_pendente: i.exige_observacao_se_pendente,
       ordem: i.ordem,
       created_by: userEmail || null,
       updated_by: userEmail || null,
@@ -145,6 +161,7 @@ export function useChecklistConfig() {
     const { error: err } = await supabase.from('checklist_itens').insert(novosItens);
     if (err) throw err;
     await carregarTodos();
+    notificarSeAdmissao(tipoDestino);
   };
 
   return {
