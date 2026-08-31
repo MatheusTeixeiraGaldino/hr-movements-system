@@ -1378,7 +1378,10 @@ if (movementType === 'demissao') {
                       <Icon className="w-5 h-5" />
                       <div>
                         <h3 className="text-sm font-semibold">{m.employee_name}</h3>
-                        <p className="text-xs text-gray-600">{MOVEMENT_TYPES[m.type as MovementType].label}</p>
+                        <p className="text-xs text-gray-600">
+                          {MOVEMENT_TYPES[m.type as MovementType].label}
+                          <span className="text-gray-400"> · Incluída em {new Date(m.created_at).toLocaleDateString('pt-BR')}</span>
+                        </p>
                       </div>
                     </div>
                     <div className="flex gap-2">
