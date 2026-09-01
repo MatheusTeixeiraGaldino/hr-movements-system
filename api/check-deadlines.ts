@@ -3,6 +3,7 @@
 // ATUALIZADO PARA SUPORTAR MÚLTIPLAS EQUIPES POR USUÁRIO
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { enviarEmailLembrete } from './_lib/mailer';
 
 export default async function handler(
   req: VercelRequest,
@@ -110,33 +111,31 @@ export default async function handler(
       }
     }
 
-    // Enviar todos os emails via webhook do Make.com
-    if (emailsToSend.length > 0) {
-      await fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'deadline_reminder',
-          reminders: emailsToSend.map(item => ({
-            movement: {
-              employee_name: item.movement.employee_name,
-              type: item.movement.type,
-              deadline: item.movement.deadline,
-              created_by: item.movement.created_by
-            },
-            recipients: item.users,
-            days_remaining: item.daysRemaining,
-            email_type: 'reminder'
-          }))
-        })
-      });
+    // Enviar os lembretes direto pelo SMTP do Gmail (antes ia pro Make.com)
+    let emailsEnviados = 0;
+    let emailsComFalha = 0;
+    for (const item of emailsToSend) {
+      const resultado = await enviarEmailLembrete(
+        item.users,
+        {
+          employee_name: item.movement.employee_name,
+          type: item.movement.type,
+          deadline: item.movement.deadline,
+          created_by: item.movement.created_by,
+        },
+        item.daysRemaining
+      );
+      emailsEnviados += resultado.enviados;
+      emailsComFalha += resultado.falhas;
     }
 
     return res.status(200).json({
       success: true,
-      message: `${emailsSent} emails serão enviados`,
+      message: `${emailsEnviados} emails enviados${emailsComFalha > 0 ? `, ${emailsComFalha} falharam` : ''}`,
       movements_checked: movements.length,
       reminders_sent: emailsToSend.length,
+      emails_enviados: emailsEnviados,
+      emails_com_falha: emailsComFalha,
       details: emailsToSend.map(item => ({
         employee: item.movement.employee_name,
         days_remaining: item.daysRemaining,
