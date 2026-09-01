@@ -1,79 +1,60 @@
 // src/lib/emailService.ts
-// Serviço de envio de emails usando Resend
+// Serviço de envio de emails — chama a rota serverless /api/send-email,
+// que manda pelo SMTP do Gmail usando os modelos definidos em
+// MODELOS_EMAILS.docx. (Antes ia direto pro Make.com; SMTP não pode ser
+// feito direto do navegador, por isso essa rota intermediária existe.)
 
-interface EmailRecipient {
+export interface EmailRecipient {
   email: string;
   name: string;
-  team_name: string;
+  team_name?: string;
 }
 
-interface Movement {
+export interface CampoDado {
+  label: string;
+  valor: string;
+}
+
+export interface MovementForEmail {
   employee_name: string;
-  type: string;
-  created_by: string;
+  type: string; // 'admissao' | 'demissao' | 'transferencia' | 'alteracao' | 'promocao'
+  created_by?: string;
   deadline?: string;
-  selected_teams: string[];
+  dismissalDate?: string;
+  oldSector?: string;
+  newSector?: string;
+  oldPosition?: string;
+  newPosition?: string;
+  changeDate?: string;
+  dadosContratacao?: CampoDado[];
 }
 
-const MOVEMENT_TYPE_LABELS: Record<string, string> = {
-  demissao: 'Demissão',
-  transferencia: 'Transferência',
-  alteracao: 'Alteração Salarial',
-  promocao: 'Promoção'
-};
-
-// Função para enviar email via webhook (Make.com ou API própria)
-export async function sendMovementCreatedEmail(
-  recipients: EmailRecipient[],
-  movement: Movement
-) {
+async function chamarSendEmail(payload: any) {
   try {
-    // Enviar para webhook que processará os emails
-const response = await fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
+    const response = await fetch('/api/send-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'movement_created',
-        movement: {
-          ...movement,
-          movimento_tipo: MOVEMENT_TYPE_LABELS[movement.type]
-        },
-        recipients: recipients,
-        email_type: 'created'
-      })
+      body: JSON.stringify(payload),
     });
-
-    return { success: response.ok };
+    const data = await response.json().catch(() => null);
+    return { success: response.ok && data?.success !== false, ...data };
   } catch (error) {
     console.error('Erro ao enviar email:', error);
     return { success: false, error };
   }
+}
+
+export async function sendMovementCreatedEmail(
+  recipients: EmailRecipient[],
+  movement: MovementForEmail
+) {
+  return chamarSendEmail({ action: 'movement_created', movement, recipients });
 }
 
 export async function sendMovementUpdatedEmail(
   recipients: EmailRecipient[],
-  movement: Movement,
+  movement: MovementForEmail,
   updatedBy: string
 ) {
-  try {
-const response = await fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'movement_updated',
-        movement: {
-          ...movement,
-          movimento_tipo: MOVEMENT_TYPE_LABELS[movement.type]
-        },
-        recipients: recipients,
-        updated_by: updatedBy,
-        email_type: 'updated'
-      })
-    });
-
-    return { success: response.ok };
-  } catch (error) {
-    console.error('Erro ao enviar email:', error);
-    return { success: false, error };
-  }
+  return chamarSendEmail({ action: 'movement_updated', movement, recipients, updated_by: updatedBy });
 }
