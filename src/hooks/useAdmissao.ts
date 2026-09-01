@@ -1,16 +1,35 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { sendMovementCreatedEmail } from '../lib/emailService';
 import {
   AcompanhamentoAdmissao,
   ItemChecklistAdmissao,
   AuditoriaItemAdmissao,
   CampoAdmissao,
-  StatusAdmissao,
+  CATEGORIA_CAMPO,
   LABEL_CAMPO_ADMISSAO,
+  StatusAdmissao,
   buildChecklistInicialAdmissao,
   checklistCompletoAdmissao,
   CHECKLIST_REGRAS_ADMISSAO,
 } from '../types/admissao';
+
+// Mesmo mapa id -> nome usado em App.tsx (TEAMS), necessário aqui porque
+// o checklist de Admissão guarda o NOME da equipe, mas a tabela `users`
+// guarda o ID. Usado só para descobrir quem notificar por email.
+const TEAM_NAME_TO_ID: Record<string, string> = {
+  'Recursos Humanos': 'rh',
+  'Ponto': 'ponto',
+  'Transporte': 'transporte',
+  'T.I': 'ti',
+  'Benefícios': 'beneficios',
+  'Comunicação': 'comunicacao',
+  'Segurança do Trabalho': 'seguranca',
+  'Ambulatório': 'ambulatorio',
+  'Financeiro': 'financeiro',
+  'DP': 'dp',
+  'Treinamento e Desenvolvimento': 'treinamento',
+};
 
 function normalizarAdmissao(d: any): AcompanhamentoAdmissao {
   return {
@@ -151,6 +170,46 @@ export function useAdmissao() {
             ]);
 
             if (errAdm) throw errAdm;
+
+            // Notifica por email todas as equipes que participam do checklist de Admissão
+            try {
+              const equipesAdmissaoIds = Array.from(new Set(
+                CHECKLIST_REGRAS_ADMISSAO.map(r => TEAM_NAME_TO_ID[r.equipe]).filter((id): id is string => !!id)
+              ));
+
+              if (equipesAdmissaoIds.length > 0) {
+                const { data: usersData } = await supabase
+                  .from('users')
+                  .select('email, name, team_ids, team_names')
+                  .overlaps('team_ids', equipesAdmissaoIds);
+
+                if (usersData && usersData.length > 0) {
+                  const dadosContratacao = (Object.keys(CATEGORIA_CAMPO) as CampoAdmissao[])
+                    .filter(campo => CATEGORIA_CAMPO[campo] === 'Dados da Contratação')
+                    .map(campo => ({ label: LABEL_CAMPO_ADMISSAO[campo], valor: registro.dados[campo] || '—' }));
+
+                  const expandedRecipients = usersData.flatMap((user: any) =>
+                    user.team_ids
+                      .map((teamId: string, index: number) =>
+                        equipesAdmissaoIds.includes(teamId)
+                          ? { email: user.email, name: user.name, team_name: user.team_names[index] }
+                          : null
+                      )
+                      .filter((item: any) => item !== null)
+                  );
+
+                  sendMovementCreatedEmail(expandedRecipients, {
+                    employee_name: registro.nomeMovimento,
+                    type: 'admissao',
+                    created_by: usuario,
+                    dadosContratacao,
+                  }).catch(e => console.error('Erro ao enviar email de admissão:', e));
+                }
+              }
+            } catch (emailErr) {
+              console.error('Erro ao notificar equipes da admissão:', emailErr);
+            }
+
             sucesso.push(registro.nomeMovimento);
           } catch (err: any) {
             falhas.push({ nome: registro.nomeMovimento, motivo: err.message || 'Erro desconhecido' });
