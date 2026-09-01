@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Users, TrendingUp, UserX, AlertCircle, Mail, Settings, Loader2, UserPlus, Clock, CheckSquare, Square, Upload, File, X, Download, Building2, Plus, Trash2, ChevronRight, Search, LayoutGrid, BarChart3, ClipboardList, UserCog, ArrowLeftRight, CheckCircle2, XCircle, Inbox, ChevronDown } from 'lucide-react';
 import { supabase } from './lib/supabase';
+import { sendMovementCreatedEmail, sendMovementUpdatedEmail } from './lib/emailService';
 import RelatorioView from './components/RelatorioView';
 import DossieView from './components/DossieView';
 import DossieConfigView from './components/DossieConfigView';
@@ -1054,22 +1055,39 @@ if (movementType === 'demissao') {
             return null;
           }).filter((item: any) => item !== null)
         );
-        fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'movement_created', movement: { employee_name: formData.employeeName, type: movementType!, movimento_tipo: MOVEMENT_TYPES[movementType as MovementType].label, created_by: currentUser?.name || '', deadline: formData.deadline, selected_teams: selectedTeams }, recipients: expandedRecipients, email_type: 'created' })
-        }).catch(e => console.error('Webhook erro:', e));
+        sendMovementCreatedEmail(expandedRecipients, {
+          employee_name: formData.employeeName,
+          type: movementType!,
+          created_by: currentUser?.name || '',
+          deadline: formData.deadline,
+          dismissalDate: formData.dismissalDate,
+          oldSector: formData.oldSector,
+          newSector: formData.newSector,
+          oldPosition: formData.oldPosition,
+          newPosition: formData.newPosition,
+          changeDate: formData.changeDate,
+        }).catch(e => console.error('Erro ao enviar email:', e));
       }
 
       if (selectedSetorIds.length > 0) {
         try {
           const { data: emailsData } = await supabase.from('emails_setor').select('*, setores(nome)').in('setor_id', selectedSetorIds).eq('ativo', true);
           if (emailsData && emailsData.length > 0) {
-            const tipoLabel = MOVEMENT_TYPES[movementType as MovementType].label;
-            const prazoFmt = formData.deadline ? new Date(formData.deadline + 'T00:00:00').toLocaleDateString('pt-BR') : null;
-            fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'movement_created', movement: { employee_name: formData.employeeName, type: movementType!, tipo_label: tipoLabel, email_subject: `${tipoLabel} do colaborador ${formData.employeeName}`, created_by: currentUser?.name || '', deadline: formData.deadline, deadline_fmt: prazoFmt, observation: formData.observation || '', response_link: `${window.location.origin}/responder/`, selected_teams: selectedTeams }, recipients: emailsData.map((e: any) => ({ email: e.email, name: e.nome, setor_name: e.setores?.nome })), email_type: 'setor_notification' })
-            }).catch(e => console.error('Webhook setores erro:', e));
+            sendMovementCreatedEmail(
+              emailsData.map((e: any) => ({ email: e.email, name: e.nome, team_name: e.setores?.nome })),
+              {
+                employee_name: formData.employeeName,
+                type: movementType!,
+                created_by: currentUser?.name || '',
+                deadline: formData.deadline,
+                dismissalDate: formData.dismissalDate,
+                oldSector: formData.oldSector,
+                newSector: formData.newSector,
+                oldPosition: formData.oldPosition,
+                newPosition: formData.newPosition,
+                changeDate: formData.changeDate,
+              }
+            ).catch(e => console.error('Erro ao enviar email:', e));
           }
         } catch (err) { console.error('Erro ao buscar emails dos setores:', err); }
       }
@@ -1783,14 +1801,34 @@ function DetailView({ currentUser, selectedMovement, setView, setSelectedMovemen
         const { data: newUsersData } = await supabase.from('users').select('email, name, team_ids, team_names').overlaps('team_ids', newTeams);
         if (newUsersData && newUsersData.length > 0) {
           const expandedRecipients = newUsersData.flatMap((user: any) => user.team_ids.map((teamId: string, index: number) => { if (newTeams.includes(teamId)) return { email: user.email, name: user.name, team_id: teamId, team_name: user.team_names[index] }; return null; }).filter((item: any) => item !== null));
-          fetch('https://hook.eu2.make.com/acgp1d7grpmgeubdn2vm6fwohfs73p7w', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'movement_created', movement: { employee_name: editData.employeeName || selectedMovement.employee_name, type: selectedMovement.type, movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label, created_by: selectedMovement.created_by, deadline: selectedMovement.deadline, selected_teams: newTeams }, recipients: expandedRecipients, email_type: 'created' }) }).catch(e => console.error('Webhook erro:', e));
+          sendMovementCreatedEmail(expandedRecipients, {
+            employee_name: editData.employeeName || selectedMovement.employee_name,
+            type: selectedMovement.type,
+            created_by: selectedMovement.created_by,
+            deadline: selectedMovement.deadline || undefined,
+            dismissalDate: editData.dismissalDate,
+            oldSector: editData.oldSector,
+            newSector: editData.newSector,
+            oldPosition: editData.oldPosition,
+            newPosition: editData.newPosition,
+            changeDate: editData.changeDate,
+          }).catch(e => console.error('Erro ao enviar email:', e));
         }
       }
 
       const { data: usersData } = await supabase.from('users').select('email, name, team_ids, team_names').overlaps('team_ids', editSelectedTeams);
       if (usersData && usersData.length > 0) {
         const expandedRecipients = usersData.flatMap((user: any) => user.team_ids.map((teamId: string, index: number) => { if (editSelectedTeams.includes(teamId)) return { email: user.email, name: user.name, team_id: teamId, team_name: user.team_names[index] }; return null; }).filter((item: any) => item !== null));
-        fetch('https://hook.eu2.make.com/ype19l4x522ymrkbmqhm9on10szsc62v', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'movement_updated', movement: { employee_name: editData.employeeName || selectedMovement.employee_name, type: selectedMovement.type, movimento_tipo: MOVEMENT_TYPES[selectedMovement.type as MovementType].label, created_by: selectedMovement.created_by, deadline: selectedMovement.deadline, selected_teams: editSelectedTeams }, recipients: expandedRecipients, updated_by: currentUser?.name || '', email_type: 'updated' }) }).catch(e => console.error('Webhook erro:', e));
+        sendMovementUpdatedEmail(
+          expandedRecipients,
+          {
+            employee_name: editData.employeeName || selectedMovement.employee_name,
+            type: selectedMovement.type,
+            created_by: selectedMovement.created_by,
+            deadline: selectedMovement.deadline || undefined,
+          },
+          currentUser?.name || ''
+        ).catch(e => console.error('Erro ao enviar email:', e));
       }
 
       alert('Movimentação atualizada!');
