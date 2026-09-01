@@ -3,10 +3,13 @@
 // Manda, para cada usuário, um único email listando todas as
 // movimentações (de qualquer tipo, incluindo Admissão) que ainda
 // aguardam o parecer da equipe dele.
+//
+// IMPORTANTE: este arquivo é 100% autocontido (não importa nada de
+// fora da pasta api/) de propósito — importar de src/ pode falhar
+// silenciosamente no empacotamento das funções serverless da Vercel.
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { enviarEmailResumoSemanal, ItemPendente } from './_lib/mailer';
-import { CHECKLIST_REGRAS_ADMISSAO, statusChecklistEquipe } from '../src/types/admissao';
 
 const TIPO_LABEL: Record<string, string> = {
   admissao: 'Admissão',
@@ -16,32 +19,23 @@ const TIPO_LABEL: Record<string, string> = {
   promocao: 'Promoção',
 };
 
-// Mesmo mapa usado em useAdmissao.ts — equipe (nome) -> team_id
-const TEAM_NAME_TO_ID: Record<string, string> = {
-  'Recursos Humanos': 'rh',
-  'Ponto': 'ponto',
-  'Transporte': 'transporte',
-  'T.I': 'ti',
-  'Benefícios': 'beneficios',
-  'Comunicação': 'comunicacao',
-  'Segurança do Trabalho': 'seguranca',
-  'Ambulatório': 'ambulatorio',
-  'Financeiro': 'financeiro',
-  'DP': 'dp',
-  'Treinamento e Desenvolvimento': 'treinamento',
-};
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const authHeader = req.headers.authorization;
-  const expectedAuth = `Bearer ${process.env.CRON_SECRET || 'your-secret-key'}`;
-  if (authHeader !== expectedAuth) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
   try {
+    const authHeader = req.headers.authorization;
+    const expectedAuth = `Bearer ${process.env.CRON_SECRET || 'your-secret-key'}`;
+    if (authHeader !== expectedAuth) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     const supabaseUrl = process.env.SUPABASE_URL || 'https://npvemrhimzlspgutwpje.supabase.co';
     const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
-    if (!supabaseKey) throw new Error('Supabase key not configured');
+
+    if (!supabaseKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'SUPABASE_SERVICE_KEY (ou SUPABASE_ANON_KEY) não configurada nas variáveis de ambiente da Vercel.',
+      });
+    }
 
     const headers = {
       apikey: supabaseKey,
@@ -49,20 +43,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       'Content-Type': 'application/json',
     };
 
+    async function supaGet(path: string) {
+      const resp = await fetch(`${supabaseUrl}/rest/v1/${path}`, { headers });
+      if (!resp.ok) {
+        const texto = await resp.text().catch(() => '');
+        throw new Error(`Supabase ${path} -> ${resp.status}: ${texto}`);
+      }
+      return resp.json();
+    }
+
     // team_id -> [{tipo, nome}]  (acumulador antes de saber os emails de cada equipe)
     const pendenciasPorTeamId: Record<string, ItemPendente[]> = {};
-
     function adicionarPendencia(teamId: string, tipo: string, nome: string) {
       if (!pendenciasPorTeamId[teamId]) pendenciasPorTeamId[teamId] = [];
       pendenciasPorTeamId[teamId].push({ tipo, nome });
     }
 
     // 1) Demissão / Transferência / Alteração / Promoção
-    const movResp = await fetch(
-      `${supabaseUrl}/rest/v1/movements?status=neq.completed&type=neq.admissao&cancelamento=is.null&select=*`,
-      { headers }
+    const movements = await supaGet(
+      'movements?status=neq.completed&type=neq.admissao&cancelamento=is.null&select=*'
     );
-    const movements = await movResp.json();
 
     for (const mov of movements || []) {
       const pendingTeams: string[] = (mov.selected_teams || []).filter(
@@ -73,21 +73,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // 2) Admissão (modelo de dados diferente: precisa olhar o checklist por equipe)
-    const admResp = await fetch(
-      `${supabaseUrl}/rest/v1/acompanhamento_admissao?status=neq.concluido&select=*,movements(employee_name,cancelamento)`,
-      { headers }
+    // 2) Admissão — busca os itens de checklist configurados (tabela checklist_itens,
+    //    a mesma usada pela tela "Fluxos") e o estado salvo em cada admissão,
+    //    para decidir quais equipes ainda estão pendentes.
+    const itensAdmissao = await supaGet(
+      "checklist_itens?movement_type=eq.admissao&ativo=eq.true&select=id,team_id,obrigatorio,alternativas,exige_observacao_se_pendente,tipo_campo"
     );
-    const admissoes = await admResp.json();
 
-    for (const adm of admissoes || []) {
-      if (!adm.movements || adm.movements.cancelamento) continue; // ignora admissão cancelada
-      const equipes = Array.from(new Set(CHECKLIST_REGRAS_ADMISSAO.map(r => r.equipe)));
-      for (const equipe of equipes) {
-        const status = statusChecklistEquipe(adm.checklist || [], equipe, adm.observacoes_equipe?.[equipe] || '');
-        if (status !== 'completo') {
-          const teamId = TEAM_NAME_TO_ID[equipe];
-          if (teamId) adicionarPendencia(teamId, 'Admissão', adm.movements.employee_name);
+    const itensPorEquipe: Record<string, any[]> = {};
+    for (const item of itensAdmissao || []) {
+      if (!itensPorEquipe[item.team_id]) itensPorEquipe[item.team_id] = [];
+      itensPorEquipe[item.team_id].push(item);
+    }
+
+    if (Object.keys(itensPorEquipe).length > 0) {
+      const admissoes = await supaGet(
+        'acompanhamento_admissao?status=neq.concluido&select=checklist,movimento_id,movements(employee_name,cancelamento)'
+      );
+
+      for (const adm of admissoes || []) {
+        const movInfo = Array.isArray(adm.movements) ? adm.movements[0] : adm.movements;
+        if (!movInfo || movInfo.cancelamento) continue; // ignora admissão cancelada ou sem movimento associado
+
+        const checklistSalvo: any[] = Array.isArray(adm.checklist) ? adm.checklist : [];
+
+        for (const teamId of Object.keys(itensPorEquipe)) {
+          const itensDaEquipe = itensPorEquipe[teamId];
+
+          const equipeCompleta = itensDaEquipe.every(item => {
+            if (!item.obrigatorio) return true;
+            const resposta = checklistSalvo.find(r => r.regra_id === item.id);
+            if (!resposta) return false;
+            if (item.tipo_campo === 'texto') return !!resposta.valor_texto?.trim();
+            if (item.exige_observacao_se_pendente) return !!resposta.marcado || !!resposta.observacao?.trim();
+            if (item.alternativas && item.alternativas.length > 0) {
+              return !!resposta.marcado || !!resposta.secundario_selecionado;
+            }
+            return !!resposta.marcado;
+          });
+
+          if (!equipeCompleta) {
+            adicionarPendencia(teamId, 'Admissão', movInfo.employee_name);
+          }
         }
       }
     }
@@ -98,11 +125,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // 3) Buscar todos os usuários e expandir: usuário -> lista de pendências (somando todas as equipes dele)
-    const usersResp = await fetch(`${supabaseUrl}/rest/v1/users?select=email,name,team_ids`, { headers });
-    const allUsers = await usersResp.json();
+    const allUsers = await supaGet('users?select=email,name,team_ids');
 
     let usuariosNotificados = 0;
     let falhasEnvio = 0;
+    const erros: string[] = [];
 
     for (const user of allUsers || []) {
       if (!user.team_ids || !Array.isArray(user.team_ids)) continue;
@@ -114,7 +141,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (itensDoUsuario.length === 0) continue;
 
-      // remove duplicados (mesmo colaborador/tipo, caso o usuário esteja em 2 equipes com a mesma pendência)
       const vistos = new Set<string>();
       const itensUnicos = itensDoUsuario.filter(i => {
         const chave = `${i.tipo}::${i.nome}`;
@@ -123,8 +149,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return true;
       });
 
-      const resultado = await enviarEmailResumoSemanal({ email: user.email, name: user.name }, itensUnicos);
-      if (resultado.success) usuariosNotificados++; else falhasEnvio++;
+      try {
+        const resultado = await enviarEmailResumoSemanal({ email: user.email, name: user.name }, itensUnicos);
+        if (resultado.success) usuariosNotificados++;
+        else { falhasEnvio++; erros.push(...(resultado.erros || [])); }
+      } catch (e: any) {
+        falhasEnvio++;
+        erros.push(e.message);
+      }
     }
 
     return res.status(200).json({
@@ -132,9 +164,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       message: `${usuariosNotificados} usuário(s) notificado(s)${falhasEnvio > 0 ? `, ${falhasEnvio} falha(s)` : ''}`,
       usuarios_notificados: usuariosNotificados,
       falhas: falhasEnvio,
+      erros: erros.slice(0, 5),
     });
   } catch (error: any) {
     console.error('Erro no resumo semanal:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: error?.message || String(error) });
   }
 }
