@@ -3,7 +3,35 @@
 // ATUALIZADO PARA SUPORTAR MÚLTIPLAS EQUIPES POR USUÁRIO
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { enviarEmailLembrete } from './_lib/mailer';
+import nodemailer from 'nodemailer';
+
+// ── Mailer embutido (sem import externo, evita ERR_MODULE_NOT_FOUND na Vercel) ──
+function getTransporter() {
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) throw new Error('GMAIL_USER e/ou GMAIL_APP_PASSWORD não configurados.');
+  return nodemailer.createTransport({ host: 'smtp.gmail.com', port: 465, secure: true, auth: { user, pass } });
+}
+function getAppUrl() { return process.env.APP_URL || 'https://movimentacoes-trabalhista.vercel.app'; }
+function baseTemplate(corpo: string) {
+  return `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#222;font-size:14px;line-height:1.6;"><div style="border-top:4px solid #4f46e5;padding-top:18px;">${corpo}</div><p style="margin-top:28px;padding-top:12px;border-top:1px solid #eee;font-size:12px;color:#999;">Este é um email automático do sistema de Movimentações Trabalhistas. Não responda a este email.</p></div>`;
+}
+function formatarData(data?: string) {
+  if (!data) return '—';
+  try { return new Date(data.includes('T') ? data : data + 'T00:00:00').toLocaleDateString('pt-BR'); } catch { return data; }
+}
+async function enviarEmailLembrete(recipients: any[], movement: any, daysRemaining: number) {
+  const tipoLabel: Record<string, string> = { admissao: 'Admissão', demissao: 'Demissão', transferencia: 'Transferência', alteracao: 'Alteração de Dados', promocao: 'Promoção' };
+  const tipo = tipoLabel[movement.type] || movement.type;
+  const urgente = daysRemaining <= 1;
+  const corpo = `<p>Prezados,</p><p>${urgente ? '⚠️ O prazo vence <strong>hoje ou amanhã</strong>!' : `Faltam <strong>${daysRemaining} dia(s)</strong> para o prazo.`} Sua equipe ainda não enviou o parecer desta movimentação de ${tipo}.</p><p style="margin-bottom:6px;"><strong>Dados da movimentação:</strong></p><p style="margin:2px 0;"><strong>Funcionário:</strong> ${movement.employee_name}</p><p style="margin:2px 0;"><strong>Prazo:</strong> ${formatarData(movement.deadline)}</p><p style="margin-top:18px;">Acesse pelo link: <a href="${getAppUrl()}" style="color:#4f46e5;text-decoration:underline;">Movimentações trabalhistas</a></p><p style="margin-top:18px;">Atenciosamente,<br/>Departamento Pessoal</p>`;
+  const fromName = process.env.GMAIL_FROM_NAME || 'RH Movimentações';
+  const fromEmail = process.env.GMAIL_USER;
+  const t = getTransporter();
+  const resultados = await Promise.allSettled(recipients.map((r: any) => t.sendMail({ from: `"${fromName}" <${fromEmail}>`, to: r.email, subject: `Lembrete de prazo: ${movement.employee_name} — ${daysRemaining} dia(s) restante(s)`, html: baseTemplate(corpo) })));
+  const falhas = resultados.filter(r => r.status === 'rejected');
+  return { success: falhas.length === 0, enviados: resultados.length - falhas.length, falhas: falhas.length, erros: falhas.map(f => (f as PromiseRejectedResult).reason?.message || 'erro') };
+}
 
 export default async function handler(
   req: VercelRequest,
